@@ -8,11 +8,14 @@ import numpy as np
 import pandas as pd
 import pretty_midi
 import pypianoroll
+from tqdm import tqdm
 from PIL import Image
-from rhythmtoolbox import pattlist2descriptors
+from rhythmtoolbox import pianoroll2descriptors
 
 INPUT_DIR = "input"
 OUTPUT_DIR = "output"
+
+VERBOSE = False
 
 
 def load_midi_file(filepath, resolution=24):
@@ -78,14 +81,20 @@ def plot_roll(roll, ax):
     )
 
 
-def plot_multitrack(multitrack, plot_dir, bar_start_times, mid_name):
+def plot_multitrack(multitrack, output_dir, bar_start_times, mid_name):
     """Plot the multitrack piano roll of a pretty_midi object"""
     fig, ax = plt.subplots(figsize=(20, 8))
 
     if len(multitrack.tracks) == 0:
         plot_roll(multitrack[0].pianoroll, ax)
     else:
-        multitrack.plot()
+        multitrack.plot(
+            xticklabel=False,
+            preset="frame",
+            ytick="step",
+            yticklabel="name",
+            grid_axis="off",
+        )
 
     # Add bar lines
     for t in bar_start_times:
@@ -93,20 +102,33 @@ def plot_multitrack(multitrack, plot_dir, bar_start_times, mid_name):
 
     plt.title(mid_name)
 
-    if not os.path.isdir(plot_dir):
-        os.makedirs(plot_dir)
-    plot_path = os.path.join(plot_dir, "roll.png")
+    if not os.path.isdir(output_dir):
+        os.makedirs(output_dir)
+    plot_path = os.path.join(output_dir, "roll.png")
     plt.savefig(plot_path)
     plt.clf()
-    print(f"  Saved {plot_path}")
+    if VERBOSE:
+        print(f"  Saved {plot_path}")
 
 
-def pianoroll_to_pattlist(roll):
-    """Convert a piano roll array to a pattern list for rhythmtoolbox"""
-    pattlist = []
-    for t in roll:
-        pattlist.append([ix for ix, i in enumerate(t) if i > 0])
-    return pattlist
+def plot_segment(roll, seg_name, track_ix, track_dir, mid_name):
+    # Plot piano rolls as matplotlib plots
+    seg_fig, seg_ax = plt.subplots(figsize=(20, 8))
+    plot_roll(roll, seg_ax)
+    plt.title(f"{mid_name}\ntrack {track_ix}\n{seg_name}")
+
+    seg_plot_dir = os.path.join(track_dir, f"segplots_{seg_size}bar_{resolution}res")
+    if not os.path.isdir(seg_plot_dir):
+        os.makedirs(seg_plot_dir)
+    seg_plot_path = os.path.join(
+        seg_plot_dir,
+        f"{seg_name}.png",
+    )
+
+    plt.savefig(seg_plot_path)
+    plt.close()
+    if VERBOSE:
+        print(f"  Saved {seg_plot_path}")
 
 
 def get_9voice_drum_roll(roll):
@@ -150,7 +172,26 @@ def get_9voice_drum_roll(roll):
     return clip
 
 
-def create_pil_images(roll, track_dir, seg_name):
+def create_pil_images(roll, track_dir, seg_name, drum_roll=False):
+    """Creates greyscale images of a piano roll suitable for model input.
+
+    Parameters
+        roll, np.array
+            Piano roll array of size (128, t) where t is the number of time steps..
+
+        track_dir, str
+            Path to directory in which to save the image
+
+        seg_name, str
+            Name of the segment
+
+        drum_roll, bool
+            Condense a 128-voice piano roll to a 9-voice roll for drums
+    """
+
+    if drum_roll:
+        roll = get_9voice_drum_roll(roll)
+
     # Map MIDI velocity to pixel brightness
     arr = np.array(list(map(lambda x: np.interp(x, [0, 127], [0, 255]), roll)))
 
@@ -169,7 +210,8 @@ def create_pil_images(roll, track_dir, seg_name):
     # mode "L" is greyscale
     im = Image.fromarray(arr.T, mode="L")
     im.save(pil_path)
-    print(f"  Saved {pil_path}")
+    if VERBOSE:
+        print(f"  Saved {pil_path}")
 
     # Add padding below and to the right to get target resolution
     target_size = (512, 512)
@@ -193,10 +235,11 @@ def create_pil_images(roll, track_dir, seg_name):
         f"{seg_name}.png",
     )
     padded_im.save(pil_upscaled_path)
-    print(f"  Saved {pil_upscaled_path}")
+    if VERBOSE:
+        print(f"  Saved {pil_upscaled_path}")
 
 
-def analyze(filepath, seg_size=1, resolution=4, prefix="", plot_segments=True):
+def analyze(filepath, seg_size=1, resolution=4, prefix="", pypianoroll_plots=True):
     """Slices a midi file and computes rhythmic descriptors for each segment.
 
     Parameters
@@ -213,12 +256,13 @@ def analyze(filepath, seg_size=1, resolution=4, prefix="", plot_segments=True):
     prefix: str
         An identifier for output filenames.
 
-    plot_segments: bool
-        Create piano roll plots for each segment.
+    pypianoroll_plots: bool
+        Create pypianoroll plots.
     """
 
     mid_name = f"{prefix}_{os.path.splitext(os.path.basename(filepath))[0]}"
-    print(f"Analyzing {mid_name}")
+    output_dir = os.path.join(OUTPUT_DIR, f"{mid_name}")
+    print(f"{mid_name}")
 
     pmid = load_midi_file(filepath, resolution=resolution)
     bar_start_times, bar_start_ixs = get_bar_start_times(pmid, resolution)
@@ -226,15 +270,18 @@ def analyze(filepath, seg_size=1, resolution=4, prefix="", plot_segments=True):
     multitrack = pypianoroll.read(filepath, resolution=resolution)
 
     # Plot the piano roll of the full multitrack midi input
-    plot_dir = os.path.join(OUTPUT_DIR, f"{mid_name}")
-    plot_multitrack(multitrack, plot_dir, mid_name, bar_start_times)
+    if pypianoroll_plots:
+        plot_multitrack(multitrack, output_dir, mid_name, bar_start_times)
 
-    for track_ix, track in enumerate(multitrack.tracks):
-        print(f"  Analyzing track {track_ix}")
+    descriptor_dfs = []
+
+    for track_ix, track in tqdm(enumerate(multitrack.tracks)):
+        if VERBOSE:
+            print(f"  Track {track_ix}")
 
         roll = track.pianoroll
 
-        track_dir = os.path.join(plot_dir, f"track{track_ix}")
+        track_dir = os.path.join(output_dir, f"track{track_ix}")
         if not os.path.isdir(track_dir):
             os.makedirs(track_dir)
 
@@ -248,45 +295,25 @@ def analyze(filepath, seg_size=1, resolution=4, prefix="", plot_segments=True):
         if len(seg_subdivided_iter) == 0:
             seg_subdivided_iter = [(0, len(roll))]
 
-        for i, (start, end) in enumerate(seg_subdivided_iter):
+        for seg_ix, (start, end) in enumerate(seg_subdivided_iter):
+            if VERBOSE:
+                print(f"    seg {seg_ix}")
+
+            seg_name = f"bar{seg_ix * seg_size}_{seg_ix * seg_size + seg_size}_subdivision{start}-{end}"
+
             segroll = roll[start:end]
 
-            seg_name = (
-                f"bar{i*seg_size}_{i * seg_size + seg_size}_subdivision{start}-{end}"
-            )
-
-            if plot_segments:
-                # Plot piano rolls as matplotlib plots
-                seg_fig, seg_ax = plt.subplots(figsize=(20, 8))
-                plot_roll(segroll, seg_ax)
-                plt.title(f"{mid_name}\ntrack {track_ix}\n{seg_name}")
-
-                seg_plot_dir = os.path.join(
-                    track_dir, f"segplots_{seg_size}bar_{resolution}res"
-                )
-                if not os.path.isdir(seg_plot_dir):
-                    os.makedirs(seg_plot_dir)
-                seg_plot_path = os.path.join(
-                    seg_plot_dir,
-                    f"{seg_name}.png",
-                )
-
-                plt.savefig(seg_plot_path)
-                plt.close()
-                print(f"  Saved {seg_plot_path}")
+            if pypianoroll_plots:
+                plot_segment(segroll, seg_name, track_ix, track_dir, mid_name)
 
             # Create piano roll images using PIL
             create_pil_images(segroll, track_dir, seg_name)
 
-            # if track.is_drum:
-            #     drum_roll = get_9voice_drum_roll(segroll)
-            #     create_pil_images(drum_roll, track_dir, seg_name)
+            # Compute rhythmic descriptors for the segment
+            segment_descriptors.append(pianoroll2descriptors(segroll))
 
-            # Compute rhythmic descriptors for each segment
-            pattlist = pianoroll_to_pattlist(segroll)
-            segment_descriptors = [pattlist2descriptors(pattlist)]
-
-        print(f"  {len(segment_descriptors)} {seg_size}-bar segments analyzed")
+        if VERBOSE:
+            print(f"  {len(segment_descriptors)} {seg_size}-bar segments analyzed")
 
         df = pd.DataFrame(segment_descriptors)
         df.index.name = "segment_id"
@@ -294,7 +321,10 @@ def analyze(filepath, seg_size=1, resolution=4, prefix="", plot_segments=True):
 
         analysis_path = os.path.join(track_dir, f"descriptors-{seg_size}-bar.csv")
         df.to_csv(analysis_path, index=False)
-        print(f"  Descriptors written to {analysis_path}")
+        if VERBOSE:
+            print(f"  Descriptors written to {analysis_path}")
+
+        descriptor_dfs.append(df)
 
 
 if __name__ == "__main__":
@@ -320,41 +350,41 @@ if __name__ == "__main__":
         help="An identifier for output filenames.",
     )
     parser.add_argument(
-        "--plot_segments",
+        "--pypianoroll_plots",
         action="store_true",
-        help="Create a pypianoroll plot for each segment.",
+        help="Create a pypianoroll plot for each segment and another for the entire track.",
     )
     args = parser.parse_args()
 
     if not args.path:
-        args.path = os.path.join(INPUT_DIR, "slakh00006/MIDI/S00.mid")  # type 1
-        # args.path = os.path.join(INPUT_DIR, "slakh00006/all_src.mid")  # type 0
+        # args.path = os.path.join(INPUT_DIR, "slakh00006/MIDI/S00.mid")  # type 1
+        args.path = os.path.join(INPUT_DIR, "slakh00006/all_src.mid")  # type 0
         args.prefix = "slakh00006"
         # args.path = os.path.join(INPUT_DIR, "rtb/boska")  # directory of type 0s
         # args.prefix = "boska"
 
-    inpath = args.path
+    filepath = args.path
     seg_size = args.seg_size
     resolution = args.resolution
     prefix = args.prefix
-    plot_segments = args.plot_segments
+    pypianoroll_plots = args.pypianoroll_plots
 
-    if os.path.isdir(inpath):
+    if os.path.isdir(filepath):
         # Analyze all files in the directory
-        for filepath in glob.glob(os.path.join(inpath, "*.mid")):
+        for filepath in glob.glob(os.path.join(filepath, "*.mid")):
             analyze(
                 filepath,
                 seg_size=seg_size,
                 resolution=resolution,
                 prefix=prefix,
-                plot_segments=plot_segments,
+                pypianoroll_plots=pypianoroll_plots,
             )
     else:
         # Analyze a single file
         analyze(
-            inpath,
+            filepath,
             seg_size=seg_size,
             resolution=resolution,
             prefix=prefix,
-            plot_segments=plot_segments,
+            pypianoroll_plots=pypianoroll_plots,
         )
