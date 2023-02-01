@@ -15,7 +15,7 @@ from rhythmtoolbox import pianoroll2descriptors
 INPUT_DIR = "input"
 OUTPUT_DIR = "output"
 
-VERBOSE = False
+global VERBOSE
 
 
 def load_midi_file(filepath, resolution=24):
@@ -81,7 +81,7 @@ def plot_roll(roll, ax):
     )
 
 
-def plot_multitrack(multitrack, output_dir, bar_start_times, mid_name):
+def plot_multitrack(multitrack, output_dir, bar_start_times):
     """Plot the multitrack piano roll of a pretty_midi object"""
     fig, ax = plt.subplots(figsize=(20, 8))
 
@@ -100,8 +100,6 @@ def plot_multitrack(multitrack, output_dir, bar_start_times, mid_name):
     for t in bar_start_times:
         ax.axvline(x=t * multitrack.resolution, color="black", linewidth=0.1)
 
-    plt.title(mid_name)
-
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
     plot_path = os.path.join(output_dir, "roll.png")
@@ -111,11 +109,10 @@ def plot_multitrack(multitrack, output_dir, bar_start_times, mid_name):
         print(f"  Saved {plot_path}")
 
 
-def plot_segment(roll, seg_name, track_ix, track_dir, mid_name):
+def plot_segment(roll, seg_name, track_dir):
     # Plot piano rolls as matplotlib plots
     seg_fig, seg_ax = plt.subplots(figsize=(20, 8))
     plot_roll(roll, seg_ax)
-    plt.title(f"{mid_name}\ntrack {track_ix}\n{seg_name}")
 
     seg_plot_dir = os.path.join(track_dir, f"segplots_{seg_size}bar_{resolution}res")
     if not os.path.isdir(seg_plot_dir):
@@ -132,7 +129,7 @@ def plot_segment(roll, seg_name, track_ix, track_dir, mid_name):
 
 
 def get_9voice_drum_roll(roll):
-    """Condense a 128-voice piano roll to a 9-voice roll for drums"""
+    """Convert a piano roll to a 9-voice roll for drums"""
 
     # Follows paper mapping in https://magenta.tensorflow.org/datasets/groove
     drum_map_9_voice = {
@@ -172,7 +169,7 @@ def get_9voice_drum_roll(roll):
     return clip
 
 
-def create_pil_images(roll, track_dir, seg_name, drum_roll=False):
+def create_pil_image(roll, track_dir, seg_name, target_size=None):
     """Creates greyscale images of a piano roll suitable for model input.
 
     Parameters
@@ -185,99 +182,98 @@ def create_pil_images(roll, track_dir, seg_name, drum_roll=False):
         seg_name, str
             Name of the segment
 
-        drum_roll, bool
-            Condense a 128-voice piano roll to a 9-voice roll for drums
+        target_size, tuple (optional)
+            Specify target dimensions of the image. Roll will be padded with 0s on right and bottom.
     """
-
-    if drum_roll:
-        roll = get_9voice_drum_roll(roll)
 
     # Map MIDI velocity to pixel brightness
     arr = np.array(list(map(lambda x: np.interp(x, [0, 127], [0, 255]), roll)))
 
-    # PIL greyscale requires an 8-bit pixel range of 0-255
-    arr = arr.astype(np.uint8)
+    # Zero-pad below and to the right to get target resolution
+    if target_size:
+        target_size = (512, 512)
+        pad_bot = np.zeros((arr.shape[0], target_size[1] - arr.shape[1]))
+        pad_right = np.zeros((target_size[0] - arr.shape[0], target_size[1]))
+        v_padded = np.hstack((arr, pad_bot))
+        arr = np.vstack((v_padded, pad_right))
 
-    # Save the image at the original resolution
-    pil_dir = os.path.join(track_dir, f"segrolls_{seg_size}bar_{resolution}res")
-    if not os.path.isdir(pil_dir):
-        os.makedirs(pil_dir)
-    pil_path = os.path.join(
-        pil_dir,
-        f"{seg_name}.png",
-    )
+    # "L" mode is greyscale and requires an 8-bit pixel range of 0-255
+    im = Image.fromarray(arr.T.astype(np.uint8), mode="L")
 
-    # mode "L" is greyscale
-    im = Image.fromarray(arr.T, mode="L")
-    im.save(pil_path)
+    # Save the image
+    outdir = os.path.join(track_dir, f"segrolls_{arr.shape[0]}x{arr.shape[1]}")
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir)
+    outpath = os.path.join(outdir, f"{seg_name}.png")
+    im.save(outpath)
     if VERBOSE:
-        print(f"  Saved {pil_path}")
-
-    # Add padding below and to the right to get target resolution
-    target_size = (512, 512)
-    im_size = im.size
-    pad_bot = np.zeros((im_size[0], target_size[1] - im_size[1]))
-    pad_right = np.zeros((target_size[0] - im_size[0], target_size[1]))
-    v_padded = np.hstack((arr, pad_bot))
-    padded = np.vstack((v_padded, pad_right))
-
-    padded_im = Image.fromarray(padded.T.astype(np.uint8), mode="L")
-
-    # Save the padded image
-    pil_upscaled_dir = os.path.join(
-        track_dir,
-        f"segrolls_{seg_size}bar_{resolution}res_{target_size[0]}x{target_size[1]}",
-    )
-    if not os.path.isdir(pil_upscaled_dir):
-        os.makedirs(pil_upscaled_dir)
-    pil_upscaled_path = os.path.join(
-        pil_upscaled_dir,
-        f"{seg_name}.png",
-    )
-    padded_im.save(pil_upscaled_path)
-    if VERBOSE:
-        print(f"  Saved {pil_upscaled_path}")
+        print(f"  Saved {outpath}")
 
 
-def analyze(filepath, seg_size=1, resolution=4, prefix="", pypianoroll_plots=True):
-    """Slices a midi file and computes rhythmic descriptors for each segment.
+def mk_output_dir(prefix, filepath, seg_size, resolution):
+    mid_name = f"{prefix}_{os.path.splitext(os.path.basename(filepath))[0]}"
+    return os.path.join(OUTPUT_DIR, mid_name, f"{seg_size}bar_{resolution}res")
+
+
+def process(
+    filepath,
+    seg_size=2,
+    resolution=4,
+    prefix="",
+    drum_roll=False,
+    create_images=True,
+    image_size=None,
+    compute_descriptors=True,
+    pypianoroll_plots=False,
+):
+    """Slice a midi file and compute rhythmic descriptors for each segment.
 
     Parameters
 
-    filepath: str
-        Path to the input: either a MIDI file or a directory of MIDI files
+        filepath: str
+            Path to the input: either a MIDI file or a directory of MIDI files.
 
-    seg_size: int
-        Number of bars per segment
+        seg_size: int
+            Number of bars per segment.
 
-    resolution: int
-        Number of subdivisions per beat
+        resolution: int
+            Number of subdivisions per beat.
 
-    prefix: str
-        An identifier for output filenames.
+        prefix: str
+            An identifier for output filenames.
 
-    pypianoroll_plots: bool
-        Create pypianoroll plots.
+        drum_roll, bool
+            Converts the piano roll to a 9-voice roll for drums.
+
+        create_images, bool
+            Create images of the piano rolls.
+
+        image_size, tuple
+            Specify target dimensions of the image. Roll will be padded with 0s on right and bottom.
+
+        compute_descriptors, bool
+            Use rhythmtoolbox to compute rhythmic descriptors for each segment.
+
+        pypianoroll_plots: bool
+            Create pypianoroll plots.
     """
 
-    mid_name = f"{prefix}_{os.path.splitext(os.path.basename(filepath))[0]}"
-    output_dir = os.path.join(OUTPUT_DIR, f"{mid_name}")
-    print(f"{mid_name}")
+    output_dir = mk_output_dir(prefix, filepath, seg_size, resolution)
 
     pmid = load_midi_file(filepath, resolution=resolution)
-    bar_start_times, bar_start_ixs = get_bar_start_times(pmid, resolution)
+    bar_times, bar_ixs = get_bar_start_times(pmid, resolution)
 
     multitrack = pypianoroll.read(filepath, resolution=resolution)
 
     # Plot the piano roll of the full multitrack midi input
     if pypianoroll_plots:
-        plot_multitrack(multitrack, output_dir, mid_name, bar_start_times)
+        plot_multitrack(multitrack, output_dir, bar_times)
 
     descriptor_dfs = []
 
+    track_seg_rolls = {}
     for track_ix, track in tqdm(enumerate(multitrack.tracks)):
-        if VERBOSE:
-            print(f"  Track {track_ix}")
+        track_seg_rolls[str(track_ix)] = []
 
         roll = track.pianoroll
 
@@ -285,46 +281,56 @@ def analyze(filepath, seg_size=1, resolution=4, prefix="", pypianoroll_plots=Tru
         if not os.path.isdir(track_dir):
             os.makedirs(track_dir)
 
+        seg_ticks = resolution * 4 * seg_size
+
         # Slice into segments of length seg_size
-        segment_descriptors = []
+        seg_descriptors = []
 
-        seg_subdivided_iter = list(
-            zip(bar_start_ixs[::seg_size], bar_start_ixs[seg_size:][::seg_size])
-        )
+        seg_iter = list(zip(bar_ixs[::seg_size], bar_ixs[seg_size:][::seg_size]))
+        if len(seg_iter) == 0:
+            seg_iter = [(0, len(roll))]
 
-        if len(seg_subdivided_iter) == 0:
-            seg_subdivided_iter = [(0, len(roll))]
-
-        for seg_ix, (start, end) in enumerate(seg_subdivided_iter):
-            if VERBOSE:
-                print(f"    seg {seg_ix}")
-
+        for seg_ix, (start, end) in enumerate(seg_iter):
             seg_name = f"bar{seg_ix * seg_size}_{seg_ix * seg_size + seg_size}_subdivision{start}-{end}"
 
             segroll = roll[start:end]
 
-            if pypianoroll_plots:
-                plot_segment(segroll, seg_name, track_ix, track_dir, mid_name)
+            # Pad every 2-bar segment to the same length
+            if len(segroll) < seg_ticks:
+                pad_right = np.zeros((seg_ticks - segroll.shape[0], segroll.shape[1]))
+                segroll = np.vstack((segroll, pad_right))
+
+            track_seg_rolls[str(track_ix)].append(segroll)
+            if drum_roll:
+                roll = get_9voice_drum_roll(roll)
 
             # Create piano roll images using PIL
-            create_pil_images(segroll, track_dir, seg_name)
+            if create_images:
+                create_pil_image(segroll, track_dir, seg_name, target_size=image_size)
+
+            if pypianoroll_plots:
+                plot_segment(segroll, seg_name, track_dir)
 
             # Compute rhythmic descriptors for the segment
-            segment_descriptors.append(pianoroll2descriptors(segroll))
+            if compute_descriptors:
+                seg_descriptors.append(pianoroll2descriptors(segroll))
 
-        if VERBOSE:
-            print(f"  {len(segment_descriptors)} {seg_size}-bar segments analyzed")
+        if compute_descriptors:
+            df = pd.DataFrame(seg_descriptors)
+            df.index.name = "segment_id"
+            df.reset_index(inplace=True)
+            df.insert(0, "track_ix", track_ix)
+            descriptor_dfs.append(df)
 
-        df = pd.DataFrame(segment_descriptors)
-        df.index.name = "segment_id"
-        df.reset_index(inplace=True)
+    arr_path = os.path.join(output_dir, "arr.npz")
+    np.savez(arr_path, **track_seg_rolls)
+    if VERBOSE:
+        print(f"  Saved {arr_path}")
 
-        analysis_path = os.path.join(track_dir, f"descriptors-{seg_size}-bar.csv")
-        df.to_csv(analysis_path, index=False)
-        if VERBOSE:
-            print(f"  Descriptors written to {analysis_path}")
+    if compute_descriptors:
+        return pd.concat(descriptor_dfs)
 
-        descriptor_dfs.append(df)
+    return
 
 
 if __name__ == "__main__":
@@ -332,16 +338,20 @@ if __name__ == "__main__":
     parser.add_argument(
         "--path",
         type=str,
+        required=True,
         help="Path to the input: either a MIDI file or a directory of MIDI files.",
     )
     parser.add_argument(
-        "--seg_size", type=int, default=1, help="Number of bars per segment."
+        "--seg_size",
+        type=int,
+        default=2,
+        help="Number of bars per segment.",
     )
     parser.add_argument(
         "--resolution",
         type=int,
         default=24,
-        help="Number of subdivisions per beat. Default = 4, i.e. 16th note.",
+        help="Number of subdivisions per beat.",
     )
     parser.add_argument(
         "--prefix",
@@ -350,41 +360,85 @@ if __name__ == "__main__":
         help="An identifier for output filenames.",
     )
     parser.add_argument(
+        "--drum_roll",
+        action="store_true",
+        help="Use a 9-voice piano roll for drums only.",
+    )
+    parser.add_argument(
+        "--create_images",
+        action="store_true",
+        help="Create images of the piano rolls.",
+    )
+    parser.add_argument(
+        "--image_size",
+        type=str,
+        default="",
+        help="A resolution to use for images, e.g. 512x512.",
+    )
+    parser.add_argument(
+        "--compute_descriptors",
+        action="store_true",
+        help="Use rhythmtoolbox to compute rhythmic descriptors for each segment.",
+    )
+    parser.add_argument(
         "--pypianoroll_plots",
         action="store_true",
         help="Create a pypianoroll plot for each segment and another for the entire track.",
     )
+    parser.add_argument(
+        "--verbose",
+        action="store_true",
+        help="Print debug statements.",
+    )
     args = parser.parse_args()
-
-    if not args.path:
-        # args.path = os.path.join(INPUT_DIR, "slakh00006/MIDI/S00.mid")  # type 1
-        args.path = os.path.join(INPUT_DIR, "slakh00006/all_src.mid")  # type 0
-        args.prefix = "slakh00006"
-        # args.path = os.path.join(INPUT_DIR, "rtb/boska")  # directory of type 0s
-        # args.prefix = "boska"
 
     filepath = args.path
     seg_size = args.seg_size
     resolution = args.resolution
     prefix = args.prefix
+    create_images = args.create_images
+    image_size = args.image_size
+    if image_size:
+        image_size = (int(x) for x in args.image_size.split("x"))
     pypianoroll_plots = args.pypianoroll_plots
+    drum_roll = args.drum_roll
+    compute_descriptors = args.compute_descriptors
+    VERBOSE = args.verbose
+
+    df = pd.DataFrame()
 
     if os.path.isdir(filepath):
-        # Analyze all files in the directory
+        # Process all files in the directory
         for filepath in glob.glob(os.path.join(filepath, "*.mid")):
-            analyze(
+            mid_df = process(
                 filepath,
                 seg_size=seg_size,
                 resolution=resolution,
                 prefix=prefix,
+                drum_roll=drum_roll,
+                create_images=create_images,
+                image_size=image_size,
+                compute_descriptors=compute_descriptors,
                 pypianoroll_plots=pypianoroll_plots,
             )
+            df = pd.concat([df, mid_df])
     else:
-        # Analyze a single file
-        analyze(
+        # Process a single file
+        df = process(
             filepath,
             seg_size=seg_size,
             resolution=resolution,
             prefix=prefix,
+            drum_roll=drum_roll,
+            create_images=create_images,
+            image_size=image_size,
+            compute_descriptors=compute_descriptors,
             pypianoroll_plots=pypianoroll_plots,
         )
+
+    if compute_descriptors:
+        output_dir = mk_output_dir(prefix, filepath, seg_size, resolution)
+        descriptors_path = os.path.join(output_dir, f"descriptors.csv")
+        df.to_csv(descriptors_path, index=False)
+        if VERBOSE:
+            print(f"  Descriptors written to {descriptors_path}")
