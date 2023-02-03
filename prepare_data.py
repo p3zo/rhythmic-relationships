@@ -274,9 +274,9 @@ def process(
 
     bar_times, bar_ixs = get_bar_start_times(pmid, resolution)
 
-    # There seems to be an off-by-one bug in pypiano roll. Skip the files it can't parse.
+    # There seems to be an off-by-one bug in pypianoroll. Skip the files it can't parse.
     try:
-        multitrack = pypianoroll.read(filepath, resolution=resolution)
+        multitrack = pypianoroll.from_pretty_midi(pmid, resolution=resolution)
     except:
         return None, None
 
