@@ -26,7 +26,8 @@ def load_midi_file(filepath, resolution=24):
         try:
             midi = pretty_midi.PrettyMIDI(filepath, resolution=resolution)
         except Exception as e:
-            print(f"Failed loading file {filepath}: {e}")
+            if VERBOSE:
+                print(f"Failed loading file {filepath}: {e}")
             return
 
     return midi
@@ -109,12 +110,12 @@ def plot_multitrack(multitrack, output_dir, bar_start_times):
         print(f"  Saved {plot_path}")
 
 
-def plot_segment(roll, seg_name, track_dir):
+def plot_segment(roll, seg_name, outdir):
     # Plot piano rolls as matplotlib plots
     seg_fig, seg_ax = plt.subplots(figsize=(20, 8))
     plot_roll(roll, seg_ax)
 
-    seg_plot_dir = os.path.join(track_dir, f"segplots_{seg_size}bar_{resolution}res")
+    seg_plot_dir = os.path.join(outdir, f"segplots_{seg_size}bar_{resolution}res")
     if not os.path.isdir(seg_plot_dir):
         os.makedirs(seg_plot_dir)
     seg_plot_path = os.path.join(
@@ -169,20 +170,20 @@ def get_9voice_drum_roll(roll):
     return clip
 
 
-def create_pil_image(roll, track_dir, seg_name, target_size=None):
+def create_pil_image(roll, outdir, seg_name, im_size=None):
     """Creates greyscale images of a piano roll suitable for model input.
 
     Parameters
         roll, np.array
             Piano roll array of size (128, t) where t is the number of time steps..
 
-        track_dir, str
+        outdir, str
             Path to directory in which to save the image
 
         seg_name, str
             Name of the segment
 
-        target_size, tuple (optional)
+        im_size, tuple (optional)
             Specify target dimensions of the image. Roll will be padded with 0s on right and bottom.
     """
 
@@ -190,10 +191,10 @@ def create_pil_image(roll, track_dir, seg_name, target_size=None):
     arr = np.array(list(map(lambda x: np.interp(x, [0, 127], [0, 255]), roll)))
 
     # Zero-pad below and to the right to get target resolution
-    if target_size:
-        target_size = (512, 512)
-        pad_bot = np.zeros((arr.shape[0], target_size[1] - arr.shape[1]))
-        pad_right = np.zeros((target_size[0] - arr.shape[0], target_size[1]))
+    if im_size:
+        im_size = (512, 512)
+        pad_bot = np.zeros((arr.shape[0], im_size[1] - arr.shape[1]))
+        pad_right = np.zeros((im_size[0] - arr.shape[0], im_size[1]))
         v_padded = np.hstack((arr, pad_bot))
         arr = np.vstack((v_padded, pad_right))
 
@@ -201,28 +202,27 @@ def create_pil_image(roll, track_dir, seg_name, target_size=None):
     im = Image.fromarray(arr.T.astype(np.uint8), mode="L")
 
     # Save the image
-    outdir = os.path.join(track_dir, f"segrolls_{arr.shape[0]}x{arr.shape[1]}")
-    if not os.path.isdir(outdir):
-        os.makedirs(outdir)
-    outpath = os.path.join(outdir, f"{seg_name}.png")
+    imdir = os.path.join(outdir, f"segrolls_{arr.shape[0]}x{arr.shape[1]}")
+    if not os.path.isdir(imdir):
+        os.makedirs(imdir)
+    outpath = os.path.join(imdir, f"{seg_name}.png")
     im.save(outpath)
     if VERBOSE:
         print(f"  Saved {outpath}")
 
 
-def mk_output_dir(prefix, filepath, seg_size, resolution):
-    mid_name = f"{prefix}_{os.path.splitext(os.path.basename(filepath))[0]}"
-    return os.path.join(OUTPUT_DIR, mid_name, f"{seg_size}bar_{resolution}res")
+def mk_mid_name(prefix, filepath):
+    return f"{prefix}_{os.path.splitext(os.path.basename(filepath))[0]}"
 
 
 def process(
     filepath,
+    output_dir,
     seg_size=2,
     resolution=4,
-    prefix="",
     drum_roll=False,
     create_images=True,
-    image_size=None,
+    im_size=None,
     compute_descriptors=True,
     pypianoroll_plots=False,
 ):
@@ -232,6 +232,9 @@ def process(
 
         filepath: str
             Path to the input: either a MIDI file or a directory of MIDI files.
+
+        output_dir: str,
+            Path to a directory in which to write output files.
 
         seg_size: int
             Number of bars per segment.
@@ -248,7 +251,7 @@ def process(
         create_images, bool
             Create images of the piano rolls.
 
-        image_size, tuple
+        im_size, tuple
             Specify target dimensions of the image. Roll will be padded with 0s on right and bottom.
 
         compute_descriptors, bool
@@ -258,55 +261,69 @@ def process(
             Create pypianoroll plots.
     """
 
-    output_dir = mk_output_dir(prefix, filepath, seg_size, resolution)
+    mid_name = mk_mid_name(prefix, filepath)
+    mid_outdir = os.path.join(output_dir, mid_name)
 
     pmid = load_midi_file(filepath, resolution=resolution)
+    if not pmid:
+        return None, None
+
     bar_times, bar_ixs = get_bar_start_times(pmid, resolution)
 
-    multitrack = pypianoroll.read(filepath, resolution=resolution)
+    # There seems to be an off-by-one bug in pypiano roll. Skip the files it can't parse.
+    try:
+        multitrack = pypianoroll.read(filepath, resolution=resolution)
+    except:
+        return None, None
 
     # Plot the piano roll of the full multitrack midi input
     if pypianoroll_plots:
-        plot_multitrack(multitrack, output_dir, bar_times)
+        plot_multitrack(multitrack, mid_outdir, bar_times)
 
+    # Define an iterable to segment each track's piano roll equally
+    seg_iter = list(zip(bar_ixs[::seg_size], bar_ixs[seg_size:][::seg_size]))
+    if len(seg_iter) == 0:
+        # TODO: this assumes all tracks are the same length. Is that always true?
+        seg_iter = [(0, len(multitrack[0]))]
+
+    # Initialize output objects
+    n_seg_ticks = resolution * 4 * seg_size
+    n_voices = 128
+    n_tracks = len(multitrack.tracks)  # TODO: handle the case of 0 tracks
+    n_segments = len(seg_iter)
+    track_seg_rolls = np.empty(
+        (n_tracks, n_segments, n_seg_ticks, n_voices), dtype=np.uint8
+    )
     descriptor_dfs = []
 
-    track_seg_rolls = {}
-    for track_ix, track in tqdm(enumerate(multitrack.tracks)):
-        track_seg_rolls[str(track_ix)] = []
-
+    for track_ix, track in enumerate(multitrack.tracks):
         roll = track.pianoroll
 
-        track_dir = os.path.join(output_dir, f"track{track_ix}")
-        if not os.path.isdir(track_dir):
-            os.makedirs(track_dir)
-
-        seg_ticks = resolution * 4 * seg_size
+        track_dir = os.path.join(mid_outdir, f"track{track_ix}")
 
         # Slice into segments of length seg_size
         seg_descriptors = []
 
-        seg_iter = list(zip(bar_ixs[::seg_size], bar_ixs[seg_size:][::seg_size]))
-        if len(seg_iter) == 0:
-            seg_iter = [(0, len(roll))]
-
         for seg_ix, (start, end) in enumerate(seg_iter):
             seg_name = f"bar{seg_ix * seg_size}_{seg_ix * seg_size + seg_size}_subdivision{start}-{end}"
 
+            # TODO: to reduce complexity, keep just middle 96 of 128?
             segroll = roll[start:end]
 
             # Pad every 2-bar segment to the same length
-            if len(segroll) < seg_ticks:
-                pad_right = np.zeros((seg_ticks - segroll.shape[0], segroll.shape[1]))
-                segroll = np.vstack((segroll, pad_right))
+            # TODO: this makes everything 4/4. is that acceptable?
+            if len(segroll) < n_seg_ticks:
+                pad_right = np.zeros((n_seg_ticks - segroll.shape[0], segroll.shape[1]))
+                segroll = np.vstack((segroll, pad_right)).astype(np.uint8)
 
-            track_seg_rolls[str(track_ix)].append(segroll)
             if drum_roll:
-                roll = get_9voice_drum_roll(roll)
+                segroll = get_9voice_drum_roll(segroll)
+
+            track_seg_rolls[track_ix][seg_ix] = segroll
 
             # Create piano roll images using PIL
             if create_images:
-                create_pil_image(segroll, track_dir, seg_name, target_size=image_size)
+                create_pil_image(segroll, track_dir, seg_name, im_size=im_size)
 
             if pypianoroll_plots:
                 plot_segment(segroll, seg_name, track_dir)
@@ -322,15 +339,9 @@ def process(
             df.insert(0, "track_ix", track_ix)
             descriptor_dfs.append(df)
 
-    arr_path = os.path.join(output_dir, "arr.npz")
-    np.savez(arr_path, **track_seg_rolls)
-    if VERBOSE:
-        print(f"  Saved {arr_path}")
+    descriptors = pd.concat(descriptor_dfs) if compute_descriptors else None
 
-    if compute_descriptors:
-        return pd.concat(descriptor_dfs)
-
-    return
+    return track_seg_rolls, descriptors
 
 
 if __name__ == "__main__":
@@ -338,7 +349,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--path",
         type=str,
-        required=True,
+        default="input/slakh00006/MIDI",
         help="Path to the input: either a MIDI file or a directory of MIDI files.",
     )
     parser.add_argument(
@@ -356,7 +367,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--prefix",
         type=str,
-        default="",
+        default="slakh00006",
         help="An identifier for output filenames.",
     )
     parser.add_argument(
@@ -370,10 +381,10 @@ if __name__ == "__main__":
         help="Create images of the piano rolls.",
     )
     parser.add_argument(
-        "--image_size",
+        "--im_size",
         type=str,
         default="",
-        help="A resolution to use for images, e.g. 512x512.",
+        help="A resolution to use for the piano roll images, e.g. 512x512.",
     )
     parser.add_argument(
         "--compute_descriptors",
@@ -392,53 +403,62 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    filepath = args.path
+    path = args.path
     seg_size = args.seg_size
     resolution = args.resolution
-    prefix = args.prefix
+    prefix = args.prefix if args.prefix else os.path.splitext(path)[0].replace("/", "_")
     create_images = args.create_images
-    image_size = args.image_size
-    if image_size:
-        image_size = (int(x) for x in args.image_size.split("x"))
+    im_size = args.im_size
+    if im_size:
+        im_size = (int(x) for x in args.im_size.split("x"))
     pypianoroll_plots = args.pypianoroll_plots
     drum_roll = args.drum_roll
     compute_descriptors = args.compute_descriptors
     VERBOSE = args.verbose
 
-    df = pd.DataFrame()
+    filepaths = [path]
+    if os.path.isdir(path):
+        filepaths = glob.glob(os.path.join(path, "*.mid"))
 
-    if os.path.isdir(filepath):
-        # Process all files in the directory
-        for filepath in glob.glob(os.path.join(filepath, "*.mid")):
-            mid_df = process(
-                filepath,
-                seg_size=seg_size,
-                resolution=resolution,
-                prefix=prefix,
-                drum_roll=drum_roll,
-                create_images=create_images,
-                image_size=image_size,
-                compute_descriptors=compute_descriptors,
-                pypianoroll_plots=pypianoroll_plots,
-            )
-            df = pd.concat([df, mid_df])
-    else:
-        # Process a single file
-        df = process(
-            filepath,
+    out_segrolls = []
+    descriptors = pd.DataFrame()
+
+    output_dir = os.path.join(OUTPUT_DIR, f"{prefix}_{seg_size}bar_{resolution}res")
+    if not os.path.isdir(output_dir):
+        os.makedirs(output_dir)
+
+    failed_ixs = []
+    for file_ix, filepath in enumerate(tqdm(filepaths[:10])):
+        segrolls, mid_df = process(
+            filepath=filepath,
+            output_dir=output_dir,
             seg_size=seg_size,
             resolution=resolution,
-            prefix=prefix,
             drum_roll=drum_roll,
             create_images=create_images,
-            image_size=image_size,
+            im_size=im_size,
             compute_descriptors=compute_descriptors,
             pypianoroll_plots=pypianoroll_plots,
         )
+        if segrolls is None:
+            failed_ixs.append(file_ix)
+            continue
+        out_segrolls.append(segrolls)
+        if compute_descriptors:
+            descriptors = pd.concat([descriptors, mid_df])
+
+    arr_path = os.path.join(output_dir, "segrolls.npz")
+    np_save_obj = {str(ix): i for ix, i in enumerate(out_segrolls)}
+    np.savez(arr_path, **np_save_obj)
 
     if compute_descriptors:
-        output_dir = mk_output_dir(prefix, filepath, seg_size, resolution)
         descriptors_path = os.path.join(output_dir, f"descriptors.csv")
-        df.to_csv(descriptors_path, index=False)
+        descriptors.to_csv(descriptors_path, index=False)
         if VERBOSE:
             print(f"  Descriptors written to {descriptors_path}")
+
+    print(f"Prepared dataset: ./{arr_path}")
+
+    n_failed = len(failed_ixs)
+    if n_failed > 0:
+        print(f"Failed {n_failed} files: {failed_ixs}")
