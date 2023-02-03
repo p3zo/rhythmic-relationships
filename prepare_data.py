@@ -451,13 +451,13 @@ if __name__ == "__main__":
         if segrolls is None:
             failed_ixs.append(file_ix)
             continue
-        out_segrolls.append(segrolls)
+        dataset.extend(segrolls)
         if compute_descriptors:
             descriptors = pd.concat([descriptors, mid_df])
 
-    arr_path = os.path.join(output_dir, "segrolls.npz")
-    np_save_obj = {str(ix): i for ix, i in enumerate(out_segrolls)}
-    np.savez(arr_path, **np_save_obj)
+    dataset_path = os.path.join(output_dir, "segrolls.npz")
+    print("Compressing & saving dataset...")
+    np.savez_compressed(dataset_path, segrolls=np.array(dataset))
 
     if compute_descriptors:
         descriptors_path = os.path.join(output_dir, f"descriptors.csv")
@@ -465,7 +465,7 @@ if __name__ == "__main__":
         if VERBOSE:
             print(f"  Descriptors written to {descriptors_path}")
 
-    print(f"Prepared dataset: ./{arr_path}")
+    print(f"Saved ./{dataset_path}")
 
     n_failed = len(failed_ixs)
     if n_failed > 0:
