@@ -17,11 +17,15 @@ OUTPUT_DIR = "output"
 
 global VERBOSE
 
+# TODO: fix catch_warnings block in load_midi_file and remove this
+warnings.filterwarnings("ignore", category=RuntimeWarning)
+
 
 def load_midi_file(filepath, resolution=24):
     """Load a midi file as a pretty_midi object"""
     # Warnings can be verbose when midi has no metadata e.g. tempo, key, time signature
     with warnings.catch_warnings():
+        # TODO: why does filterwarnings not work inside of catch_warnings?
         warnings.filterwarnings("ignore", category=RuntimeWarning)
         try:
             midi = pretty_midi.PrettyMIDI(filepath, resolution=resolution)
