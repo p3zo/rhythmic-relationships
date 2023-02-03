@@ -314,11 +314,15 @@ def process(
             # TODO: to reduce complexity, keep just middle 96 of 128?
             segroll = roll[start:end]
 
-            # Pad every 2-bar segment to the same length
+            # Pad/truncate every 2-bar segment to the same length
             # TODO: this makes everything 4/4. is that acceptable?
             if len(segroll) < n_seg_ticks:
                 pad_right = np.zeros((n_seg_ticks - segroll.shape[0], segroll.shape[1]))
                 segroll = np.vstack((segroll, pad_right)).astype(np.uint8)
+            elif len(segroll) > n_seg_ticks:
+                segroll = segroll[
+                    :n_seg_ticks,
+                ]
 
             if drum_roll:
                 segroll = get_9voice_drum_roll(segroll)
