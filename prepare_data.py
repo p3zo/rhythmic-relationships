@@ -15,6 +15,8 @@ from rhythmtoolbox import pianoroll2descriptors
 INPUT_DIR = "input"
 OUTPUT_DIR = "output"
 
+N_MIDI_VOICES = 128
+
 global VERBOSE
 
 # TODO: fix catch_warnings block in load_midi_file and remove this
@@ -25,7 +27,7 @@ def load_midi_file(filepath, resolution=24):
     """Load a midi file as a pretty_midi object"""
     # Warnings can be verbose when midi has no metadata e.g. tempo, key, time signature
     with warnings.catch_warnings():
-        # TODO: why does filterwarnings not work inside of catch_warnings?
+        # TODO: why doesn't filterwarnings work inside of catch_warnings?
         warnings.filterwarnings("ignore", category=RuntimeWarning)
         try:
             midi = pretty_midi.PrettyMIDI(filepath, resolution=resolution)
@@ -179,7 +181,7 @@ def create_pil_image(roll, outdir, seg_name, im_size=None):
 
     Parameters
         roll, np.array
-            Piano roll array of size (128, t) where t is the number of time steps..
+            Piano roll array of size (v, t) where v is the number of voices and t is the number of time steps.
 
         outdir, str
             Path to directory in which to save the image
@@ -292,42 +294,54 @@ def process(
 
     # Initialize output objects
     n_seg_ticks = resolution * 4 * seg_size
-    n_voices = 128
-    n_tracks = len(multitrack.tracks)  # TODO: handle the case of 0 tracks
+    # Trim top & bottom of array keeping only to middle n_voices voices
+    n_voices = 96
+    trim_voices = (N_MIDI_VOICES - n_voices) // 2
+    # TODO: handle the case of 0 tracks
+    n_tracks = len(multitrack.tracks)
     n_segments = len(seg_iter)
-    track_seg_rolls = np.empty(
-        (n_tracks, n_segments, n_seg_ticks, n_voices), dtype=np.uint8
-    )
+    # TODO: add a dimension for 'parts'
+    segrolls = np.empty((n_segments * n_tracks, n_seg_ticks, n_voices), dtype=np.uint8)
     descriptor_dfs = []
 
+    cur = 0
     for track_ix, track in enumerate(multitrack.tracks):
         roll = track.pianoroll
 
+        # Ensure all MIDI velocities are in the valid range [0, 127]
+        if roll.max() > 127:
+            roll = np.array(
+                list(
+                    map(
+                        lambda x: np.interp(x, [0, roll.max()], [0, 127]),
+                        roll,
+                    )
+                ),
+                dtype=np.uint8,
+            )
+
         track_dir = os.path.join(mid_outdir, f"track{track_ix}")
 
-        # Slice into segments of length seg_size
+        # Slice the piano roll into segments of equal length
         seg_descriptors = []
 
         for seg_ix, (start, end) in enumerate(seg_iter):
             seg_name = f"bar{seg_ix * seg_size}_{seg_ix * seg_size + seg_size}_subdivision{start}-{end}"
 
-            # TODO: to reduce complexity, keep just middle 96 of 128?
-            segroll = roll[start:end]
+            segroll = roll[start:end, trim_voices : N_MIDI_VOICES - trim_voices]
 
             # Pad/truncate every 2-bar segment to the same length
-            # TODO: this makes everything 4/4. is that acceptable?
+            # TODO: this makes everything 4/4. Is that acceptable?
             if len(segroll) < n_seg_ticks:
                 pad_right = np.zeros((n_seg_ticks - segroll.shape[0], segroll.shape[1]))
                 segroll = np.vstack((segroll, pad_right)).astype(np.uint8)
             elif len(segroll) > n_seg_ticks:
-                segroll = segroll[
-                    :n_seg_ticks,
-                ]
+                segroll = segroll[:n_seg_ticks]
 
             if drum_roll:
                 segroll = get_9voice_drum_roll(segroll)
 
-            track_seg_rolls[track_ix][seg_ix] = segroll
+            segrolls[cur] = segroll
 
             # Create piano roll images using PIL
             if create_images:
@@ -340,6 +354,8 @@ def process(
             if compute_descriptors:
                 seg_descriptors.append(pianoroll2descriptors(segroll))
 
+            cur += 1
+
         if compute_descriptors:
             df = pd.DataFrame(seg_descriptors)
             df.index.name = "segment_id"
@@ -349,7 +365,7 @@ def process(
 
     descriptors = pd.concat(descriptor_dfs) if compute_descriptors else None
 
-    return track_seg_rolls, descriptors
+    return segrolls, descriptors
 
 
 if __name__ == "__main__":
@@ -357,7 +373,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--path",
         type=str,
-        default="input/slakh00006/MIDI",
+        default="input/lmd_clean",
         help="Path to the input: either a MIDI file or a directory of MIDI files.",
     )
     parser.add_argument(
@@ -375,7 +391,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--prefix",
         type=str,
-        default="slakh00006",
+        default="lmd_clean",
         help="An identifier for output filenames.",
     )
     parser.add_argument(
@@ -426,9 +442,14 @@ if __name__ == "__main__":
 
     filepaths = [path]
     if os.path.isdir(path):
-        filepaths = glob.glob(os.path.join(path, "*.mid"))
+        filepaths = glob.glob(os.path.join(path, "**/*.mid"), recursive=True)
 
-    out_segrolls = []
+    # TODO: remove temp subset
+    n = 100
+    filepaths = filepaths[:n]
+    print(f"Processing {len(filepaths)} midi file(s)")
+
+    dataset = []
     descriptors = pd.DataFrame()
 
     output_dir = os.path.join(OUTPUT_DIR, f"{prefix}_{seg_size}bar_{resolution}res")
@@ -436,7 +457,7 @@ if __name__ == "__main__":
         os.makedirs(output_dir)
 
     failed_ixs = []
-    for file_ix, filepath in enumerate(tqdm(filepaths[:10])):
+    for file_ix, filepath in enumerate(tqdm(filepaths)):
         segrolls, mid_df = process(
             filepath=filepath,
             output_dir=output_dir,
@@ -455,12 +476,12 @@ if __name__ == "__main__":
         if compute_descriptors:
             descriptors = pd.concat([descriptors, mid_df])
 
-    dataset_path = os.path.join(output_dir, "segrolls.npz")
+    dataset_path = os.path.join(output_dir, f"segrolls_{n}.npz")
     print("Compressing & saving dataset...")
     np.savez_compressed(dataset_path, segrolls=np.array(dataset))
 
     if compute_descriptors:
-        descriptors_path = os.path.join(output_dir, f"descriptors.csv")
+        descriptors_path = os.path.join(output_dir, "descriptors.csv")
         descriptors.to_csv(descriptors_path, index=False)
         if VERBOSE:
             print(f"  Descriptors written to {descriptors_path}")

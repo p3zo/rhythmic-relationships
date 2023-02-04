@@ -22,10 +22,9 @@ Instructions
       --pypianoroll_plots      Create a pypianoroll plot for each segment and another for the entire track.
       --verbose                Print debug statements.
 
-The prepared dataset is written to `segrolls.npz` in the output directory and has is represented as a `numpy.uint8`
-array of size shape `(M x T x S x N x V)` where `M` is the number of midi files in the dataset, `T` is the number of
-tracks in each file, `S` is the number of segments in each file, `N` is the number of time steps in each segment,
-and `V` is the number of voices. The values are velocity in the range 0-127.
+The prepared dataset is written to `segrolls.npy` in the output directory and has is represented as a `numpy.uint8`
+array of size shape `(S x N x V)` where `S` is the number of segments in the dataset, `N` is the number of time steps in
+each segment, and `V` is the number of voices. The values are velocity in the range 0-127.
 
 The piano roll images created with the `--create_images` flag can be listened to using the notebook
 [MIDI_playback_from_image.ipynb](MIDI_playback_from_image.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1okATUg3TI1CsyKi1OUsQTt8FB28XfIm1?usp=sharing).
