@@ -294,9 +294,8 @@ def process(
 
     # Initialize output objects
     n_seg_ticks = resolution * 4 * seg_size
-    # Trim top & bottom of array keeping only to middle n_voices voices
     n_voices = 96
-    trim_voices = (N_MIDI_VOICES - n_voices) // 2
+    n_voices_trim = (N_MIDI_VOICES - n_voices) // 2
     # TODO: handle the case of 0 tracks
     n_tracks = len(multitrack.tracks)
     n_segments = len(seg_iter)
@@ -304,21 +303,9 @@ def process(
     segrolls = np.empty((n_segments * n_tracks, n_seg_ticks, n_voices), dtype=np.uint8)
     descriptor_dfs = []
 
-    cur = 0
     for track_ix, track in enumerate(multitrack.tracks):
-        roll = track.pianoroll
-
-        # Ensure all MIDI velocities are in the valid range [0, 127]
-        if roll.max() > 127:
-            roll = np.array(
-                list(
-                    map(
-                        lambda x: np.interp(x, [0, roll.max()], [0, 127]),
-                        roll,
-                    )
-                ),
-                dtype=np.uint8,
-            )
+        # Trim top & bottom of the roll to keep only to middle n_voices voices
+        roll = track.pianoroll[:, n_voices_trim : N_MIDI_VOICES - n_voices_trim]
 
         track_dir = os.path.join(mid_outdir, f"track{track_ix}")
 
@@ -328,7 +315,7 @@ def process(
         for seg_ix, (start, end) in enumerate(seg_iter):
             seg_name = f"bar{seg_ix * seg_size}_{seg_ix * seg_size + seg_size}_subdivision{start}-{end}"
 
-            segroll = roll[start:end, trim_voices : N_MIDI_VOICES - trim_voices]
+            segroll = roll[start:end]
 
             # Pad/truncate every 2-bar segment to the same length
             # TODO: this makes everything 4/4. Is that acceptable?
@@ -341,7 +328,19 @@ def process(
             if drum_roll:
                 segroll = get_9voice_drum_roll(segroll)
 
-            segrolls[cur] = segroll
+            # Ensure all MIDI velocities are in the valid range [0, 127]
+            if segroll.max() > 127:
+                segroll = np.array(
+                    list(
+                        map(
+                            lambda x: np.interp(x, [0, segroll.max()], [0, 127]),
+                            segroll,
+                        )
+                    ),
+                    dtype=np.uint8,
+                )
+
+            segrolls[track_ix * n_segments + seg_ix] = segroll
 
             # Create piano roll images using PIL
             if create_images:
@@ -353,8 +352,6 @@ def process(
             # Compute rhythmic descriptors for the segment
             if compute_descriptors:
                 seg_descriptors.append(pianoroll2descriptors(segroll))
-
-            cur += 1
 
         if compute_descriptors:
             df = pd.DataFrame(seg_descriptors)
