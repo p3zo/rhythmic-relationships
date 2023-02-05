@@ -8,19 +8,52 @@ import numpy as np
 import pandas as pd
 import pretty_midi
 import pypianoroll
-from tqdm import tqdm
 from PIL import Image
 from rhythmtoolbox import pianoroll2descriptors
+from tqdm import tqdm
+
+# TODO: fix catch_warnings block in load_midi_file and remove this
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 INPUT_DIR = "input"
 OUTPUT_DIR = "output"
 
 N_MIDI_VOICES = 128
 
+# Program categories from the General MIDI Level 2 spec: https://en.wikipedia.org/wiki/General_MIDI_Level_2
+# A category's key is the index of its first patch
+PROGRAM_CATEGORIES = {
+    1: "Piano",
+    9: "Chromatic Percussion",
+    17: "Organ",
+    25: "Guitar",
+    33: "Bass",
+    41: "Orchestra Solo",
+    49: "Orchestra Ensemble",
+    57: "Brass",
+    65: "Reed",
+    73: "Wind",
+    81: "Synth Lead",
+    89: "Synth Pad",
+    97: "Synth Sound FX",
+    105: "Ethnic",
+    113: "Percussive",
+    121: "Sound Effect",
+}
+
+# In the General MIDI spec, drums are on a separate MIDI channel. We append it here for simplicity.
+PARTS = list(PROGRAM_CATEGORIES.values())
+PARTS.append("Drums")
+
 global VERBOSE
 
-# TODO: fix catch_warnings block in load_midi_file and remove this
-warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+def get_part_from_program(program):
+    if program < 0 or program > 127:
+        raise ValueError(
+            f"Program number {program} is not in the valid range of [0, 127]"
+        )
+    return PROGRAM_CATEGORIES[[p for p in PROGRAM_CATEGORIES if p <= program + 1][-1]]
 
 
 def load_midi_file(filepath, resolution=24):
@@ -296,18 +329,18 @@ def process(
     n_seg_ticks = resolution * 4 * seg_size
     n_voices = 96
     n_voices_trim = (N_MIDI_VOICES - n_voices) // 2
-    # TODO: handle the case of 0 tracks
-    n_tracks = len(multitrack.tracks)
-    n_segments = len(seg_iter)
-    # TODO: add a dimension for 'parts'
-    segrolls = np.empty((n_segments * n_tracks, n_seg_ticks, n_voices), dtype=np.uint8)
+    part_segrolls = {p: [] for p in PARTS}
     descriptor_dfs = []
 
     for track_ix, track in enumerate(multitrack.tracks):
+        track_dir = os.path.join(mid_outdir, f"track{track_ix}")
+
         # Trim top & bottom of the roll to keep only to middle n_voices voices
         roll = track.pianoroll[:, n_voices_trim : N_MIDI_VOICES - n_voices_trim]
 
-        track_dir = os.path.join(mid_outdir, f"track{track_ix}")
+        part = get_part_from_program(track.program)
+        if track.is_drum:
+            part = "Drums"
 
         # Slice the piano roll into segments of equal length
         seg_descriptors = []
@@ -340,7 +373,7 @@ def process(
                     dtype=np.uint8,
                 )
 
-            segrolls[track_ix * n_segments + seg_ix] = segroll
+            part_segrolls[part].append(segroll)
 
             # Create piano roll images using PIL
             if create_images:
@@ -362,7 +395,7 @@ def process(
 
     descriptors = pd.concat(descriptor_dfs) if compute_descriptors else None
 
-    return segrolls, descriptors
+    return part_segrolls, descriptors
 
 
 if __name__ == "__main__":
@@ -372,6 +405,12 @@ if __name__ == "__main__":
         type=str,
         default="input/lmd_clean",
         help="Path to the input: either a MIDI file or a directory of MIDI files.",
+    )
+    parser.add_argument(
+        "--prefix",
+        type=str,
+        default="lmd_clean",
+        help="An identifier for output filenames.",
     )
     parser.add_argument(
         "--seg_size",
@@ -386,12 +425,6 @@ if __name__ == "__main__":
         help="Number of subdivisions per beat.",
     )
     parser.add_argument(
-        "--prefix",
-        type=str,
-        default="lmd_clean",
-        help="An identifier for output filenames.",
-    )
-    parser.add_argument(
         "--drum_roll",
         action="store_true",
         help="Use a 9-voice piano roll for drums only.",
@@ -404,7 +437,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--im_size",
         type=str,
-        default="",
+        default=None,
         help="A resolution to use for the piano roll images, e.g. 512x512.",
     )
     parser.add_argument(
@@ -440,22 +473,18 @@ if __name__ == "__main__":
     filepaths = [path]
     if os.path.isdir(path):
         filepaths = glob.glob(os.path.join(path, "**/*.mid"), recursive=True)
-
-    # TODO: remove temp subset
-    n = 100
-    filepaths = filepaths[:n]
     print(f"Processing {len(filepaths)} midi file(s)")
 
-    dataset = []
+    dataset = {p: [] for p in PARTS}
     descriptors = pd.DataFrame()
 
     output_dir = os.path.join(OUTPUT_DIR, f"{prefix}_{seg_size}bar_{resolution}res")
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
 
-    failed_ixs = []
+    failed_paths = []
     for file_ix, filepath in enumerate(tqdm(filepaths)):
-        segrolls, mid_df = process(
+        part_segrolls, mid_df = process(
             filepath=filepath,
             output_dir=output_dir,
             seg_size=seg_size,
@@ -466,25 +495,45 @@ if __name__ == "__main__":
             compute_descriptors=compute_descriptors,
             pypianoroll_plots=pypianoroll_plots,
         )
-        if segrolls is None:
-            failed_ixs.append(file_ix)
+
+        if part_segrolls is None:
+            failed_paths.append(filepath)
             continue
-        dataset.extend(segrolls)
+
+        for p in part_segrolls:
+            dataset[p].extend(part_segrolls[p])
+
         if compute_descriptors:
             descriptors = pd.concat([descriptors, mid_df])
 
-    dataset_path = os.path.join(output_dir, f"segrolls_{n}.npz")
+    # Convert the part segroll lists into arrays
+    for p in dataset:
+        dataset[p] = np.array(dataset[p])
+
+    # Save the dataset
+    dataset_path = os.path.join(output_dir, f"part_segrolls.npz")
     print("Compressing & saving dataset...")
-    np.savez_compressed(dataset_path, segrolls=np.array(dataset))
+    np.savez_compressed(dataset_path, **dataset)
+    print(f"Saved ./{dataset_path}")
+
+    # Plot the number of segments by part
+    part_counts = {k: len(v) for k, v in dataset.items()}
+    fig, ax = plt.subplots(figsize=(20, 8))
+    plt.bar(*zip(*part_counts.items()))
+    plt.setp(ax.get_xticklabels(), ha="right", rotation=45)
+    plt.tight_layout()
+    dist_plot_path = os.path.join(output_dir, "dataset_parts_distribution.png")
+    plt.savefig(dist_plot_path)
+    print(f"Saved {dist_plot_path}")
 
     if compute_descriptors:
         descriptors_path = os.path.join(output_dir, "descriptors.csv")
         descriptors.to_csv(descriptors_path, index=False)
         if VERBOSE:
-            print(f"  Descriptors written to {descriptors_path}")
+            print(f"Descriptors written to {descriptors_path}")
 
-    print(f"Saved ./{dataset_path}")
-
-    n_failed = len(failed_ixs)
+    n_failed = len(failed_paths)
     if n_failed > 0:
-        print(f"Failed {n_failed} files: {failed_ixs}")
+        if VERBOSE:
+            failed_paths_str = "\n".join(failed_paths)
+            print(f"Failed {n_failed} file(s):\n{failed_paths_str}")

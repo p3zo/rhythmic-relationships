@@ -1,6 +1,10 @@
 # Rhythmic complements
 
-Use `prepare_data.py` to create the dataset. It accepts either a MIDI file or a directory of MIDI files.
+## Usage
+
+### Recreate the dataset
+
+Run `prepare_data.py` to create the dataset. It accepts either a MIDI file or a directory of MIDI files.
 
     python prepare_data.py --path=input/slakh00006/all_src.mid --prefix=slakh00006
 
@@ -22,9 +26,10 @@ Instructions
       --pypianoroll_plots      Create a pypianoroll plot for each segment and another for the entire track.
       --verbose                Print debug statements.
 
-The prepared dataset is written to `segrolls.npy` in the output directory and has is represented as a `numpy.uint8`
-array of size shape `(S x N x V)` where `S` is the number of segments in the dataset, `N` is the number of time steps in
-each segment, and `V` is the number of voices. The values are velocity in the range 0-127.
+The prepared dataset is written to `part_segrolls.npz` in the output directory and is represented as a set of `P` numpy
+arrays of type `numpy.uint8` and shape `(S x N x V)`, where `P` is the number of parts, `S` is the number of
+segments, `N` is the number of time steps in a segment, and `V` is the number of voices. The values are MIDI velocities
+in the range `[0-127]`.
 
 The piano roll images created with the `--create_images` flag can be listened to using the notebook
 [MIDI_playback_from_image.ipynb](MIDI_playback_from_image.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1okATUg3TI1CsyKi1OUsQTt8FB28XfIm1?usp=sharing).
