@@ -350,6 +350,10 @@ def process(
 
             segroll = roll[start:end]
 
+            # Skip empty segments
+            if not segroll.any():
+                continue
+
             # Pad/truncate every 2-bar segment to the same length
             # TODO: this makes everything 4/4. Is that acceptable?
             if len(segroll) < n_seg_ticks:
