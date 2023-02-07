@@ -496,8 +496,7 @@ if __name__ == "__main__":
         # Adding a trailing slash helps with string splitting later
         path = path + "/" if not path.endswith("/") else path
 
-    n_files = len(filepaths)
-    print(f"Processing {n_files} midi file(s)")
+    print(f"Processing {len(filepaths)} midi file(s)")
 
     dataset_name = f"{prefix}_{seg_size}bar_{resolution}res"
     output_dir = os.path.join(OUTPUT_DIR, dataset_name)
@@ -529,7 +528,7 @@ if __name__ == "__main__":
 
         # Save the segments for each part
         outpath = os.path.join(
-            dataset_dir, os.path.splitext(filepath)[0].split(path)[1]
+            dataset_dir, f"{os.path.splitext(filepath)[0].split(path)[1]}.npz"
         )
         outdir = os.path.dirname(outpath)
         if not os.path.isdir(outdir):
@@ -537,7 +536,7 @@ if __name__ == "__main__":
         np.savez_compressed(outpath, **part_segrolls)
 
         for part in part_segrolls:
-            annotations[part].append(filepath)
+            annotations[part].append(outpath)
             part_counts[part] += 1
 
         if compute_descriptors:
@@ -574,3 +573,22 @@ if __name__ == "__main__":
     if n_failed > 0:
         failed_paths_str = "\n".join(failed_paths)
         print(f"Failed {n_failed} file(s)")
+
+    print("Aggregating parts")
+    for part in PARTS:
+        part_filepaths = annotations[part]
+        if len(part_filepaths) == 0:
+            continue
+        print(part)
+
+        part_segrolls = []
+        for filepath in tqdm(part_filepaths):
+            part_segrolls.extend(np.load(filepath)[part])
+
+        part_dir = os.path.join(output_dir, "part_segrolls")
+        if not os.path.isdir(part_dir):
+            os.makedirs(part_dir)
+
+        np.savez_compressed(
+            os.path.join(part_dir, part), segrolls=np.array(part_segrolls)
+        )

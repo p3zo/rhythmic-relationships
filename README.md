@@ -2,12 +2,10 @@
 
 ## Usage
 
-### Recreate the dataset
+### Create the dataset from MIDI
 
-#### 1. Process MIDI
-
-Run `prepare_data.py` to split the data into segments and aggregate parts. It accepts either a MIDI file or a directory
-of MIDI files. For reference, it took ~1hr 20m to process
+Run `prepare_data.py` to slice MIDI data into segments and aggregate the segments by part. It accepts either a MIDI file
+or a directory of MIDI files. For reference, it took ~1.5hrs to process
 the [LMD clean subset](https://colinraffel.com/projects/lmd/) (17243 MIDI files).
 
     python prepare_data.py --path=input/slakh00006/all_src.mid --prefix=slakh00006
@@ -30,9 +28,12 @@ Full list of arguments
       --pypianoroll_plots      Create a pypianoroll plot for each segment and another for the entire track.
       --verbose                Print debug statements.
 
-One `.npz` file is written for each MIDI file and contains a `numpy.uint8` array for each part of shape `(S x N x V)`,
-where `S` is the number of segments, `N` is the number of time steps in a segment, and `V` is the number of voices. The
-values are MIDI velocities in the range `[0-127]`.
+For each MIDI file, one `.npz` file is written containing
+the [piano roll](https://en.wikipedia.org/wiki/Piano_roll#In_digital_audio_workstations) representations of the segments
+in that file organized by part. The piano rolls are arrays of type `numpy.uint8` and shape `(S x N x V)`, where `S` is
+the number of segments, `N` is the number of time steps in a segment, and `V` is the number of MIDI pitches. The array
+values are MIDI velocities in the range `[0-127]`. Additionally, all segments for each part are collected into a single
+`part_segrolls` file containing one `(S x N x V)` matrix.
 
 The piano roll images created with the `--create_images` flag can be listened to using the notebook
 [MIDI_playback_from_image.ipynb](MIDI_playback_from_image.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1okATUg3TI1CsyKi1OUsQTt8FB28XfIm1?usp=sharing).
