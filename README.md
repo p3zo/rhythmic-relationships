@@ -4,11 +4,15 @@
 
 ### Recreate the dataset
 
-Run `prepare_data.py` to create the dataset. It accepts either a MIDI file or a directory of MIDI files.
+#### 1. Process MIDI
+
+Run `prepare_data.py` to split the data into segments and aggregate parts. It accepts either a MIDI file or a directory
+of MIDI files. For reference, it took ~1hr 20m to process
+the [LMD clean subset](https://colinraffel.com/projects/lmd/) (17243 MIDI files).
 
     python prepare_data.py --path=input/slakh00006/all_src.mid --prefix=slakh00006
 
-Instructions
+Full list of arguments
 
     usage: prepare_data.py [-h] [--path PATH] [--seg_size SEG_SIZE] [--resolution RESOLUTION] [--prefix PREFIX] [--drum_roll] [--create_images]
                            [--im_size IM_SIZE] [--compute_descriptors] [--pypianoroll_plots] [--verbose]
@@ -26,10 +30,9 @@ Instructions
       --pypianoroll_plots      Create a pypianoroll plot for each segment and another for the entire track.
       --verbose                Print debug statements.
 
-The prepared dataset is written to `part_segrolls.npz` in the output directory and is represented as a set of `P` numpy
-arrays of type `numpy.uint8` and shape `(S x N x V)`, where `P` is the number of parts, `S` is the number of
-segments, `N` is the number of time steps in a segment, and `V` is the number of voices. The values are MIDI velocities
-in the range `[0-127]`.
+One `.npz` file is written for each MIDI file and contains a `numpy.uint8` array for each part of shape `(S x N x V)`,
+where `S` is the number of segments, `N` is the number of time steps in a segment, and `V` is the number of voices. The
+values are MIDI velocities in the range `[0-127]`.
 
 The piano roll images created with the `--create_images` flag can be listened to using the notebook
 [MIDI_playback_from_image.ipynb](MIDI_playback_from_image.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1okATUg3TI1CsyKi1OUsQTt8FB28XfIm1?usp=sharing).

@@ -1,7 +1,9 @@
 import argparse
 import glob
 import os
+import pickle
 import warnings
+from collections import defaultdict
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -45,9 +47,8 @@ PROGRAM_CATEGORIES = {
     121: "Sound Effect",
 }
 
-# In the General MIDI spec, drums are on a separate MIDI channel. We append it here for simplicity.
-PARTS = list(PROGRAM_CATEGORIES.values())
-PARTS.append("Drums")
+# NOTE: In the General MIDI spec, drums are on a separate MIDI channel
+PARTS = ["Drums"] + list(PROGRAM_CATEGORIES.values())
 
 global VERBOSE
 
@@ -77,7 +78,9 @@ def load_midi_file(filepath, resolution=24):
 
 
 def get_bar_start_times(pmid, beat_division=24):
-    """Adapted from https://github.com/ruiguo-bio/midi-miner/blob/master/tension_calculation.py#L687-L718"""
+    """Adapted from https://github.com/ruiguo-bio/midi-miner/blob/master/tension_calculation.py#L687-L718
+    TODO: Replace this with pypianoroll downbeats
+    """
 
     beats = pmid.get_beats()
     beats = np.unique(beats, axis=0)
@@ -254,12 +257,11 @@ def create_pil_image(roll, outdir, seg_name, im_size=None):
         print(f"  Saved {outpath}")
 
 
-def roll_has_activity(roll):
-    """Verifies that the piano roll has at least some number of beats and pitches"""
+def roll_has_activity(roll, min_pitches=MIN_SEG_PITCHES, min_beats=MIN_SEG_BEATS):
+    """Verify that a piano roll has at least some number of beats and pitches"""
     n_pitches = (roll.sum(axis=0) > 0).sum()
     n_beats = (roll.sum(axis=1) > 0).sum()
-    good_seg = (n_pitches >= MIN_SEG_PITCHES) and (n_beats >= MIN_SEG_BEATS)
-    return good_seg
+    return (n_pitches >= min_pitches) and (n_beats >= min_beats)
 
 
 def mk_mid_name(prefix, filepath):
@@ -356,6 +358,9 @@ def process(
         if track.is_drum:
             part = "Drums"
 
+            if drum_roll:
+                roll = get_9voice_drum_roll(roll)
+
         # Slice the piano roll into segments of equal length
         seg_descriptors = []
 
@@ -375,9 +380,6 @@ def process(
                 segroll = np.vstack((segroll, pad_right)).astype(np.uint8)
             elif len(segroll) > n_seg_ticks:
                 segroll = segroll[:n_seg_ticks]
-
-            if drum_roll:
-                segroll = get_9voice_drum_roll(segroll)
 
             # Ensure all MIDI velocities are in the valid range [0, 127]
             if segroll.max() > 127:
@@ -491,16 +493,23 @@ if __name__ == "__main__":
     filepaths = [path]
     if os.path.isdir(path):
         filepaths = glob.glob(os.path.join(path, "**/*.mid"), recursive=True)
-    print(f"Processing {len(filepaths)} midi file(s)")
+        # Adding a trailing slash helps with string splitting later
+        path = path + "/" if not path.endswith("/") else path
 
-    dataset = {p: [] for p in PARTS}
-    descriptors = pd.DataFrame()
+    n_files = len(filepaths)
+    print(f"Processing {n_files} midi file(s)")
 
-    output_dir = os.path.join(OUTPUT_DIR, f"{prefix}_{seg_size}bar_{resolution}res")
-    if not os.path.isdir(output_dir):
-        os.makedirs(output_dir)
+    dataset_name = f"{prefix}_{seg_size}bar_{resolution}res"
+    output_dir = os.path.join(OUTPUT_DIR, dataset_name)
+    dataset_dir = os.path.join(output_dir, path.split("/")[-2])
+    if not os.path.isdir(dataset_dir):
+        os.makedirs(dataset_dir)
 
     failed_paths = []
+    annotations = {p: [] for p in PARTS}
+    part_counts = defaultdict(int)
+    descriptors = pd.DataFrame()
+
     for file_ix, filepath in enumerate(tqdm(filepaths)):
         part_segrolls, mid_df = process(
             filepath=filepath,
@@ -518,29 +527,40 @@ if __name__ == "__main__":
             failed_paths.append(filepath)
             continue
 
-        for p in part_segrolls:
-            dataset[p].extend(part_segrolls[p])
+        # Save the segments for each part
+        outpath = os.path.join(
+            dataset_dir, os.path.splitext(filepath)[0].split(path)[1]
+        )
+        outdir = os.path.dirname(outpath)
+        if not os.path.isdir(outdir):
+            os.makedirs(outdir)
+        np.savez_compressed(outpath, **part_segrolls)
+
+        for part in part_segrolls:
+            annotations[part].append(filepath)
+            part_counts[part] += 1
 
         if compute_descriptors:
             descriptors = pd.concat([descriptors, mid_df])
 
-    # Convert the part segroll lists into arrays
-    for p in dataset:
-        dataset[p] = np.array(dataset[p])
-
-    # Save the dataset
-    dataset_path = os.path.join(output_dir, f"part_segrolls.npz")
-    print("Compressing & saving dataset...")
-    np.savez_compressed(dataset_path, **dataset)
-    print(f"Saved ./{dataset_path}")
+    # Save the dataset annotations
+    annotations_path = os.path.join(output_dir, "annotations.pkl")
+    with open(annotations_path, "wb") as f:
+        pickle.dump(annotations, f)
+    print(f"Saved {annotations_path}")
 
     # Plot the number of segments by part
-    part_counts = {k: len(v) for k, v in dataset.items()}
+    n_segments_total = sum(part_counts.values())
+    part_pcts = {part: count / n_segments_total for part, count in part_counts.items()}
     fig, ax = plt.subplots(figsize=(20, 8))
-    plt.bar(*zip(*part_counts.items()))
+    plt.bar(*zip(*part_pcts.items()))
+    plt.title(
+        f"Distribution of parts in {dataset_name}\n{n_segments_total} segments total"
+    )
+    plt.ylabel("Fraction of segments")
     plt.setp(ax.get_xticklabels(), ha="right", rotation=45)
     plt.tight_layout()
-    dist_plot_path = os.path.join(output_dir, "dataset_parts_distribution.png")
+    dist_plot_path = os.path.join(output_dir, "parts_distribution.png")
     plt.savefig(dist_plot_path)
     print(f"Saved {dist_plot_path}")
 
@@ -552,6 +572,5 @@ if __name__ == "__main__":
 
     n_failed = len(failed_paths)
     if n_failed > 0:
-        if VERBOSE:
-            failed_paths_str = "\n".join(failed_paths)
-            print(f"Failed {n_failed} file(s):\n{failed_paths_str}")
+        failed_paths_str = "\n".join(failed_paths)
+        print(f"Failed {n_failed} file(s)")
