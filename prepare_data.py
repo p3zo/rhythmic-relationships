@@ -345,7 +345,9 @@ def process(
     part_segrolls = {p: [] for p in PARTS}
     descriptor_dfs = []
 
-    for track_ix, track in enumerate(multitrack.tracks):
+    non_empty_tracks = [t for t in multitrack.tracks if len(t) > 0]
+
+    for track_ix, track in enumerate(non_empty_tracks):
         track_dir = os.path.join(mid_outdir, f"track{track_ix}")
 
         # Trim top & bottom of the roll to keep only to middle n_voices voices
