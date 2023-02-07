@@ -15,10 +15,10 @@ from tqdm import tqdm
 # TODO: fix catch_warnings block in load_midi_file and remove this
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
-INPUT_DIR = "input"
 OUTPUT_DIR = "output"
 
-N_MIDI_VOICES = 128
+# Piano key numbers
+MIDI_PITCH_RANGE = [21, 108]
 
 # Segments with little activity will be filtered out
 MIN_SEG_PITCHES = 1
@@ -340,9 +340,8 @@ def process(
 
     # Initialize output objects
     n_seg_ticks = resolution * 4 * seg_size
-    n_voices = 96
-    n_voices_trim = (N_MIDI_VOICES - n_voices) // 2
-    part_segrolls = {p: [] for p in PARTS}
+    part_segrolls = defaultdict(list)
+    # TODO: compute descriptors by part
     descriptor_dfs = []
 
     non_empty_tracks = [t for t in multitrack.tracks if len(t) > 0]
@@ -350,8 +349,8 @@ def process(
     for track_ix, track in enumerate(non_empty_tracks):
         track_dir = os.path.join(mid_outdir, f"track{track_ix}")
 
-        # Trim top & bottom of the roll to keep only to middle n_voices voices
-        roll = track.pianoroll[:, n_voices_trim : N_MIDI_VOICES - n_voices_trim]
+        # Trim the top and bottom pitches of the roll
+        roll = track.pianoroll[:, MIDI_PITCH_RANGE[0] : MIDI_PITCH_RANGE[1] + 1]
 
         part = get_part_from_program(track.program)
         if track.is_drum:
