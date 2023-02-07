@@ -20,6 +20,10 @@ OUTPUT_DIR = "output"
 
 N_MIDI_VOICES = 128
 
+# Segments with little activity will be filtered out
+MIN_SEG_PITCHES = 1
+MIN_SEG_BEATS = 4
+
 # Program categories from the General MIDI Level 2 spec: https://en.wikipedia.org/wiki/General_MIDI_Level_2
 # A category's key is the index of its first patch
 PROGRAM_CATEGORIES = {
@@ -250,6 +254,14 @@ def create_pil_image(roll, outdir, seg_name, im_size=None):
         print(f"  Saved {outpath}")
 
 
+def roll_has_activity(roll):
+    """Verifies that the piano roll has at least some number of beats and pitches"""
+    n_pitches = (roll.sum(axis=0) > 0).sum()
+    n_beats = (roll.sum(axis=1) > 0).sum()
+    good_seg = (n_pitches >= MIN_SEG_PITCHES) and (n_beats >= MIN_SEG_BEATS)
+    return good_seg
+
+
 def mk_mid_name(prefix, filepath):
     return f"{prefix}_{os.path.splitext(os.path.basename(filepath))[0]}"
 
@@ -320,6 +332,7 @@ def process(
         plot_multitrack(multitrack, mid_outdir, bar_times)
 
     # Define an iterable to segment each track's piano roll equally
+    # TODO: make overlapping segments (all possible 2-bar segments)
     seg_iter = list(zip(bar_ixs[::seg_size], bar_ixs[seg_size:][::seg_size]))
     if len(seg_iter) == 0:
         # TODO: this assumes all tracks are the same length. Is that always true?
@@ -350,8 +363,8 @@ def process(
 
             segroll = roll[start:end]
 
-            # Skip empty segments
-            if not segroll.any():
+            # Skip uninteresting segments
+            if not roll_has_activity(segroll):
                 continue
 
             # Pad/truncate every 2-bar segment to the same length
