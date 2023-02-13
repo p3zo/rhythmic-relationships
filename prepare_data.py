@@ -333,6 +333,9 @@ def process(
     # Define an iterable to segment each track's piano roll equally
     # TODO: make overlapping segments (all possible 2-bar segments)
     seg_iter = list(zip(bar_ixs[::seg_size], bar_ixs[seg_size:][::seg_size]))
+    # TODO: is this approach simpler?
+    # bins = [i for i in range(0, len(bar_ixs)+1, seg_size)]
+    # seg_iter = list(zip(bar_ixs], bar_ixs[1:]]))
     if len(seg_iter) == 0:
         # TODO: this assumes all tracks are the same length. Is that always true?
         seg_iter = [(0, len(multitrack[0]))]
@@ -503,6 +506,8 @@ if __name__ == "__main__":
         # Adding a trailing slash helps with string splitting later
         path = path + "/" if not path.endswith("/") else path
 
+    n_files = 10000
+    filepaths = filepaths[:n_files]
     print(f"Processing {len(filepaths)} midi file(s)")
 
     dataset_name = f"{prefix}_{seg_size}bar_{resolution}res"
@@ -637,6 +642,8 @@ if __name__ == "__main__":
     if skip_npz:
         sys.exit(0)
 
+    # Collect all segrolls for each part into individual files
+    # TODO: this is memory-intensive. Read them in a little at a time and write them to chunk files of equal size
     print("Aggregating parts")
     for part in PARTS:
         part_filepaths = annotations[part]
@@ -655,3 +662,28 @@ if __name__ == "__main__":
         np.savez_compressed(
             os.path.join(part_dir, part), segrolls=np.array(part_segrolls)
         )
+
+    # print("Aggregating parts")
+    # chunk_size = 10000  # number of segments
+    # for part in PARTS:
+    #     part_filepaths = annotations[part]
+    #     if len(part_filepaths) == 0:
+    #         continue
+    #     print(part)
+    #
+    #     chunk_ix = 0
+    #     part_segrolls_chunks = []
+    #
+    #     for filepath in tqdm(part_filepaths):
+    #         part_segrolls = np.load(filepath)[part]
+    #         n_segrolls = len(part_segrolls)
+    #         if chunk_ix + n_segrolls >= chunk_size:
+    #             # TODO: left off writing multiple files for each part with a fixed number of segments each
+    #             pass
+    #
+    #     part_dir = os.path.join(output_dir, "part_segrolls", part)
+    #     if not os.path.isdir(part_dir):
+    #         os.makedirs(part_dir)
+    #
+    #     for chunk in part_segrolls_chunks:
+    #         np.savez_compressed(os.path.join(part_dir, part), segrolls=chunk)
