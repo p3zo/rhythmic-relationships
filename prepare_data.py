@@ -21,6 +21,7 @@ OUTPUT_DIR = "output"
 
 # Piano key numbers
 MIDI_PITCH_RANGE = [21, 108]
+N_MIDI_PITCHES = MIDI_PITCH_RANGE[1] - MIDI_PITCH_RANGE[0]
 
 # Segments with little activity will be filtered out
 MIN_SEG_PITCHES = 1
@@ -216,7 +217,7 @@ def get_9voice_drum_roll(roll):
     return clip
 
 
-def create_pil_image(roll, outdir, seg_name, im_size=None):
+def create_pil_image(roll, outpath, im_size=None, verbose=True):
     """Creates greyscale images of a piano roll suitable for model input.
 
     Parameters
@@ -247,13 +248,8 @@ def create_pil_image(roll, outdir, seg_name, im_size=None):
     # "L" mode is greyscale and requires an 8-bit pixel range of 0-255
     im = Image.fromarray(arr.T.astype(np.uint8), mode="L")
 
-    # Save the image
-    imdir = os.path.join(outdir, f"segrolls_{arr.shape[0]}x{arr.shape[1]}")
-    if not os.path.isdir(imdir):
-        os.makedirs(imdir)
-    outpath = os.path.join(imdir, f"{seg_name}.png")
     im.save(outpath)
-    if VERBOSE:
+    if verbose:
         print(f"  Saved {outpath}")
 
 
@@ -272,7 +268,7 @@ def process(
     filepath,
     output_dir,
     seg_size=2,
-    resolution=4,
+    resolution=24,
     drum_roll=False,
     create_images=True,
     im_size=None,
@@ -319,7 +315,7 @@ def process(
 
     pmid = load_midi_file(filepath, resolution=resolution)
     if not pmid:
-        return None, None
+        return None, None, None
 
     bar_times, bar_ixs = get_bar_start_times(pmid, resolution)
 
@@ -327,7 +323,7 @@ def process(
     try:
         multitrack = pypianoroll.from_pretty_midi(pmid, resolution=resolution)
     except:
-        return None, None
+        return None, None, None
 
     # Plot the piano roll of the full multitrack midi input
     if pypianoroll_plots:
@@ -343,8 +339,16 @@ def process(
     # Initialize output objects
     n_seg_ticks = resolution * 4 * seg_size
     part_segrolls = defaultdict(list)
-    # TODO: compute descriptors by part
-    descriptor_dfs = []
+    part_segdescs = defaultdict(list)
+    segdescpairs = {}
+
+    # Initialize output directories
+    if create_images:
+        im_dir = os.path.join(outdir, f"segrolls_{n_seg_ticks}x{N_MIDI_PITCHES}")
+        if im_size:
+            im_dir = os.path.join(outdir, f"segrolls_{im_size[0]}x{im_size[1]}")
+        if not os.path.isdir(im_dir):
+            os.makedirs(im_dir)
 
     non_empty_tracks = [t for t in multitrack.tracks if len(t) > 0]
 
@@ -362,8 +366,6 @@ def process(
                 roll = get_9voice_drum_roll(roll)
 
         # Slice the piano roll into segments of equal length
-        seg_descriptors = []
-
         for seg_ix, (start, end) in enumerate(seg_iter):
             seg_name = f"bar{seg_ix * seg_size}_{seg_ix * seg_size + seg_size}_subdivision{start}-{end}"
 
@@ -376,7 +378,7 @@ def process(
             # Pad/truncate every 2-bar segment to the same length
             # TODO: this makes everything 4/4. Is that acceptable?
             if len(segroll) < n_seg_ticks:
-                pad_right = np.zeros((n_seg_ticks - segroll.shape[0], segroll.shape[1]))
+                pad_right = np.zeros((n_seg_ticks - segroll.shape[0], N_MIDI_PITCHES))
                 segroll = np.vstack((segroll, pad_right)).astype(np.uint8)
             elif len(segroll) > n_seg_ticks:
                 segroll = segroll[:n_seg_ticks]
@@ -397,25 +399,23 @@ def process(
 
             # Create piano roll images using PIL
             if create_images:
-                create_pil_image(segroll, track_dir, seg_name, im_size=im_size)
+                img_outpath = os.path.join(im_dir, f"{seg_name}.png")
+                create_pil_image(segroll, img_outpath, im_size=im_size, verbose=VERBOSE)
 
             if pypianoroll_plots:
                 plot_segment(segroll, seg_name, track_dir)
 
             # Compute rhythmic descriptors for the segment
             if compute_descriptors:
-                seg_descriptors.append(pianoroll2descriptors(segroll))
+                segdesc = pianoroll2descriptors(segroll, resolution=resolution)
+                part_segdescs[part].append(segdesc)
 
-        if compute_descriptors:
-            df = pd.DataFrame(seg_descriptors)
-            df.index.name = "segment_id"
-            df.reset_index(inplace=True)
-            df.insert(0, "track_ix", track_ix)
-            descriptor_dfs.append(df)
+                sdp_ix = f"{mid_name}_{seg_ix}"
+                if sdp_ix not in segdescpairs:
+                    segdescpairs[sdp_ix] = defaultdict(list)
+                segdescpairs[sdp_ix][part].append(segdesc)
 
-    descriptors = pd.concat(descriptor_dfs) if compute_descriptors else None
-
-    return part_segrolls, descriptors
+    return part_segrolls, part_segdescs, segdescpairs
 
 
 if __name__ == "__main__":
@@ -506,11 +506,12 @@ if __name__ == "__main__":
 
     failed_paths = []
     annotations = {p: [] for p in PARTS}
+    descriptors = {p: pd.DataFrame() for p in PARTS}
+    descriptor_pairs = defaultdict(pd.DataFrame)
     part_counts = defaultdict(int)
-    descriptors = pd.DataFrame()
 
     for file_ix, filepath in enumerate(tqdm(filepaths)):
-        part_segrolls, mid_df = process(
+        part_segrolls, part_segdescs, segdescpairs = process(
             filepath=filepath,
             output_dir=output_dir,
             seg_size=seg_size,
@@ -540,7 +541,26 @@ if __name__ == "__main__":
             part_counts[part] += 1
 
         if compute_descriptors:
-            descriptors = pd.concat([descriptors, mid_df])
+            for part in part_segdescs:
+                df = pd.DataFrame(part_segdescs[part])
+                df["segment_id"] = range(len(df))
+                df["filepath"] = filepath
+                descriptors[part] = pd.concat([descriptors[part], df])
+
+            for seg in segdescpairs:
+                part_descs = segdescpairs[seg]
+                if "Drums" in part_descs and "Bass" in part_descs:
+                    dfd = pd.DataFrame(part_descs["Drums"], dtype=np.float32)
+                    dfb = pd.DataFrame(part_descs["Bass"], dtype=np.float32)
+                    merged = dfd.merge(
+                        dfb,
+                        how="cross",
+                        suffixes=("_Drums", "_Bass"),
+                    )
+                    merged.index = [f"{filepath}_{seg}"] * len(merged)
+                    descriptor_pairs["Drum_Bass"] = pd.concat(
+                        [descriptor_pairs["Drum_Bass"], merged]
+                    )
 
     # Save the dataset annotations
     annotations_path = os.path.join(output_dir, "annotations.pkl")
@@ -564,15 +584,47 @@ if __name__ == "__main__":
     print(f"Saved {dist_plot_path}")
 
     if compute_descriptors:
-        descriptors_path = os.path.join(output_dir, "descriptors.csv")
-        descriptors.to_csv(descriptors_path, index=False)
-        if VERBOSE:
-            print(f"Descriptors written to {descriptors_path}")
+        # Save descriptors for individual parts
+        desc_dir = os.path.join(output_dir, "descriptors")
+        if not os.path.isdir(desc_dir):
+            os.makedirs(desc_dir)
+        for part in descriptors:
+            if len(descriptors[part]) > 0:
+                part_descs_path = os.path.join(desc_dir, f"{part}.csv")
+                descriptors[part].to_csv(part_descs_path, index=False)
+                print(f"Saved {part_descs_path}")
+
+        # Save descriptors for pairs of parts
+        exp = descriptor_pairs["Drum_Bass"]
+
+        # Construct train/test splits keeping all segments from one file together
+        from sklearn.model_selection import GroupShuffleSplit
+
+        splitter = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
+        split = splitter.split(exp, groups=exp.index)
+        train_inds, test_inds = next(split)
+        train = exp.iloc[train_inds]
+        test = exp.iloc[test_inds]
+
+        desc_pairs_dir = os.path.join(output_dir, "descriptors_pairs")
+        if not os.path.isdir(desc_pairs_dir):
+            os.makedirs(desc_pairs_dir)
+        train_path = os.path.join(desc_pairs_dir, "Drums_Bass_train.csv")
+        train.to_csv(train_path, index=False)
+        print(f"Saved {train_path}")
+        print(f"  Train size: {len(train)} segments from {train.index.nunique()} files")
+
+        test_path = os.path.join(desc_pairs_dir, "Drums_Bass_test.csv")
+        test.to_csv(test_path, index=False)
+        print(f"Saved {test_path}")
+        print(f"  Test size: {len(test)} segments from {test.index.nunique()} files")
 
     n_failed = len(failed_paths)
     if n_failed > 0:
         failed_paths_str = "\n".join(failed_paths)
-        print(f"Failed {n_failed} file(s)")
+        print(
+            f"Successfully processed {len(filepaths) - n_failed} file(s); Failed to process {n_failed}"
+        )
 
     print("Aggregating parts")
     for part in PARTS:
