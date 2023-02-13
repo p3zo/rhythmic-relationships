@@ -2,6 +2,7 @@ import argparse
 import glob
 import os
 import pickle
+import sys
 import warnings
 from collections import defaultdict
 
@@ -461,6 +462,11 @@ if __name__ == "__main__":
         help="A resolution to use for the piano roll images, e.g. 512x512.",
     )
     parser.add_argument(
+        "--skip_npz",
+        action="store_true",
+        help="Don't save .npz files.",
+    )
+    parser.add_argument(
         "--compute_descriptors",
         action="store_true",
         help="Use rhythmtoolbox to compute rhythmic descriptors for each segment.",
@@ -488,6 +494,7 @@ if __name__ == "__main__":
     pypianoroll_plots = args.pypianoroll_plots
     drum_roll = args.drum_roll
     compute_descriptors = args.compute_descriptors
+    skip_npz = args.skip_npz
     VERBOSE = args.verbose
 
     filepaths = [path]
@@ -531,10 +538,11 @@ if __name__ == "__main__":
         outpath = os.path.join(
             dataset_dir, f"{os.path.splitext(filepath)[0].split(path)[1]}.npz"
         )
-        outdir = os.path.dirname(outpath)
-        if not os.path.isdir(outdir):
-            os.makedirs(outdir)
-        np.savez_compressed(outpath, **part_segrolls)
+        if not skip_npz:
+            outdir = os.path.dirname(outpath)
+            if not os.path.isdir(outdir):
+                os.makedirs(outdir)
+            np.savez_compressed(outpath, **part_segrolls)
 
         for part in part_segrolls:
             annotations[part].append(outpath)
@@ -625,6 +633,9 @@ if __name__ == "__main__":
         print(
             f"Successfully processed {len(filepaths) - n_failed} file(s); Failed to process {n_failed}"
         )
+
+    if skip_npz:
+        sys.exit(0)
 
     print("Aggregating parts")
     for part in PARTS:
