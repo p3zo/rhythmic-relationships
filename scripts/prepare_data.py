@@ -11,13 +11,14 @@ import pandas as pd
 import pypianoroll
 from rhythmic_complements.io import load_midi_file, write_pil_image
 from rhythmtoolbox import pianoroll2descriptors
+from sklearn.model_selection import GroupShuffleSplit
 from tqdm import tqdm
 
-OUTPUT_DIR = "output"
+OUTPUT_DIR = "../output"
 
 # Piano key numbers
 MIDI_PITCH_RANGE = [21, 108]
-N_MIDI_PITCHES = MIDI_PITCH_RANGE[1] - MIDI_PITCH_RANGE[0]
+N_MIDI_PITCHES = MIDI_PITCH_RANGE[1] - MIDI_PITCH_RANGE[0] + 1
 
 # Segments with little activity will be filtered out
 MIN_SEG_PITCHES = 1
@@ -213,6 +214,7 @@ def process(
     output_dir,
     seg_size=2,
     resolution=24,
+    binarize=True,
     drum_roll=False,
     create_images=True,
     im_size=None,
@@ -330,8 +332,11 @@ def process(
             elif len(segroll) > n_seg_ticks:
                 segroll = segroll[:n_seg_ticks]
 
+            if binarize:
+                segroll = (segroll > 0).astype(np.uint8)
+
             # Ensure all MIDI velocities are in the valid range [0, 127]
-            if segroll.max() > 127:
+            elif segroll.max() > 127:
                 segroll = np.array(
                     list(
                         map(
@@ -392,6 +397,17 @@ if __name__ == "__main__":
         help="Number of subdivisions per beat.",
     )
     parser.add_argument(
+        "--binarize",
+        action="store_true",
+        help="Replace [0,127] MIDI velocity values in piano rolls with binary values representing onsets.",
+    )
+    parser.add_argument(
+        "--subset",
+        type=int,
+        default=None,
+        help="Number of MIDI files to process, for when you don't want to process everything in the directory.",
+    )
+    parser.add_argument(
         "--drum_roll",
         action="store_true",
         help="Use a 9-voice piano roll for drums only.",
@@ -432,6 +448,7 @@ if __name__ == "__main__":
     path = args.path
     seg_size = args.seg_size
     resolution = args.resolution
+    binarize = args.binarize
     prefix = args.prefix if args.prefix else os.path.splitext(path)[0].replace("/", "_")
     create_images = args.create_images
     im_size = args.im_size
@@ -441,6 +458,7 @@ if __name__ == "__main__":
     drum_roll = args.drum_roll
     compute_descriptors = args.compute_descriptors
     skip_npz = args.skip_npz
+    subset = args.subset
     VERBOSE = args.verbose
 
     filepaths = [path]
@@ -449,11 +467,12 @@ if __name__ == "__main__":
         # Adding a trailing slash helps with string splitting later
         path = path + "/" if not path.endswith("/") else path
 
-    n_files = 10000
-    filepaths = filepaths[:n_files]
+    filepaths = filepaths[:subset]
     print(f"Processing {len(filepaths)} midi file(s)")
 
     dataset_name = f"{prefix}_{seg_size}bar_{resolution}res"
+    if subset:
+        dataset_name += f"_{subset}"
     output_dir = os.path.join(OUTPUT_DIR, dataset_name)
     dataset_dir = os.path.join(output_dir, path.split("/")[-2])
     if not os.path.isdir(dataset_dir):
@@ -471,6 +490,7 @@ if __name__ == "__main__":
             output_dir=output_dir,
             seg_size=seg_size,
             resolution=resolution,
+            binarize=binarize,
             drum_roll=drum_roll,
             create_images=create_images,
             im_size=im_size,
@@ -554,8 +574,6 @@ if __name__ == "__main__":
         exp = descriptor_pairs["Drum_Bass"]
 
         # Construct train/test splits keeping all segments from one file together
-        from sklearn.model_selection import GroupShuffleSplit
-
         splitter = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
         split = splitter.split(exp, groups=exp.index)
         train_inds, test_inds = next(split)
@@ -602,6 +620,6 @@ if __name__ == "__main__":
         if not os.path.isdir(part_dir):
             os.makedirs(part_dir)
 
-        np.savez_compressed(
-            os.path.join(part_dir, part), segrolls=np.array(part_segrolls)
-        )
+        npz_filepath = os.path.join(part_dir, f"{part}_binary" if binarize else part)
+        np.savez_compressed(npz_filepath, segrolls=np.array(part_segrolls))
+        print(f"Saved {npz_filepath}")

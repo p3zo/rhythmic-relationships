@@ -31,13 +31,15 @@ Slice MIDI data into segments and aggregate the segments by part using `scripts/
 MIDI file or a directory of MIDI files. For reference, it took ~1.5hrs to process
 the [LMD clean subset](https://colinraffel.com/projects/lmd/) (17243 MIDI files).
 
-    python prepare_data.py --path=input/slakh00006/all_src.mid --prefix=slakh00006
+    cd scripts && python prepare_data.py --path=../input/slakh00006/all_src.mid --prefix=slakh00006 --seg_size=1 --compute_descriptors --binarize
 
-For each MIDI file, an `.npz` file is written containing [piano roll](https://en.wikipedia.org/wiki/Piano_roll#In_digital_audio_workstations) representations of the segments
-in that file organized by part. The piano rolls are arrays of type `numpy.uint8` and shape `(S x N x V)`, where `S` is
-the number of segments, `N` is the number of time steps in a segment, and `V` is the number of MIDI pitches. The array
-values are MIDI velocities in the range `[0-127]`. Additionally, all segments for each part are collected into a single
-`part_segrolls` file containing one `(S x N x V)` matrix.
+For each MIDI file, an `.npz` file is written
+containing [piano roll](https://en.wikipedia.org/wiki/Piano_roll#In_digital_audio_workstations) representations of the
+segments in that file organized by part. The piano rolls are arrays of type `numpy.uint8` and shape `(S x N x V)`,
+where `S` is the number of segments, `N` is the number of time steps in a segment, and `V` is the number of MIDI
+pitches. If the `--binarize` option is used, the array values are either 0 or 1 representing onsets, else they are MIDI
+velocities in the range `[0-127]`. Additionally, all segments for each part are collected into a single `part_segrolls`
+file containing one `(S x N x V)` matrix.
 
 The piano roll images created with the `--create_images` flag can be listened to using the notebook
 [MIDI_playback_from_image.ipynb](MIDI_playback_from_image.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1okATUg3TI1CsyKi1OUsQTt8FB28XfIm1?usp=sharing).
