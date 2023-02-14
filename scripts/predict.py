@@ -3,13 +3,11 @@ import os
 import numpy as np
 import pandas as pd
 import torch
+from rhythmic_complements.data import DescriptorDataset, SegrollDataset
+from rhythmic_complements.io import write_midi_file, write_pil_image
+from rhythmic_complements.model import VariationalAutoEncoder
 from rhythmtoolbox import pianoroll2descriptors
 from torch.utils.data import DataLoader
-
-from prepare_data import create_pil_image
-from rhythmic_complements.data import DescriptorDataset, SegrollDataset
-from rhythmic_complements.model import VariationalAutoEncoder
-from segroll_inference import write_midi
 
 DEVICE = torch.device("cpu")
 
@@ -31,7 +29,7 @@ def get_distance(a, b):
 
 
 if __name__ == "__main__":
-    dataset_dir = "output/lmd_clean_1bar_24res"
+    dataset_dir = "../output/lmd_clean_1bar_24res"
 
     # Take a Drums roll as input
     drums_path = os.path.join(dataset_dir, "part_segrolls", "Drums.npz")
@@ -87,35 +85,37 @@ if __name__ == "__main__":
     mu, sigma = bass_vae.encode(intermediate_bass_roll_tensor)
     epsilon = torch.randn_like(sigma)
     bass_z = mu + sigma * epsilon
-    bass_roll = bass_vae.decode(bass_z).detach().cpu().numpy()
+    bass_roll = bass_vae.decode(bass_z)
+    bass_roll = bass_roll.view(SEGROLL_INPUT_WIDTH, SEGROLL_INPUT_HEIGHT).detach()
 
-    # Write the output as MIDI and as an image
-    reshaped = bass_roll.reshape((SEGROLL_INPUT_WIDTH, SEGROLL_INPUT_HEIGHT))
     output_bass_roll = np.array(
-        list(map(lambda x: np.interp(x, [0, 1], [0, 127]), reshaped))
+        list(map(lambda x: np.interp(x, [0, 1], [0, 127]), bass_roll))
     ).astype(int)
 
+    # Write the output as MIDI and as an image
     result_dir = os.path.join(dataset_dir, "predictions")
     if not os.path.isdir(result_dir):
         os.makedirs(result_dir)
 
-    create_pil_image(output_bass_roll, os.path.join(result_dir, f"bass_prediction.png"))
-    write_midi(
+    write_pil_image(output_bass_roll, os.path.join(result_dir, "bass_prediction.png"))
+    write_midi_file(
         output_bass_roll.T,
-        os.path.join(result_dir, f"bass_prediction.mid"),
+        os.path.join(result_dir, "bass_prediction.mid"),
         resolution=24,
     )
 
     # Also write the input for reference
-    create_pil_image(drums_roll, os.path.join(result_dir, f"drum_input.png"))
-    write_midi(drums_roll.T, os.path.join(result_dir, f"drum_input.mid"), resolution=24)
+    write_pil_image(drums_roll, os.path.join(result_dir, "drum_input.png"))
+    write_midi_file(
+        drums_roll.T, os.path.join(result_dir, "drum_input.mid"), resolution=24
+    )
 
     # And the intermediate bass roll
-    create_pil_image(
-        intermediate_bass_roll, os.path.join(result_dir, f"bass_intermediate.png")
+    write_pil_image(
+        intermediate_bass_roll, os.path.join(result_dir, "bass_intermediate.png")
     )
-    write_midi(
+    write_midi_file(
         intermediate_bass_roll.T,
-        os.path.join(result_dir, f"bass_intermediate.mid"),
+        os.path.join(result_dir, "bass_intermediate.mid"),
         resolution=24,
     )

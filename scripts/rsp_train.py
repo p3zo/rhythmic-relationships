@@ -2,11 +2,10 @@ import argparse
 import os
 
 import torch
-from torch.utils.data import DataLoader
-
 from rhythmic_complements.data import DescriptorDataset
 from rhythmic_complements.model import VariationalAutoEncoder
 from rhythmic_complements.train import train
+from torch.utils.data import DataLoader
 
 DATASET_DIR = "output/lmd_clean_1bar_24res"
 

@@ -3,20 +3,15 @@ import glob
 import os
 import pickle
 import sys
-import warnings
 from collections import defaultdict
 
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import pretty_midi
 import pypianoroll
-from PIL import Image
+from rhythmic_complements.io import load_midi_file, write_pil_image
 from rhythmtoolbox import pianoroll2descriptors
 from tqdm import tqdm
-
-# TODO: fix catch_warnings block in load_midi_file and remove this
-warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 OUTPUT_DIR = "output"
 
@@ -61,22 +56,6 @@ def get_part_from_program(program):
             f"Program number {program} is not in the valid range of [0, 127]"
         )
     return PROGRAM_CATEGORIES[[p for p in PROGRAM_CATEGORIES if p <= program + 1][-1]]
-
-
-def load_midi_file(filepath, resolution=24):
-    """Load a midi file as a pretty_midi object"""
-    # Warnings can be verbose when midi has no metadata e.g. tempo, key, time signature
-    with warnings.catch_warnings():
-        # TODO: why doesn't filterwarnings work inside of catch_warnings?
-        warnings.filterwarnings("ignore", category=RuntimeWarning)
-        try:
-            midi = pretty_midi.PrettyMIDI(filepath, resolution=resolution)
-        except Exception as e:
-            if VERBOSE:
-                print(f"Failed loading file {filepath}: {e}")
-            return
-
-    return midi
 
 
 def get_bar_start_times(pmid, beat_division=24):
@@ -218,42 +197,6 @@ def get_9voice_drum_roll(roll):
     return clip
 
 
-def create_pil_image(roll, outpath, im_size=None, verbose=True):
-    """Creates greyscale images of a piano roll suitable for model input.
-
-    Parameters
-        roll, np.array
-            Piano roll array of size (v, t) where v is the number of voices and t is the number of time steps.
-
-        outdir, str
-            Path to directory in which to save the image
-
-        seg_name, str
-            Name of the segment
-
-        im_size, tuple (optional)
-            Specify target dimensions of the image. Roll will be padded with 0s on right and bottom.
-    """
-
-    # Map MIDI velocity to pixel brightness
-    arr = np.array(list(map(lambda x: np.interp(x, [0, 127], [0, 255]), roll)))
-
-    # Zero-pad below and to the right to get target resolution
-    if im_size:
-        im_size = (512, 512)
-        pad_bot = np.zeros((arr.shape[0], im_size[1] - arr.shape[1]))
-        pad_right = np.zeros((im_size[0] - arr.shape[0], im_size[1]))
-        v_padded = np.hstack((arr, pad_bot))
-        arr = np.vstack((v_padded, pad_right))
-
-    # "L" mode is greyscale and requires an 8-bit pixel range of 0-255
-    im = Image.fromarray(arr.T.astype(np.uint8), mode="L")
-
-    im.save(outpath)
-    if verbose:
-        print(f"  Saved {outpath}")
-
-
 def roll_has_activity(roll, min_pitches=MIN_SEG_PITCHES, min_beats=MIN_SEG_BEATS):
     """Verify that a piano roll has at least some number of beats and pitches"""
     n_pitches = (roll.sum(axis=0) > 0).sum()
@@ -314,7 +257,7 @@ def process(
     mid_name = mk_mid_name(prefix, filepath)
     mid_outdir = os.path.join(output_dir, mid_name)
 
-    pmid = load_midi_file(filepath, resolution=resolution)
+    pmid = load_midi_file(filepath, resolution=resolution, verbose=VERBOSE)
     if not pmid:
         return None, None, None
 
@@ -404,7 +347,7 @@ def process(
             # Create piano roll images using PIL
             if create_images:
                 img_outpath = os.path.join(im_dir, f"{seg_name}.png")
-                create_pil_image(segroll, img_outpath, im_size=im_size, verbose=VERBOSE)
+                write_pil_image(segroll, img_outpath, im_size=im_size, verbose=VERBOSE)
 
             if pypianoroll_plots:
                 plot_segment(segroll, seg_name, track_dir)
@@ -643,7 +586,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     # Collect all segrolls for each part into individual files
-    # TODO: this is memory-intensive. Read them in a little at a time and write them to chunk files of equal size
+    # TODO: this is memory-intensive. Read segrolls in batches and write them to many smaller files of equal size
     print("Aggregating parts")
     for part in PARTS:
         part_filepaths = annotations[part]
@@ -662,28 +605,3 @@ if __name__ == "__main__":
         np.savez_compressed(
             os.path.join(part_dir, part), segrolls=np.array(part_segrolls)
         )
-
-    # print("Aggregating parts")
-    # chunk_size = 10000  # number of segments
-    # for part in PARTS:
-    #     part_filepaths = annotations[part]
-    #     if len(part_filepaths) == 0:
-    #         continue
-    #     print(part)
-    #
-    #     chunk_ix = 0
-    #     part_segrolls_chunks = []
-    #
-    #     for filepath in tqdm(part_filepaths):
-    #         part_segrolls = np.load(filepath)[part]
-    #         n_segrolls = len(part_segrolls)
-    #         if chunk_ix + n_segrolls >= chunk_size:
-    #             # TODO: left off writing multiple files for each part with a fixed number of segments each
-    #             pass
-    #
-    #     part_dir = os.path.join(output_dir, "part_segrolls", part)
-    #     if not os.path.isdir(part_dir):
-    #         os.makedirs(part_dir)
-    #
-    #     for chunk in part_segrolls_chunks:
-    #         np.savez_compressed(os.path.join(part_dir, part), segrolls=chunk)

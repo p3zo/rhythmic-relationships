@@ -1,7 +1,6 @@
 import argparse
 
 import torch
-
 from rhythmic_complements.model import VariationalAutoEncoder
 
 DEVICE = torch.device("cpu")
