@@ -12,7 +12,7 @@ from rhythmic_complements.io import load_midi_file, write_pil_image
 from rhythmtoolbox import pianoroll2descriptors
 from tqdm import tqdm
 
-OUTPUT_DIR = "../output"
+OUTPUT_DIR = "output"
 
 # Piano key numbers
 MIDI_PITCH_RANGE = [21, 108]

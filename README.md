@@ -52,9 +52,10 @@ print(f"y batch shape: {y.size()}")
 
 Slice MIDI data into segments and aggregate the segments by part using `scripts/prepare_data.py`. It accepts either a
 MIDI file or a directory of MIDI files. For reference, it took ~1.5hrs to process
-the [LMD clean subset](https://colinraffel.com/projects/lmd/) (17243 MIDI files).
+the [LMD clean subset](https://colinraffel.com/projects/lmd/) (17243 MIDI files). To process the example input provided
+from the [BabySlakh](https://zenodo.org/record/4603870) dataset:
 
-    python prepare_data.py --path=input/slakh00006/all_src.mid --prefix=slakh00006 --seg_size=1 --binarize --subset=10
+    python scripts/prepare_data.py --path=input/babyslakh --prefix=babyslakh --seg_size=1 --binarize
 
 For each MIDI file, an `.npz` file is written
 containing [piano roll](https://en.wikipedia.org/wiki/Piano_roll#In_digital_audio_workstations) representations of the
@@ -69,9 +70,9 @@ flat input directory of MIDI files:
 
 ```
 ├── pair_lookups
-│   ├── Drums_Bass.csv
-│   ├── Drums_Guitar.csv
-│   ├── Guitar_Bass.csv
+│   ├── Part1_Part2.csv
+│   ├── Part1_Part3.csv
+│   ├── Part2_Part3.csv
 ├── rolls
 │   ├── track1.npz
 │   ├── track2.npz
