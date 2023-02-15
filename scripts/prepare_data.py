@@ -1,8 +1,7 @@
 import argparse
 import glob
+import itertools
 import os
-import pickle
-import sys
 from collections import defaultdict
 
 import matplotlib.pyplot as plt
@@ -11,7 +10,6 @@ import pandas as pd
 import pypianoroll
 from rhythmic_complements.io import load_midi_file, write_pil_image
 from rhythmtoolbox import pianoroll2descriptors
-from sklearn.model_selection import GroupShuffleSplit
 from tqdm import tqdm
 
 OUTPUT_DIR = "../output"
@@ -209,16 +207,24 @@ def mk_mid_name(prefix, filepath):
     return f"{prefix}_{os.path.splitext(os.path.basename(filepath))[0]}"
 
 
+def get_part_pairs(parts):
+    return [
+        i
+        for i in itertools.permutations(parts, 2)
+        if PARTS.index(i[0]) < PARTS.index(i[1])
+    ]
+
+
 def process(
     filepath,
     output_dir,
-    seg_size=2,
+    seg_size=1,
     resolution=24,
-    binarize=True,
+    binarize=False,
     drum_roll=False,
-    create_images=True,
+    create_images=False,
     im_size=None,
-    compute_descriptors=True,
+    compute_descriptors=False,
     pypianoroll_plots=False,
 ):
     """Slice a midi file and compute rhythmic descriptors for each segment.
@@ -289,7 +295,8 @@ def process(
     n_seg_ticks = resolution * 4 * seg_size
     part_segrolls = defaultdict(list)
     part_segdescs = defaultdict(list)
-    segdescpairs = {}
+    seg_list = []
+    seg_desc_pairs = {}
 
     # Initialize output directories
     if create_images:
@@ -347,7 +354,7 @@ def process(
                     dtype=np.uint8,
                 )
 
-            part_segrolls[part].append(segroll)
+            part_segrolls[f"{seg_ix}_{part}"].append(segroll)
 
             # Create piano roll images using PIL
             if create_images:
@@ -357,17 +364,19 @@ def process(
             if pypianoroll_plots:
                 plot_segment(segroll, seg_name, track_dir)
 
+            seg_list.append([seg_ix, part])
+
             # Compute rhythmic descriptors for the segment
             if compute_descriptors:
                 segdesc = pianoroll2descriptors(segroll, resolution=resolution)
                 part_segdescs[part].append(segdesc)
 
-                sdp_ix = f"{mid_name}_{seg_ix}"
-                if sdp_ix not in segdescpairs:
-                    segdescpairs[sdp_ix] = defaultdict(list)
-                segdescpairs[sdp_ix][part].append(segdesc)
+                # Save pairs of descriptors
+                if seg_ix not in seg_desc_pairs:
+                    seg_desc_pairs[seg_ix] = defaultdict(list)
+                seg_desc_pairs[seg_ix][part].append(segdesc)
 
-    return part_segrolls, part_segdescs, segdescpairs
+    return part_segrolls, part_segdescs, seg_list
 
 
 if __name__ == "__main__":
@@ -387,7 +396,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--seg_size",
         type=int,
-        default=2,
+        default=1,
         help="Number of bars per segment.",
     )
     parser.add_argument(
@@ -424,11 +433,6 @@ if __name__ == "__main__":
         help="A resolution to use for the piano roll images, e.g. 512x512.",
     )
     parser.add_argument(
-        "--skip_npz",
-        action="store_true",
-        help="Don't save .npz files.",
-    )
-    parser.add_argument(
         "--compute_descriptors",
         action="store_true",
         help="Use rhythmtoolbox to compute rhythmic descriptors for each segment.",
@@ -457,7 +461,6 @@ if __name__ == "__main__":
     pypianoroll_plots = args.pypianoroll_plots
     drum_roll = args.drum_roll
     compute_descriptors = args.compute_descriptors
-    skip_npz = args.skip_npz
     subset = args.subset
     VERBOSE = args.verbose
 
@@ -470,22 +473,19 @@ if __name__ == "__main__":
     filepaths = filepaths[:subset]
     print(f"Processing {len(filepaths)} midi file(s)")
 
-    dataset_name = f"{prefix}_{seg_size}bar_{resolution}res"
-    if subset:
-        dataset_name += f"_{subset}"
+    dataset_name = f"{prefix}_{seg_size}bar_{resolution}res_{len(filepaths)}"
     output_dir = os.path.join(OUTPUT_DIR, dataset_name)
-    dataset_dir = os.path.join(output_dir, path.split("/")[-2])
+    dataset_dir = os.path.join(output_dir, "rolls")
     if not os.path.isdir(dataset_dir):
         os.makedirs(dataset_dir)
 
     failed_paths = []
     annotations = {p: [] for p in PARTS}
+    annotations_list = []
     descriptors = {p: pd.DataFrame() for p in PARTS}
-    descriptor_pairs = defaultdict(pd.DataFrame)
-    part_counts = defaultdict(int)
 
     for file_ix, filepath in enumerate(tqdm(filepaths)):
-        part_segrolls, part_segdescs, segdescpairs = process(
+        part_segrolls, part_segdescs, seg_list = process(
             filepath=filepath,
             output_dir=output_dir,
             seg_size=seg_size,
@@ -502,65 +502,87 @@ if __name__ == "__main__":
             failed_paths.append(filepath)
             continue
 
-        # Save the segments for each part
-        outpath = os.path.join(
-            dataset_dir, f"{os.path.splitext(filepath)[0].split(path)[1]}.npz"
-        )
-        if not skip_npz:
-            outdir = os.path.dirname(outpath)
-            if not os.path.isdir(outdir):
-                os.makedirs(outdir)
-            np.savez_compressed(outpath, **part_segrolls)
+        # Create a unique ID for each file that isn't the input path
+        file_id = os.path.splitext(filepath)[0].split(path)[1]
 
-        for part in part_segrolls:
-            annotations[part].append(outpath)
-            part_counts[part] += 1
+        # Update the top-level annotations
+        annotations_list.append([file_id, seg_list])
+
+        # Write the segrolls by part
+        outpath = os.path.join(dataset_dir, f"{file_id}.npz")
+        outdir = os.path.dirname(outpath)
+        if not os.path.isdir(outdir):
+            os.makedirs(outdir)
+        np.savez_compressed(outpath, **part_segrolls)
 
         if compute_descriptors:
+            # Save descriptors by part
             for part in part_segdescs:
                 df = pd.DataFrame(part_segdescs[part])
                 df["segment_id"] = range(len(df))
-                df["filepath"] = filepath
+                df["file_id"] = file_id
                 descriptors[part] = pd.concat([descriptors[part], df])
 
-            for seg in segdescpairs:
-                part_descs = segdescpairs[seg]
-                if "Drums" in part_descs and "Bass" in part_descs:
-                    dfd = pd.DataFrame(part_descs["Drums"], dtype=np.float32)
-                    dfb = pd.DataFrame(part_descs["Bass"], dtype=np.float32)
-                    merged = dfd.merge(
-                        dfb,
-                        how="cross",
-                        suffixes=("_Drums", "_Bass"),
-                    )
-                    merged.index = [f"{filepath}_{seg}"] * len(merged)
-                    descriptor_pairs["Drum_Bass"] = pd.concat(
-                        [descriptor_pairs["Drum_Bass"], merged]
-                    )
-
-    # Save the dataset annotations
-    annotations_path = os.path.join(output_dir, "annotations.pkl")
-    with open(annotations_path, "wb") as f:
-        pickle.dump(annotations, f)
+    # Save the top-level segment map
+    adf_files = []
+    for i in annotations_list:
+        adf_files.extend([i[0]] * len(i[1]))
+    annotations_df = pd.DataFrame(
+        np.concatenate([i[1] for i in annotations_list]),
+        columns=["segment_id", "part_id"],
+    )
+    annotations_df["file_id"] = adf_files
+    annotations_path = os.path.join(output_dir, "rolls.csv")
+    annotations_df.to_csv(annotations_path)
     print(f"Saved {annotations_path}")
 
-    # Plot the number of segments by part
-    n_segments_total = sum(part_counts.values())
-    part_pcts = {part: count / n_segments_total for part, count in part_counts.items()}
+    # Save lookup tables for segment pairs
+    pair_lookups = defaultdict(list)
+    for group_ix, group in annotations_df.groupby(["file_id", "segment_id"]):
+        for p in get_part_pairs(group.part_id.unique()):
+            p1 = group[group.part_id == p[0]].index.values
+            p2 = group[group.part_id == p[1]].index.values
+            product = list(itertools.product(p1, p2))
+            pair_lookups[f"{p[0]}_{p[1]}"].extend(product)
+
+    pair_lookups_dir = os.path.join(output_dir, "pair_lookups")
+    if not os.path.isdir(pair_lookups_dir):
+        os.makedirs(pair_lookups_dir)
+    for pair_id in pair_lookups:
+        pair_df = pd.DataFrame(pair_lookups[pair_id], columns=pair_id.split("_"))
+        pair_df_path = os.path.join(pair_lookups_dir, f"{pair_id}.csv")
+        pair_df.to_csv(pair_df_path, index=False)
+
+    # Plot the percent of segments by part
+    part_counts = annotations_df.part_id.value_counts()
+    n_segments = part_counts.sum()
+    part_pcts = part_counts / n_segments
     fig, ax = plt.subplots(figsize=(20, 8))
-    plt.bar(*zip(*part_pcts.items()))
-    plt.title(
-        f"Distribution of parts in {dataset_name}\n{n_segments_total} segments total"
-    )
-    plt.ylabel("Fraction of segments")
+    part_pcts.sort_values(ascending=False).plot(kind="bar")
     plt.setp(ax.get_xticklabels(), ha="right", rotation=45)
+    plt.title(f"Distribution of parts in {dataset_name}\n{n_segments} segments total")
+    plt.ylabel("Fraction of segments")
     plt.tight_layout()
-    dist_plot_path = os.path.join(output_dir, "parts_distribution.png")
+    dist_plot_path = os.path.join(output_dir, "segments_by_part.png")
     plt.savefig(dist_plot_path)
     print(f"Saved {dist_plot_path}")
 
+    # Plot the percent of segments by part pair
+    pair_counts = pd.Series({k: len(v) for k, v in pair_lookups.items()})
+    n_pairs = pair_counts.sum()
+    pair_pcts = pair_counts / n_pairs
+    fig, ax = plt.subplots(figsize=(20, 8))
+    pair_pcts.sort_values(ascending=False).plot(kind="bar")
+    plt.setp(ax.get_xticklabels(), ha="right", rotation=45)
+    plt.title(f"Distribution of part pairs in {dataset_name}\n{n_pairs} pairs total")
+    plt.ylabel("Fraction of segments")
+    plt.tight_layout()
+    pair_dist_plot_path = os.path.join(output_dir, "segments_by_part_pair.png")
+    plt.savefig(pair_dist_plot_path)
+    print(f"Saved {pair_dist_plot_path}")
+
     if compute_descriptors:
-        # Save descriptors for individual parts
+        # Write descriptors for individual parts
         desc_dir = os.path.join(output_dir, "descriptors")
         if not os.path.isdir(desc_dir):
             os.makedirs(desc_dir)
@@ -570,56 +592,9 @@ if __name__ == "__main__":
                 descriptors[part].to_csv(part_descs_path, index=False)
                 print(f"Saved {part_descs_path}")
 
-        # Save descriptors for pairs of parts
-        exp = descriptor_pairs["Drum_Bass"]
-
-        # Construct train/test splits keeping all segments from one file together
-        splitter = GroupShuffleSplit(n_splits=1, test_size=0.2, random_state=42)
-        split = splitter.split(exp, groups=exp.index)
-        train_inds, test_inds = next(split)
-        train = exp.iloc[train_inds]
-        test = exp.iloc[test_inds]
-
-        desc_pairs_dir = os.path.join(output_dir, "descriptors_pairs")
-        if not os.path.isdir(desc_pairs_dir):
-            os.makedirs(desc_pairs_dir)
-        train_path = os.path.join(desc_pairs_dir, "Drums_Bass_train.csv")
-        train.to_csv(train_path, index=False)
-        print(f"Saved {train_path}")
-        print(f"  Train size: {len(train)} segments from {train.index.nunique()} files")
-
-        test_path = os.path.join(desc_pairs_dir, "Drums_Bass_test.csv")
-        test.to_csv(test_path, index=False)
-        print(f"Saved {test_path}")
-        print(f"  Test size: {len(test)} segments from {test.index.nunique()} files")
-
     n_failed = len(failed_paths)
     if n_failed > 0:
         failed_paths_str = "\n".join(failed_paths)
         print(
             f"Successfully processed {len(filepaths) - n_failed} file(s); Failed to process {n_failed}"
         )
-
-    if skip_npz:
-        sys.exit(0)
-
-    # Collect all segrolls for each part into individual files
-    # TODO: this is memory-intensive. Read segrolls in batches and write them to many smaller files of equal size
-    print("Aggregating parts")
-    for part in PARTS:
-        part_filepaths = annotations[part]
-        if len(part_filepaths) == 0:
-            continue
-        print(part)
-
-        part_segrolls = []
-        for filepath in tqdm(part_filepaths):
-            part_segrolls.extend(np.load(filepath)[part])
-
-        part_dir = os.path.join(output_dir, "part_segrolls")
-        if not os.path.isdir(part_dir):
-            os.makedirs(part_dir)
-
-        npz_filepath = os.path.join(part_dir, f"{part}_binary" if binarize else part)
-        np.savez_compressed(npz_filepath, segrolls=np.array(part_segrolls))
-        print(f"Saved {npz_filepath}")
