@@ -27,6 +27,27 @@ is given in `scripts/segroll_inference.py`.
 
 ### Dataset
 
+#### Load a dataset
+
+Torch `Dataset` classes are provided for both unconditional and conditional use-cases. Each class allows for flexibility
+between two types of representions: `roll` which refers to the piano roll representation, and `desc` which refers to the
+rhythmic descriptor representation.
+
+A dataset of segment pairs can be loaded via `PairDataset`. An example of loading an (X, y) dataset of `Drums` rolls
+paired with `Guitar` descriptors:
+
+```python
+from rhythmic_complements.data import PairDataset
+from torch.utils.data import DataLoader
+
+dataset = PairDataset(DATASET_DIR, 'Drums', 'Guitar', "roll", "desc")
+loader = DataLoader(dataset, batch_size=32, shuffle=True)
+
+x, y = next(iter(loader))
+print(f"x batch shape: {x.size()}")
+print(f"y batch shape: {y.size()}")
+```
+
 #### Create a new dataset
 
 Slice MIDI data into segments and aggregate the segments by part using `scripts/prepare_data.py`. It accepts either a
