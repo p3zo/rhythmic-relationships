@@ -1,3 +1,6 @@
+import datetime as dt
+import os
+
 import torch
 from tqdm import tqdm
 
@@ -11,8 +14,8 @@ def train(
     num_epochs=5,
     clip_gradients=False,
     conditional=False,
+    checkpoints_dir=".",
 ):
-
     for epoch in range(num_epochs):
         batches = tqdm(train_loader)
         for batch in batches:
@@ -40,3 +43,17 @@ def train(
 
             batches.set_description(f"Epoch {epoch + 1}/{num_epochs}")
             batches.set_postfix({"loss": loss.item()})
+
+        # Save a checkpoint at the end of each epoch
+        torch.save(
+            {
+                "epoch": epoch,
+                "model_state_dict": model.state_dict(),
+                "optimizer_state_dict": optimizer.state_dict(),
+                "loss": loss,
+            },
+            os.path.join(
+                checkpoints_dir,
+                f"checkpoint_{epoch}_{dt.datetime.today().strftime('%y%m%d%H%M%S')}",
+            ),
+        )
