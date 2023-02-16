@@ -5,8 +5,6 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
-from rhythmtoolbox import pianoroll2descriptors, resample_pianoroll
-
 
 class PairDataset(Dataset):
     """
@@ -56,51 +54,26 @@ class PairDataset(Dataset):
         p1_df = pair_df.set_index(self.part_1).join(self.df)
         p2_df = pair_df.set_index(self.part_2).join(self.df)
 
-        p1 = self.load_rolls(p1_df)
-        if self.repr_1 == "pattern":
-            p1_patterns = [self.get_pattern_from_roll(roll) for roll in p1]
-            p1 = np.array(p1_patterns)
-        elif self.repr_1 == "descriptor":
-            p1_desc = [
-                list(pianoroll2descriptors(roll, resolution=self.resolution).values())
-                for roll in p1
-            ]
-            p1 = np.array(p1_desc)
-
-        p2 = self.load_rolls(p2_df)
-        if self.repr_2 == "pattern":
-            p2_patterns = [self.get_pattern_from_roll(roll) for roll in p2]
-            p2 = np.array(p2_patterns)
-        elif self.repr_2 == "descriptor":
-            p2_desc = [
-                list(pianoroll2descriptors(roll, resolution=self.resolution).values())
-                for roll in p2
-            ]
-            p2 = np.array(p2_desc)
+        p1 = self.load_repr(p1_df, self.repr_1)
+        p2 = self.load_repr(p2_df, self.repr_2)
 
         x = torch.from_numpy(p1).to(torch.float32)
         y = torch.from_numpy(p2).to(torch.float32)
 
         return x, y
 
-    def load_rolls(self, part_pair_df):
-        rolls = []
+    def load_repr(self, part_pair_df, representation):
+        result = []
         for file_id, g in part_pair_df.groupby("file_id"):
             npz_filepath = os.path.join(self.dataset_dir, "rolls", f"{file_id}.npz")
             npz = np.load(npz_filepath)
             seg_part_ids = g["segment_id"].astype(str) + "_" + g["part_id"]
             for seg_part_id in seg_part_ids:
-                seg_roll = npz[seg_part_id]
-                # TODO: handle multiple rolls from the same part in the same segment
+                arr = npz[f"{seg_part_id}_{representation}"]
                 # For now take only the first one
-                rolls.append(seg_roll[0])
-        return np.array(rolls)
-
-    def get_pattern_from_roll(self, roll):
-        resampled = resample_pianoroll(
-            roll, from_resolution=self.resolution, to_resolution=4
-        )
-        return (resampled.sum(axis=1) > 0).astype(int)
+                # TODO: handle multiple rolls from the same part in the same segment
+                result.append(arr[0])
+        return np.array(result)
 
 
 class SegrollDataset(Dataset):

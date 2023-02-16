@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 import pypianoroll
 from rhythmic_complements.io import load_midi_file, write_pil_image
-from rhythmtoolbox import pianoroll2descriptors
+from rhythmtoolbox import pianoroll2descriptors, resample_pianoroll
 from tqdm import tqdm
 
 OUTPUT_DIR = "output"
@@ -224,7 +224,6 @@ def process(
     drum_roll=False,
     create_images=False,
     im_size=None,
-    compute_descriptors=False,
     pypianoroll_plots=False,
 ):
     """Slice a midi file and compute rhythmic descriptors for each segment.
@@ -255,9 +254,6 @@ def process(
         im_size, tuple
             Specify target dimensions of the image. Roll will be padded with 0s on right and bottom.
 
-        compute_descriptors, bool
-            Use rhythmtoolbox to compute rhythmic descriptors for each segment.
-
         pypianoroll_plots: bool
             Create pypianoroll plots.
     """
@@ -267,7 +263,7 @@ def process(
 
     pmid = load_midi_file(filepath, resolution=resolution, verbose=VERBOSE)
     if not pmid:
-        return None, None, None
+        return None, None
 
     bar_times, bar_ixs = get_bar_start_times(pmid, resolution)
 
@@ -275,7 +271,7 @@ def process(
     try:
         multitrack = pypianoroll.from_pretty_midi(pmid, resolution=resolution)
     except:
-        return None, None, None
+        return None, None
 
     # Plot the piano roll of the full multitrack midi input
     if pypianoroll_plots:
@@ -294,9 +290,7 @@ def process(
     # Initialize output objects
     n_seg_ticks = resolution * 4 * seg_size
     part_segrolls = defaultdict(list)
-    part_segdescs = defaultdict(list)
     seg_list = []
-    seg_desc_pairs = {}
 
     # Initialize output directories
     if create_images:
@@ -354,9 +348,23 @@ def process(
                     dtype=np.uint8,
                 )
 
-            part_segrolls[f"{seg_ix}_{part}"].append(segroll)
+            # Save the roll
+            part_segrolls[f"{seg_ix}_{part}_roll"].append(segroll)
 
-            # Create piano roll images using PIL
+            # Save the pattern representation of the roll
+            resampled = resample_pianoroll(
+                segroll, from_resolution=resolution, to_resolution=4
+            )
+            pattern = (resampled.sum(axis=1) > 0).astype(int)
+            part_segrolls[f"{seg_ix}_{part}_pattern"].append(pattern)
+
+            # Save the descriptor representation of the roll
+            segdesc = pianoroll2descriptors(resampled, resolution=4)
+            part_segrolls[f"{seg_ix}_{part}_descriptor"].append(segdesc)
+
+            # Save part metadata for the segment
+            seg_list.append([seg_ix, part])
+
             if create_images:
                 img_outpath = os.path.join(im_dir, f"{seg_name}.png")
                 write_pil_image(segroll, img_outpath, im_size=im_size, verbose=VERBOSE)
@@ -364,19 +372,7 @@ def process(
             if pypianoroll_plots:
                 plot_segment(segroll, seg_name, track_dir)
 
-            seg_list.append([seg_ix, part])
-
-            # Compute rhythmic descriptors for the segment
-            if compute_descriptors:
-                segdesc = pianoroll2descriptors(segroll, resolution=resolution)
-                part_segdescs[part].append(segdesc)
-
-                # Save pairs of descriptors
-                if seg_ix not in seg_desc_pairs:
-                    seg_desc_pairs[seg_ix] = defaultdict(list)
-                seg_desc_pairs[seg_ix][part].append(segdesc)
-
-    return part_segrolls, part_segdescs, seg_list
+    return part_segrolls, seg_list
 
 
 if __name__ == "__main__":
@@ -433,11 +429,6 @@ if __name__ == "__main__":
         help="A resolution to use for the piano roll images, e.g. 512x512.",
     )
     parser.add_argument(
-        "--compute_descriptors",
-        action="store_true",
-        help="Use rhythmtoolbox to compute rhythmic descriptors for each segment.",
-    )
-    parser.add_argument(
         "--pypianoroll_plots",
         action="store_true",
         help="Create a pypianoroll plot for each segment and another for the entire track.",
@@ -460,7 +451,6 @@ if __name__ == "__main__":
         im_size = (int(x) for x in args.im_size.split("x"))
     pypianoroll_plots = args.pypianoroll_plots
     drum_roll = args.drum_roll
-    compute_descriptors = args.compute_descriptors
     subset = args.subset
     VERBOSE = args.verbose
 
@@ -482,10 +472,9 @@ if __name__ == "__main__":
     failed_paths = []
     annotations = {p: [] for p in PARTS}
     annotations_list = []
-    descriptors = {p: pd.DataFrame() for p in PARTS}
 
     for file_ix, filepath in enumerate(tqdm(filepaths)):
-        part_segrolls, part_segdescs, seg_list = process(
+        part_segrolls, seg_list = process(
             filepath=filepath,
             output_dir=output_dir,
             seg_size=seg_size,
@@ -494,7 +483,6 @@ if __name__ == "__main__":
             drum_roll=drum_roll,
             create_images=create_images,
             im_size=im_size,
-            compute_descriptors=compute_descriptors,
             pypianoroll_plots=pypianoroll_plots,
         )
 
@@ -514,14 +502,6 @@ if __name__ == "__main__":
         if not os.path.isdir(outdir):
             os.makedirs(outdir)
         np.savez_compressed(outpath, **part_segrolls)
-
-        if compute_descriptors:
-            # Save descriptors by part
-            for part in part_segdescs:
-                df = pd.DataFrame(part_segdescs[part])
-                df["segment_id"] = range(len(df))
-                df["file_id"] = file_id
-                descriptors[part] = pd.concat([descriptors[part], df])
 
     # Save the top-level segment map
     adf_files = []
@@ -568,6 +548,7 @@ if __name__ == "__main__":
     print(f"Saved {dist_plot_path}")
 
     # Plot the percent of segments by part pair
+    # TODO: reduce xtick font size a bit and make the figsize a bit wider
     pair_counts = pd.Series({k: len(v) for k, v in pair_lookups.items()})
     n_pairs = pair_counts.sum()
     pair_pcts = pair_counts / n_pairs
@@ -580,17 +561,6 @@ if __name__ == "__main__":
     pair_dist_plot_path = os.path.join(output_dir, "segments_by_part_pair.png")
     plt.savefig(pair_dist_plot_path)
     print(f"Saved {pair_dist_plot_path}")
-
-    if compute_descriptors:
-        # Write descriptors for individual parts
-        desc_dir = os.path.join(output_dir, "descriptors")
-        if not os.path.isdir(desc_dir):
-            os.makedirs(desc_dir)
-        for part in descriptors:
-            if len(descriptors[part]) > 0:
-                part_descs_path = os.path.join(desc_dir, f"{part}.csv")
-                descriptors[part].to_csv(part_descs_path, index=False)
-                print(f"Saved {part_descs_path}")
 
     n_failed = len(failed_paths)
     if n_failed > 0:

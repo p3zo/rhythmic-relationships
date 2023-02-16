@@ -1,21 +1,19 @@
-# Rhythmic complements
+# Usage
 
-## Usage
+## Environment
 
-### Environment
-
-- Install [PyTorch](https://pytorch.org/) according to your OS and GPU.
+- Install [PyTorch](https://pytorch.org/get-started/locally/) according to your OS and GPU.
 - Install this repo and [rhythmtoolbox](https://github.com/danielgomezmarin/rhythmtoolbox) from source:
 
 ```
 pip install git+https://github.com/p3zo/rhythmic-complements git+https://github.com/danielgomezmarin/rhythmtoolbox
 ```
 
-### Inference
+## Inference
 
 To generate a bass part given a random drum part from the dataset, run `scripts/predict.py`.
 
-### Training
+## Training
 
 To train a conditional VAE for a pair of rhythm space points (RSPs), use `scripts/rsp_pairs_train.py`.
 
@@ -25,9 +23,9 @@ inference is given in `scripts/rsp_inference.py`.
 To train a VAE for a single part using a piano roll representation, use `scripts/segroll_train.py`. Example inference
 is given in `scripts/segroll_inference.py`.
 
-### Dataset
+## Dataset
 
-#### Load a dataset
+### Load the dataset
 
 Torch `Dataset` classes are provided for both unconditional and conditional use-cases. Each class allows for flexibility
 between three types of representations:
@@ -43,7 +41,8 @@ paired with `Guitar` descriptors:
 from rhythmic_complements.data import PairDataset
 from torch.utils.data import DataLoader
 
-dataset = PairDataset(DATASET_DIR, 'Drums', 'Guitar', "roll", "descriptor")
+dataset_dir = 'path/to/your/dataset'
+dataset = PairDataset(dataset_dir, 'Drums', 'Guitar', "roll", "descriptor")
 loader = DataLoader(dataset, batch_size=32, shuffle=True)
 
 x, y = next(iter(loader))
@@ -51,7 +50,7 @@ print(f"x batch shape: {x.size()}")
 print(f"y batch shape: {y.size()}")
 ```
 
-#### Create a new dataset
+### Create the dataset
 
 Slice MIDI data into segments and aggregate the segments by part using `scripts/prepare_data.py`. It accepts either a
 MIDI file or a directory of MIDI files. For reference, it took ~1.5hrs to process
@@ -83,9 +82,6 @@ of MIDI files:
 ├── segments_by_part.png
 └── segments_by_part_pair.png
 ```
-
-If the `--compute_descriptors` flag is used, an additional directory will be written containing the descriptors for all
-segments of each part.
 
 The piano roll images created with the `--create_images` flag can be listened to using the notebook
 [MIDI_playback_from_image.ipynb](MIDI_playback_from_image.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1okATUg3TI1CsyKi1OUsQTt8FB28XfIm1?usp=sharing).
