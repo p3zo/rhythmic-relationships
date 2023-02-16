@@ -5,7 +5,7 @@
 ### Environment
 
 - Install [PyTorch](https://pytorch.org/) according to your OS and GPU.
-- Install this repo and [rhythmtoolbox](https://github.com/danielgomezmarin/rhythmtoolbox) from source
+- Install this repo and [rhythmtoolbox](https://github.com/danielgomezmarin/rhythmtoolbox) from source:
 
 ```
 pip install git+https://github.com/p3zo/rhythmic-complements git+https://github.com/danielgomezmarin/rhythmtoolbox
@@ -30,8 +30,11 @@ is given in `scripts/segroll_inference.py`.
 #### Load a dataset
 
 Torch `Dataset` classes are provided for both unconditional and conditional use-cases. Each class allows for flexibility
-between two types of representions: `roll` which refers to the piano roll representation, and `desc` which refers to the
-rhythmic descriptor representation.
+between three types of representations:
+
+1. `roll`: a [piano roll](https://en.wikipedia.org/wiki/Piano_roll#In_digital_audio_workstations) matrix
+2. `pattern`: a vector of monophonic onset times
+3. `descriptor`: a vector of rhythmic descriptors
 
 A dataset of segment pairs can be loaded via `PairDataset`. An example of loading an (X, y) dataset of `Drums` rolls
 paired with `Guitar` descriptors:
@@ -40,7 +43,7 @@ paired with `Guitar` descriptors:
 from rhythmic_complements.data import PairDataset
 from torch.utils.data import DataLoader
 
-dataset = PairDataset(DATASET_DIR, 'Drums', 'Guitar', "roll", "desc")
+dataset = PairDataset(DATASET_DIR, 'Drums', 'Guitar', "roll", "descriptor")
 loader = DataLoader(dataset, batch_size=32, shuffle=True)
 
 x, y = next(iter(loader))
@@ -57,16 +60,15 @@ from the [BabySlakh](https://zenodo.org/record/4603870) dataset:
 
     python scripts/prepare_data.py --path=input/babyslakh --prefix=babyslakh --seg_size=1 --binarize
 
-For each MIDI file, an `.npz` file is written
-containing [piano roll](https://en.wikipedia.org/wiki/Piano_roll#In_digital_audio_workstations) representations of the
-segments in that file organized by segment and part. The piano rolls are arrays of type `numpy.uint8` and
-shape `(S x N x V)`, where `S` is the number of segments, `N` is the number of time steps in a segment, and `V` is the
-number of MIDI pitches. If the `--binarize` option is used, the array values are either `0` or `1` representing onsets,
-else they are integer MIDI velocities in the range `[0-127]`. A map of all the segments is saved in the top-level
-directory as `rolls.csv`. Additionally, a set of lookup tables for all segment pairs are stored in the `pair_lookups`
-directory, one for each pair of parts. Finally, two plots displaying the distribution of segments by both part and part
-pair are saved to the top-level directory. The final dataset directory structure looks like this, assuming 3 parts and a
-flat input directory of MIDI files:
+For each MIDI file, an `.npz` file is written containing piano roll representations of the segments in that file
+organized by segment and part. The piano rolls are arrays of type `numpy.uint8` and shape `(S x N x V)`, where `S` is
+the number of segments, `N` is the number of time steps in a segment, and `V` is the number of MIDI pitches. If
+the `--binarize` option is used, the array values are either `0` or `1` representing onsets, else they are integer MIDI
+velocities in the range `[0-127]`. A map of all the segments is saved in the top-level directory as `rolls.csv`.
+Additionally, a set of lookup tables for all segment pairs are stored in the `pair_lookups`directory, one for each pair
+of parts. Finally, two plots displaying the distribution of segments by both part and part pair are saved to the
+top-level directory. The final dataset directory structure looks like this, assuming 3 parts and a flat input directory
+of MIDI files:
 
 ```
 ├── pair_lookups
@@ -82,8 +84,8 @@ flat input directory of MIDI files:
 └── segments_by_part_pair.png
 ```
 
-If the `--compute_descriptors` flag is used, an additional file will be written to the top-level directory containing
-the descriptors for all segments.
+If the `--compute_descriptors` flag is used, an additional directory will be written containing the descriptors for all
+segments of each part.
 
 The piano roll images created with the `--create_images` flag can be listened to using the notebook
 [MIDI_playback_from_image.ipynb](MIDI_playback_from_image.ipynb) [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1okATUg3TI1CsyKi1OUsQTt8FB28XfIm1?usp=sharing).

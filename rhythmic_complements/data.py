@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
-from rhythmtoolbox import pianoroll2descriptors
+from rhythmtoolbox import pianoroll2descriptors, resample_pianoroll
 
 
 class PairDataset(Dataset):
@@ -36,6 +36,9 @@ class PairDataset(Dataset):
         self.repr_1 = repr_1
         self.repr_2 = repr_2
 
+        assert repr_1 in ["roll", "pattern", "descriptor"]
+        assert repr_2 in ["roll", "pattern", "descriptor"]
+
         self.df = pd.read_csv(os.path.join(dataset_dir, "rolls.csv"))
 
         self.pairs_df = pd.read_csv(
@@ -54,7 +57,10 @@ class PairDataset(Dataset):
         p2_df = pair_df.set_index(self.part_2).join(self.df)
 
         p1 = self.load_rolls(p1_df)
-        if self.repr_1 == "desc":
+        if self.repr_1 == "pattern":
+            p1_patterns = [self.get_pattern_from_roll(roll) for roll in p1]
+            p1 = np.array(p1_patterns)
+        elif self.repr_1 == "descriptor":
             p1_desc = [
                 list(pianoroll2descriptors(roll, resolution=self.resolution).values())
                 for roll in p1
@@ -62,7 +68,10 @@ class PairDataset(Dataset):
             p1 = np.array(p1_desc)
 
         p2 = self.load_rolls(p2_df)
-        if self.repr_2 == "desc":
+        if self.repr_2 == "pattern":
+            p2_patterns = [self.get_pattern_from_roll(roll) for roll in p2]
+            p2 = np.array(p2_patterns)
+        elif self.repr_2 == "descriptor":
             p2_desc = [
                 list(pianoroll2descriptors(roll, resolution=self.resolution).values())
                 for roll in p2
@@ -86,6 +95,12 @@ class PairDataset(Dataset):
                 # For now take only the first one
                 rolls.append(seg_roll[0])
         return np.array(rolls)
+
+    def get_pattern_from_roll(self, roll):
+        resampled = resample_pianoroll(
+            roll, from_resolution=self.resolution, to_resolution=4
+        )
+        return (resampled.sum(axis=1) > 0).astype(int)
 
 
 class SegrollDataset(Dataset):
