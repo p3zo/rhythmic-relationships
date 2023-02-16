@@ -5,6 +5,8 @@ import pandas as pd
 import torch
 from torch.utils.data import Dataset
 
+REPRESENTATIONS = ["roll", "pattern", "descriptor"]
+
 
 class PairDataset(Dataset):
     """
@@ -25,55 +27,56 @@ class PairDataset(Dataset):
             The representation of part 1.
     """
 
-    def __init__(self, dataset_dir, part_1, part_2, repr_1, repr_2, resolution=24):
+    def __init__(self, dataset_dir, part_1, part_2, repr_1, repr_2):
         self.dataset_dir = dataset_dir
 
         self.part_1 = part_1
         self.part_2 = part_2
 
-        self.repr_1 = repr_1
-        self.repr_2 = repr_2
+        assert repr_1 in REPRESENTATIONS
+        assert repr_2 in REPRESENTATIONS
 
-        assert repr_1 in ["roll", "pattern", "descriptor"]
-        assert repr_2 in ["roll", "pattern", "descriptor"]
+        self.repr_1 = REPRESENTATIONS.index(repr_1)
+        self.repr_2 = REPRESENTATIONS.index(repr_2)
 
-        self.df = pd.read_csv(os.path.join(dataset_dir, "rolls.csv"))
+        df = pd.read_csv(os.path.join(dataset_dir, "rolls.csv"))
+        df.index.name = "roll_id"
+        df["filepath"] = df["file_id"].apply(
+            lambda x: os.path.join(dataset_dir, "rolls", f"{x}.npz")
+        )
+        df = df.drop("file_id", axis=1)
 
-        self.pairs_df = pd.read_csv(
+        pairs_df = pd.read_csv(
             os.path.join(dataset_dir, "pair_lookups", f"{part_1}_{part_2}.csv")
         )
 
-        self.resolution = resolution
+        self.p1_pairs = pairs_df.merge(
+            df, how="left", left_on=part_1, right_on="roll_id"
+        )
+        self.p2_pairs = pairs_df.merge(
+            df, how="left", left_on=part_2, right_on="roll_id"
+        )
 
     def __len__(self):
-        return len(self.pairs_df)
+        return len(self.p1_pairs)
 
     def __getitem__(self, idx):
-        pair_df = pd.DataFrame(self.pairs_df.iloc[idx]).T
+        p1 = self.p1_pairs.iloc[idx]
+        p2 = self.p2_pairs.iloc[idx]
 
-        p1_df = pair_df.set_index(self.part_1).join(self.df)
-        p2_df = pair_df.set_index(self.part_2).join(self.df)
+        p1_repr = self.load_repr(p1, self.repr_1)
+        p2_repr = self.load_repr(p2, self.repr_2)
 
-        p1 = self.load_repr(p1_df, self.repr_1)
-        p2 = self.load_repr(p2_df, self.repr_2)
-
-        x = torch.from_numpy(p1).to(torch.float32)
-        y = torch.from_numpy(p2).to(torch.float32)
+        x = torch.from_numpy(p1_repr).to(torch.float32)
+        y = torch.from_numpy(p2_repr).to(torch.float32)
 
         return x, y
 
-    def load_repr(self, part_pair_df, representation):
-        result = []
-        for file_id, g in part_pair_df.groupby("file_id"):
-            npz_filepath = os.path.join(self.dataset_dir, "rolls", f"{file_id}.npz")
-            npz = np.load(npz_filepath)
-            seg_part_ids = g["segment_id"].astype(str) + "_" + g["part_id"]
-            for seg_part_id in seg_part_ids:
-                arr = npz[f"{seg_part_id}_{representation}"]
-                # For now take only the first one
-                # TODO: handle multiple rolls from the same part in the same segment
-                result.append(arr[0])
-        return np.array(result)
+    def load_repr(self, pair, repr_ix):
+        npz = np.load(pair["filepath"], allow_pickle=True)
+        # TODO: Handle multiple rolls from the same part. For now we just take the first one
+        reprs = npz[f"{pair['segment_id']}_{pair['part_id']}"][0]
+        return reprs[repr_ix]
 
 
 class SegrollDataset(Dataset):

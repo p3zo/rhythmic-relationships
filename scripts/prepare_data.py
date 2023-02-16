@@ -348,19 +348,19 @@ def process(
                     dtype=np.uint8,
                 )
 
-            # Save the roll
-            part_segrolls[f"{seg_ix}_{part}_roll"].append(segroll)
-
-            # Save the pattern representation of the roll
+            # Create the pattern representation of the roll
             resampled = resample_pianoroll(
                 segroll, from_resolution=resolution, to_resolution=4
             )
             pattern = (resampled.sum(axis=1) > 0).astype(int)
-            part_segrolls[f"{seg_ix}_{part}_pattern"].append(pattern)
 
-            # Save the descriptor representation of the roll
-            segdesc = pianoroll2descriptors(resampled, resolution=4)
-            part_segrolls[f"{seg_ix}_{part}_descriptor"].append(segdesc)
+            # Create the descriptor representation of the roll
+            segdesc = np.array(list(pianoroll2descriptors(resampled, resolution=4).values()))
+
+            # Save all the representations together
+            part_segrolls[f"{seg_ix}_{part}"].append(
+                np.array([segroll, pattern, segdesc], dtype="object")
+            )
 
             # Save part metadata for the segment
             seg_list.append([seg_ix, part])
@@ -513,7 +513,7 @@ if __name__ == "__main__":
     )
     annotations_df["file_id"] = adf_files
     annotations_path = os.path.join(output_dir, "rolls.csv")
-    annotations_df.to_csv(annotations_path)
+    annotations_df.to_csv(annotations_path, index=False)
     print(f"Saved {annotations_path}")
 
     # Save lookup tables for segment pairs
