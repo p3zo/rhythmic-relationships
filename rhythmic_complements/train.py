@@ -10,6 +10,7 @@ def train(
     train_loader,
     optimizer,
     input_dim,
+    n_labels,
     device="cpu",
     num_epochs=5,
     clip_gradients=False,
@@ -22,7 +23,9 @@ def train(
             # Forward pass
             if conditional:
                 x, y = batch
-                x, y = x.to(device).view(x.shape[0], input_dim), y.to(device)
+                x, y = x.to(device).view(x.shape[0], input_dim), y.to(device).view(
+                    y.shape[0], n_labels
+                )
                 x_reconstructed, mu, sigma = model(x, y)
             else:
                 x = batch
