@@ -11,17 +11,11 @@ pip install git+https://github.com/p3zo/rhythmic-complements git+https://github.
 
 ## Inference
 
-To generate a bass part given a random drum part from the dataset, run `scripts/predict.py`.
+To generate a bass pattern given a drum roll, use `scripts/train_0a.py`
 
 ## Training
 
-To train a conditional VAE for a pair of rhythm space points (RSPs), use `scripts/rsp_pairs_train.py`.
-
-To train a VAE for a single part using a rhythm descriptor representation, use `scripts/rsp_train.py`. Example
-inference is given in `scripts/rsp_inference.py`.
-
-To train a VAE for a single part using a piano roll representation, use `scripts/segroll_train.py`. Example inference
-is given in `scripts/segroll_inference.py`.
+To train a conditional VAE for a pair of Bass patterns and Drum rolls, use `scripts/train_0a.py`
 
 ## Dataset
 
@@ -32,17 +26,18 @@ between three types of representations:
 
 1. `roll`: a [piano roll](https://en.wikipedia.org/wiki/Piano_roll#In_digital_audio_workstations) matrix
 2. `pattern`: a vector of monophonic onset times
-3. `descriptor`: a vector of rhythmic descriptors
+3. `descriptor`: a vector of rhythmic descriptors computed
+   using [rhythmtoolbox](https://github.com/danielgomezmarin/rhythmtoolbox)
 
-A dataset of segment pairs can be loaded via `PairDataset`. An example of loading an (X, y) dataset of `Drums` rolls
-paired with `Guitar` descriptors:
+A dataset of segment pairs can be loaded via `PairDataset`. An example of loading an (X, y) dataset of `Bass` rolls
+paired with `Drums` patterns:
 
 ```python
 from rhythmic_complements.data import PairDataset
 from torch.utils.data import DataLoader
 
 dataset_dir = 'path/to/your/dataset'
-dataset = PairDataset(dataset_dir, 'Drums', 'Guitar', "roll", "descriptor")
+dataset = PairDataset(dataset_dir, 'Bass', 'Drums', "roll", "pattern")
 loader = DataLoader(dataset, batch_size=32, shuffle=True)
 
 x, y = next(iter(loader))
@@ -53,9 +48,9 @@ print(f"y batch shape: {y.size()}")
 ### Create the dataset
 
 Slice MIDI data into segments and aggregate the segments by part using `scripts/prepare_data.py`. It accepts either a
-MIDI file or a directory of MIDI files. For reference, it took ~1.5hrs to process
-the [LMD clean subset](https://colinraffel.com/projects/lmd/) (17243 MIDI files). To process the example input provided
-from the [BabySlakh](https://zenodo.org/record/4603870) dataset:
+MIDI file or a directory of MIDI files. For reference, it took ~1.5 hours to process
+the [LMD clean subset](https://colinraffel.com/projects/lmd/) (17243 MIDI files) and the size of the resulting dataset
+was ~3 GB. To process the example input provided from the [BabySlakh](https://zenodo.org/record/4603870) dataset:
 
     python scripts/prepare_data.py --path=input/babyslakh --prefix=babyslakh --seg_size=1 --binarize
 
