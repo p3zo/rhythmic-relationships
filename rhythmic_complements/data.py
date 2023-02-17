@@ -3,6 +3,7 @@ import os
 import numpy as np
 import pandas as pd
 import torch
+from rhythmic_complements.parts import get_part_pairs
 from torch.utils.data import Dataset
 
 REPRESENTATIONS = ["roll", "pattern", "descriptor"]
@@ -46,8 +47,10 @@ class PairDataset(Dataset):
         )
         df = df.drop("file_id", axis=1)
 
+        pair_id = "_".join(get_part_pairs([part_1, part_2])[0])
+
         pairs_df = pd.read_csv(
-            os.path.join(dataset_dir, "pair_lookups", f"{part_1}_{part_2}.csv")
+            os.path.join(dataset_dir, "pair_lookups", f"{pair_id}.csv")
         )
 
         self.p1_pairs = pairs_df.merge(

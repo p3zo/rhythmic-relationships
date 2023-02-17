@@ -8,7 +8,8 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pypianoroll
-from rhythmic_complements.io import load_midi_file, write_pil_image
+from rhythmic_complements.io import load_midi_file, write_image_from_roll
+from rhythmic_complements.parts import PARTS, get_part_from_program, get_part_pairs
 from rhythmtoolbox import pianoroll2descriptors, resample_pianoroll
 from tqdm import tqdm
 
@@ -22,39 +23,8 @@ N_MIDI_PITCHES = MIDI_PITCH_RANGE[1] - MIDI_PITCH_RANGE[0] + 1
 MIN_SEG_PITCHES = 1
 MIN_SEG_BEATS = 4
 
-# Program categories from the General MIDI Level 2 spec: https://en.wikipedia.org/wiki/General_MIDI_Level_2
-# A category's key is the index of its first patch
-PROGRAM_CATEGORIES = {
-    1: "Piano",
-    9: "Chromatic Percussion",
-    17: "Organ",
-    25: "Guitar",
-    33: "Bass",
-    41: "Orchestra Solo",
-    49: "Orchestra Ensemble",
-    57: "Brass",
-    65: "Reed",
-    73: "Wind",
-    81: "Synth Lead",
-    89: "Synth Pad",
-    97: "Synth Sound FX",
-    105: "Ethnic",
-    113: "Percussive",
-    121: "Sound Effect",
-}
-
-# NOTE: In the General MIDI spec, drums are on a separate MIDI channel
-PARTS = ["Drums"] + list(PROGRAM_CATEGORIES.values())
 
 global VERBOSE
-
-
-def get_part_from_program(program):
-    if program < 0 or program > 127:
-        raise ValueError(
-            f"Program number {program} is not in the valid range of [0, 127]"
-        )
-    return PROGRAM_CATEGORIES[[p for p in PROGRAM_CATEGORIES if p <= program + 1][-1]]
 
 
 def get_bar_start_times(pmid, beat_division=24):
@@ -207,14 +177,6 @@ def mk_mid_name(prefix, filepath):
     return f"{prefix}_{os.path.splitext(os.path.basename(filepath))[0]}"
 
 
-def get_part_pairs(parts):
-    return [
-        i
-        for i in itertools.permutations(parts, 2)
-        if PARTS.index(i[0]) < PARTS.index(i[1])
-    ]
-
-
 def process(
     filepath,
     output_dir,
@@ -355,7 +317,9 @@ def process(
             pattern = (resampled.sum(axis=1) > 0).astype(int)
 
             # Create the descriptor representation of the roll
-            segdesc = np.array(list(pianoroll2descriptors(resampled, resolution=4).values()))
+            segdesc = np.array(
+                list(pianoroll2descriptors(resampled, resolution=4).values())
+            )
 
             # Save all the representations together
             part_segrolls[f"{seg_ix}_{part}"].append(
@@ -367,7 +331,9 @@ def process(
 
             if create_images:
                 img_outpath = os.path.join(im_dir, f"{seg_name}.png")
-                write_pil_image(segroll, img_outpath, im_size=im_size, verbose=VERBOSE)
+                write_image_from_roll(
+                    segroll, img_outpath, im_size=im_size, verbose=VERBOSE
+                )
 
             if pypianoroll_plots:
                 plot_segment(segroll, seg_name, track_dir)
@@ -517,6 +483,7 @@ if __name__ == "__main__":
     print(f"Saved {annotations_path}")
 
     # Save lookup tables for segment pairs
+    print("Creating segment pair lookups...")
     pair_lookups = defaultdict(list)
     for group_ix, group in annotations_df.groupby(["file_id", "segment_id"]):
         for p in get_part_pairs(group.part_id.unique()):
