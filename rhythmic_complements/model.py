@@ -3,7 +3,7 @@ import torch.nn as nn
 
 
 class VariationalAutoEncoder(nn.Module):
-    def __init__(self, input_dim, h_dim, z_dim, conditional=False, n_labels=0):
+    def __init__(self, x_dim, h_dim, z_dim, conditional=False, y_dim=0):
         super().__init__()
 
         self.conditional = conditional
@@ -14,13 +14,13 @@ class VariationalAutoEncoder(nn.Module):
         self.relu = nn.ReLU()
 
         # Encoder
-        self.input_to_hidden = nn.Linear(input_dim + n_labels, h_dim)
+        self.input_to_hidden = nn.Linear(x_dim + y_dim, h_dim)
         self.hidden_to_mu = nn.Linear(h_dim, z_dim)
         self.hidden_to_sigma = nn.Linear(h_dim, z_dim)
 
         # Decoder
-        self.z_to_hidden = nn.Linear(z_dim + n_labels, h_dim)
-        self.hidden_to_input = nn.Linear(h_dim, input_dim)
+        self.z_to_hidden = nn.Linear(z_dim + y_dim, h_dim)
+        self.hidden_to_input = nn.Linear(h_dim, x_dim)
 
     def encode(self, x, c=None):
         if self.conditional:
@@ -52,7 +52,3 @@ class VariationalAutoEncoder(nn.Module):
             -0.5 * torch.sum(1 + sigma - mu**2 - sigma.exp(), dim=1), dim=0
         )
         return recons_loss + kld_loss
-
-    def sample(self, n_samples, device):
-        z = torch.randn((n_samples, self.z_dim)).to(device)
-        return self.decode(z)

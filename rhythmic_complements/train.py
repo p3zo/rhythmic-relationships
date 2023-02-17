@@ -9,27 +9,28 @@ def train(
     model,
     train_loader,
     optimizer,
-    input_dim,
-    n_labels,
-    device="cpu",
-    num_epochs=5,
+    config,
     clip_gradients=False,
     conditional=False,
-    checkpoints_dir=".",
 ):
+    x_dim = config["model"]["x_dim"]
+    y_dim = config["model"]["y_dim"]
+    device = config["device"]
+    num_epochs = config["num_epochs"]
+
     for epoch in range(num_epochs):
         batches = tqdm(train_loader)
         for batch in batches:
             # Forward pass
             if conditional:
                 x, y = batch
-                x, y = x.to(device).view(x.shape[0], input_dim), y.to(device).view(
-                    y.shape[0], n_labels
+                x, y = x.to(device).view(x.shape[0], x_dim), y.to(device).view(
+                    y.shape[0], y_dim
                 )
                 x_reconstructed, mu, sigma = model(x, y)
             else:
                 x = batch
-                x = x.to(device).view(x.shape[0], input_dim)
+                x = x.to(device).view(x.shape[0], x_dim)
                 x_reconstructed, mu, sigma = model(x)
 
             # Compute loss
@@ -48,12 +49,19 @@ def train(
             batches.set_postfix({"loss": loss.item()})
 
         # Save a checkpoint at the end of each epoch
+        checkpoints_dir = os.path.join(
+            config["dataset"]["dataset_dir"], config["checkpoints_dir"]
+        )
+        if not os.path.isdir(checkpoints_dir):
+            os.makedirs(checkpoints_dir)
+
         torch.save(
             {
                 "epoch": epoch,
                 "model_state_dict": model.state_dict(),
                 "optimizer_state_dict": optimizer.state_dict(),
                 "loss": loss,
+                "config": config,
             },
             os.path.join(
                 checkpoints_dir,
