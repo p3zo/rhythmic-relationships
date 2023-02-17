@@ -2,6 +2,7 @@ import warnings
 
 import numpy as np
 import pretty_midi as pm
+import pypianoroll
 from PIL import Image
 
 # TODO: fix catch_warnings block in load_midi_file and remove this
@@ -25,26 +26,14 @@ def load_midi_file(filepath, resolution=24, verbose=True):
 
 
 def write_midi_from_roll(roll, outpath, resolution=24, binary=False):
-    note_duration = 0.02  # a reasonable bpm close to 120 (?)
-
+    tracks = []
     if binary:
-        # Assign the onsets a reasonable MIDI velocity
-        roll[roll.nonzero()] = 80
-
-    instrument = pm.Instrument(program=0, is_drum=False)
-
-    for voice in range(len(roll)):
-        events = roll[voice]
-        for event_ix, vel in enumerate(events):
-            start = event_ix * note_duration
-            note = pm.Note(
-                velocity=vel, pitch=voice, start=start, end=start + note_duration
-            )
-            instrument.notes.append(note)
-
-    track = pm.PrettyMIDI(resolution=resolution)
-    track.instruments.append(instrument)
-    track.write(outpath)
+        tracks.append(pypianoroll.BinaryTrack(pianoroll=roll))
+    else:
+        tracks.append(pypianoroll.StandardTrack(pianoroll=roll))
+    pp_roll = pypianoroll.Multitrack(tracks=tracks, resolution=resolution)
+    pp_roll.write(outpath)
+    print(f"Saved {outpath}")
 
 
 def write_image_from_roll(roll, outpath, im_size=None, binary=False, verbose=True):
