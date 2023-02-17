@@ -10,11 +10,11 @@ def train(
     train_loader,
     optimizer,
     config,
-    clip_gradients=False,
-    conditional=False,
 ):
     x_dim = config["model"]["x_dim"]
     y_dim = config["model"]["y_dim"]
+    conditional = config["model"]["conditional"]
+    clip_gradients = config["clip_gradients"]
     device = config["device"]
     num_epochs = config["num_epochs"]
 

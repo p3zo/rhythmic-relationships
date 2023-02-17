@@ -68,6 +68,7 @@ def write_image_from_roll(roll, outpath, im_size=None, binary=False, verbose=Tru
     from_range = [0, 127]
     if binary:
         from_range = [0, 1]
+
     arr = np.array(list(map(lambda x: np.interp(x, from_range, [0, 255]), roll)))
 
     # Zero-pad below and to the right to get target resolution

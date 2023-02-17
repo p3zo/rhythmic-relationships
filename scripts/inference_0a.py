@@ -10,7 +10,7 @@ from rhythmic_complements.io import (
 )
 from rhythmic_complements.model import VariationalAutoEncoder
 from torch.utils.data import DataLoader
-from train_0a import config, get_model_path
+from train_0a import config, get_model_path, get_model_name
 
 if __name__ == "__main__":
     model_path = get_model_path(config)
@@ -40,18 +40,22 @@ if __name__ == "__main__":
 
     # Apply an onset threshold
     # TODO: adjust the threshold if the input is not binarized
-    out = np.ma.masked_array(recon_in, mask=(recon_in < 0.5), fill_value=0).filled()
+    out = np.ma.masked_array(recon_in, mask=(recon_in < 0.2), fill_value=0).filled()[0]
+
+    # Assign the onsets a reasonable MIDI velocity
+    out[out.nonzero()] = 80
+    out = out.astype(np.int8)
 
     # Save the output
-    inference_dir = os.path.join(config["dataset"]["dataset_dir"], "inference")
+    inference_dir = os.path.join(
+        config["dataset"]["dataset_dir"], f"inference_{get_model_name(config)}"
+    )
     if not os.path.isdir(inference_dir):
         os.makedirs(inference_dir)
 
     if config["dataset"]["repr_1"] == "roll":
         # Write the output roll as both MIDI and image
-        write_image_from_roll(
-            out, os.path.join(inference_dir, "prediction.png"), binary=True
-        )
+        write_image_from_roll(out, os.path.join(inference_dir, "prediction.png"))
         write_midi_from_roll(
             out.T,
             os.path.join(inference_dir, "prediction.mid"),
