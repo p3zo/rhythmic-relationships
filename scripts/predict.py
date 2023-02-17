@@ -4,7 +4,7 @@ import numpy as np
 import pandas as pd
 import torch
 from rhythmic_complements.data import DescriptorDataset, SegrollDataset
-from rhythmic_complements.io import write_midi_file, write_pil_image
+from rhythmic_complements.io import write_image_from_roll, write_midi_from_roll
 from rhythmic_complements.model import VariationalAutoEncoder
 from rhythmtoolbox import pianoroll2descriptors
 from torch.utils.data import DataLoader
@@ -97,24 +97,26 @@ if __name__ == "__main__":
     if not os.path.isdir(result_dir):
         os.makedirs(result_dir)
 
-    write_pil_image(output_bass_roll, os.path.join(result_dir, "bass_prediction.png"))
-    write_midi_file(
+    write_image_from_roll(
+        output_bass_roll, os.path.join(result_dir, "bass_prediction.png")
+    )
+    write_midi_from_roll(
         output_bass_roll.T,
         os.path.join(result_dir, "bass_prediction.mid"),
         resolution=24,
     )
 
     # Also write the input for reference
-    write_pil_image(drums_roll, os.path.join(result_dir, "drum_input.png"))
-    write_midi_file(
+    write_image_from_roll(drums_roll, os.path.join(result_dir, "drum_input.png"))
+    write_midi_from_roll(
         drums_roll.T, os.path.join(result_dir, "drum_input.mid"), resolution=24
     )
 
     # And the intermediate bass roll
-    write_pil_image(
+    write_image_from_roll(
         intermediate_bass_roll, os.path.join(result_dir, "bass_intermediate.png")
     )
-    write_midi_file(
+    write_midi_from_roll(
         intermediate_bass_roll.T,
         os.path.join(result_dir, "bass_intermediate.mid"),
         resolution=24,

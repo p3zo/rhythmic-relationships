@@ -3,7 +3,7 @@ import os
 
 import numpy as np
 import torch
-from rhythmic_complements.io import write_midi_file, write_pil_image
+from rhythmic_complements.io import write_image_from_roll, write_midi_from_roll
 from rhythmic_complements.model import VariationalAutoEncoder
 from segroll_train import H_DIM, Z_DIM
 
@@ -59,7 +59,7 @@ if __name__ == "__main__":
         roll = np.array(list(map(lambda x: np.interp(x, [0, 1], [0, 127]), ss))).astype(
             int
         )
-        write_pil_image(roll, os.path.join(sample_dir, f"sample_{ix}.png"))
-        write_midi_file(
+        write_image_from_roll(roll, os.path.join(sample_dir, f"sample_{ix}.png"))
+        write_midi_from_roll(
             roll, os.path.join(sample_dir, f"sample_{ix}.mid"), resolution=24
         )

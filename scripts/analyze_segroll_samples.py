@@ -52,7 +52,7 @@ if __name__ == "__main__":
     plt.savefig("samples_rhythm_descriptors.png")
 
     dataset_filepath = os.path.join(
-        "output/lmd_clean_1bar_24res", "part_segrolls", f"Drums.npz"
+        "output/lmd_clean_1bar_24res", "part_segrolls", "Drums.npz"
     )
     npz = np.load(dataset_filepath)
     dataset = npz["segrolls"]

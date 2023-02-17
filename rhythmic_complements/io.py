@@ -24,8 +24,12 @@ def load_midi_file(filepath, resolution=24, verbose=True):
     return midi
 
 
-def write_midi_file(roll, filepath, resolution=24):
+def write_midi_from_roll(roll, outpath, resolution=24, binary=False):
     note_duration = 0.02  # a reasonable bpm close to 120 (?)
+
+    if binary:
+        # Assign the onsets a reasonable MIDI velocity
+        roll[roll.nonzero()] = 80
 
     instrument = pm.Instrument(program=0, is_drum=False)
 
@@ -40,10 +44,10 @@ def write_midi_file(roll, filepath, resolution=24):
 
     track = pm.PrettyMIDI(resolution=resolution)
     track.instruments.append(instrument)
-    track.write(filepath)
+    track.write(outpath)
 
 
-def write_pil_image(roll, outpath, im_size=None, verbose=True):
+def write_image_from_roll(roll, outpath, im_size=None, binary=False, verbose=True):
     """Creates greyscale images of a piano roll suitable for model input.
 
     Parameters
@@ -61,7 +65,10 @@ def write_pil_image(roll, outpath, im_size=None, verbose=True):
     """
 
     # Map MIDI velocity to pixel brightness
-    arr = np.array(list(map(lambda x: np.interp(x, [0, 127], [0, 255]), roll)))
+    from_range = [0, 127]
+    if binary:
+        from_range = [0, 1]
+    arr = np.array(list(map(lambda x: np.interp(x, from_range, [0, 255]), roll)))
 
     # Zero-pad below and to the right to get target resolution
     if im_size:
@@ -77,3 +84,19 @@ def write_pil_image(roll, outpath, im_size=None, verbose=True):
     im.save(outpath)
     if verbose:
         print(f"  Saved {outpath}")
+
+
+def write_midi_from_pattern(pattern, outpath):
+    note_duration = 0.02  # a reasonable bpm close to 120 (?)
+
+    instrument = pm.Instrument(program=0, is_drum=False)
+
+    for event_ix, vel in enumerate(pattern):
+        start = event_ix * note_duration
+        note = pm.Note(velocity=127, pitch=36, start=start, end=start + note_duration)
+        instrument.notes.append(note)
+
+    track = pm.PrettyMIDI(resolution=4)
+    track.instruments.append(instrument)
+    track.write(outpath)
+    print(f"Saved {outpath}")
