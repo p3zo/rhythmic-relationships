@@ -2,6 +2,7 @@ import argparse
 import glob
 import itertools
 import os
+import sys
 from collections import defaultdict
 
 import matplotlib.pyplot as plt
@@ -25,6 +26,7 @@ MIN_SEG_BEATS = 4
 
 
 global VERBOSE
+VERBOSE = False
 
 
 def get_bar_start_times(pmid, beat_division=24):
@@ -61,68 +63,6 @@ def get_bar_start_times(pmid, beat_division=24):
         down_beat_ixs.append(np.argmin(np.abs(down_beat - subdivision_beats)))
 
     return down_beats, down_beat_ixs
-
-
-def plot_roll(roll, ax):
-    """Plot a numpy array piano roll"""
-    pypianoroll.plot_pianoroll(
-        ax=ax,
-        pianoroll=roll,
-        xticklabel=False,
-        preset="frame",
-        ytick="step",
-        yticklabel="name",
-        is_drum=True,
-        grid_axis="off",
-        cmap="Blues",
-    )
-
-
-def plot_multitrack(multitrack, output_dir, bar_start_times):
-    """Plot the multitrack piano roll of a pretty_midi object"""
-    fig, ax = plt.subplots(figsize=(20, 8))
-
-    if len(multitrack.tracks) == 0:
-        plot_roll(multitrack[0].pianoroll, ax)
-    else:
-        multitrack.plot(
-            xticklabel=False,
-            preset="frame",
-            ytick="step",
-            yticklabel="name",
-            grid_axis="off",
-        )
-
-    # Add bar lines
-    for t in bar_start_times:
-        ax.axvline(x=t * multitrack.resolution, color="black", linewidth=0.1)
-
-    if not os.path.isdir(output_dir):
-        os.makedirs(output_dir)
-    plot_path = os.path.join(output_dir, "roll.png")
-    plt.savefig(plot_path)
-    plt.clf()
-    if VERBOSE:
-        print(f"  Saved {plot_path}")
-
-
-def plot_segment(roll, seg_name, outdir):
-    # Plot piano rolls as matplotlib plots
-    seg_fig, seg_ax = plt.subplots(figsize=(20, 8))
-    plot_roll(roll, seg_ax)
-
-    seg_plot_dir = os.path.join(outdir, f"segplots_{seg_size}bar_{resolution}res")
-    if not os.path.isdir(seg_plot_dir):
-        os.makedirs(seg_plot_dir)
-    seg_plot_path = os.path.join(
-        seg_plot_dir,
-        f"{seg_name}.png",
-    )
-
-    plt.savefig(seg_plot_path)
-    plt.close()
-    if VERBOSE:
-        print(f"  Saved {seg_plot_path}")
 
 
 def get_9voice_drum_roll(roll):
@@ -173,20 +113,14 @@ def roll_has_activity(roll, min_pitches=MIN_SEG_PITCHES, min_beats=MIN_SEG_BEATS
     return (n_pitches >= min_pitches) and (n_beats >= min_beats)
 
 
-def mk_mid_name(prefix, filepath):
-    return f"{prefix}_{os.path.splitext(os.path.basename(filepath))[0]}"
-
-
-def process(
+def slice_midi_file(
     filepath,
-    output_dir,
     seg_size=1,
     resolution=24,
     binarize=False,
     drum_roll=False,
     create_images=False,
     im_size=None,
-    pypianoroll_plots=False,
 ):
     """Slice a midi file and compute rhythmic descriptors for each segment.
 
@@ -194,9 +128,6 @@ def process(
 
         filepath: str
             Path to the input: either a MIDI file or a directory of MIDI files.
-
-        output_dir: str,
-            Path to a directory in which to write output files.
 
         seg_size: int
             Number of bars per segment.
@@ -215,13 +146,7 @@ def process(
 
         im_size, tuple
             Specify target dimensions of the image. Roll will be padded with 0s on right and bottom.
-
-        pypianoroll_plots: bool
-            Create pypianoroll plots.
     """
-
-    mid_name = mk_mid_name(prefix, filepath)
-    mid_outdir = os.path.join(output_dir, mid_name)
 
     pmid = load_midi_file(filepath, resolution=resolution, verbose=VERBOSE)
     if not pmid:
@@ -235,16 +160,10 @@ def process(
     except:
         return None, None
 
-    # Plot the piano roll of the full multitrack midi input
-    if pypianoroll_plots:
-        plot_multitrack(multitrack, mid_outdir, bar_times)
-
     # Define an iterable to segment each track's piano roll equally
     # TODO: make overlapping segments (all possible 2-bar segments)
     seg_iter = list(zip(bar_ixs[::seg_size], bar_ixs[seg_size:][::seg_size]))
-    # TODO: is this approach simpler?
-    # bins = [i for i in range(0, len(bar_ixs)+1, seg_size)]
-    # seg_iter = list(zip(bar_ixs], bar_ixs[1:]]))
+
     if len(seg_iter) == 0:
         # TODO: this assumes all tracks are the same length. Is that always true?
         seg_iter = [(0, len(multitrack[0]))]
@@ -265,7 +184,6 @@ def process(
     non_empty_tracks = [t for t in multitrack.tracks if len(t) > 0]
 
     for track_ix, track in enumerate(non_empty_tracks):
-        track_dir = os.path.join(mid_outdir, f"track{track_ix}")
 
         # Trim the top and bottom pitches of the roll
         roll = track.pianoroll[:, MIDI_PITCH_RANGE[0] : MIDI_PITCH_RANGE[1] + 1]
@@ -287,7 +205,7 @@ def process(
             if not roll_has_activity(segroll):
                 continue
 
-            # Pad/truncate every 2-bar segment to the same length
+            # Pad/truncate every n-bar segment to the same length
             # TODO: this makes everything 4/4. Is that acceptable?
             if len(segroll) < n_seg_ticks:
                 pad_right = np.zeros((n_seg_ticks - segroll.shape[0], N_MIDI_PITCHES))
@@ -335,9 +253,6 @@ def process(
                     segroll, img_outpath, im_size=im_size, verbose=VERBOSE
                 )
 
-            if pypianoroll_plots:
-                plot_segment(segroll, seg_name, track_dir)
-
     return part_segrolls, seg_list
 
 
@@ -346,7 +261,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--path",
         type=str,
-        default="input/lmd_clean",
+        default="../input/lmd_clean",
         help="Path to the input: either a MIDI file or a directory of MIDI files.",
     )
     parser.add_argument(
@@ -395,11 +310,6 @@ if __name__ == "__main__":
         help="A resolution to use for the piano roll images, e.g. 512x512.",
     )
     parser.add_argument(
-        "--pypianoroll_plots",
-        action="store_true",
-        help="Create a pypianoroll plot for each segment and another for the entire track.",
-    )
-    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Print debug statements.",
@@ -415,7 +325,6 @@ if __name__ == "__main__":
     im_size = args.im_size
     if im_size:
         im_size = (int(x) for x in args.im_size.split("x"))
-    pypianoroll_plots = args.pypianoroll_plots
     drum_roll = args.drum_roll
     subset = args.subset
     VERBOSE = args.verbose
@@ -427,6 +336,10 @@ if __name__ == "__main__":
         path = path + "/" if not path.endswith("/") else path
 
     filepaths = filepaths[:subset]
+    if len(filepaths) == 0:
+        print(f"No MIDI files found in {path}")
+        sys.exit(0)
+
     print(f"Processing {len(filepaths)} midi file(s)")
 
     dataset_name = f"{prefix}_{seg_size}bar_{resolution}res_{len(filepaths)}"
@@ -440,16 +353,14 @@ if __name__ == "__main__":
     annotations_list = []
 
     for file_ix, filepath in enumerate(tqdm(filepaths)):
-        part_segrolls, seg_list = process(
+        part_segrolls, seg_list = slice_midi_file(
             filepath=filepath,
-            output_dir=output_dir,
             seg_size=seg_size,
             resolution=resolution,
             binarize=binarize,
             drum_roll=drum_roll,
             create_images=create_images,
             im_size=im_size,
-            pypianoroll_plots=pypianoroll_plots,
         )
 
         if part_segrolls is None:
