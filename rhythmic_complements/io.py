@@ -37,7 +37,7 @@ def write_midi_from_roll(roll, outpath, resolution=24, binary=False):
 
 
 def write_image_from_roll(roll, outpath, im_size=None, binary=False, verbose=True):
-    """Creates greyscale images of a piano roll suitable for model input.
+    """Create a greyscale image of a piano roll.
 
     Parameters
         roll, np.array
@@ -76,17 +76,33 @@ def write_image_from_roll(roll, outpath, im_size=None, binary=False, verbose=Tru
         print(f"  Saved {outpath}")
 
 
-def write_midi_from_pattern(pattern, outpath):
-    note_duration = 0.02  # a reasonable bpm close to 120 (?)
+def write_midi_from_pattern(pattern, outpath, pitch=36):
+    note_duration = 0.25
 
     instrument = pm.Instrument(program=0, is_drum=False)
 
     for event_ix, vel in enumerate(pattern):
-        start = event_ix * note_duration
-        note = pm.Note(velocity=127, pitch=36, start=start, end=start + note_duration)
-        instrument.notes.append(note)
+        if vel:
+            start = event_ix * note_duration
+            note = pm.Note(
+                velocity=127, pitch=pitch, start=start, end=start + note_duration
+            )
+            instrument.notes.append(note)
 
-    track = pm.PrettyMIDI(resolution=4)
+    track = pm.PrettyMIDI()
     track.instruments.append(instrument)
     track.write(outpath)
+    print(f"Saved {outpath}")
+
+
+def write_image_from_pattern(pattern, outpath):
+    """Creates a greyscale image of a pattern"""
+    # Map MIDI velocity to pixel brightness
+    arr = np.array(list(map(lambda x: np.interp(x, [0, 1], [0, 255]), pattern)))
+    arr = arr.reshape((1, arr.shape[0]))
+
+    # "L" mode is greyscale and requires an 8-bit pixel range of 0-255
+    im = Image.fromarray(arr.astype(np.uint8), mode="L")
+
+    im.save(outpath)
     print(f"Saved {outpath}")
