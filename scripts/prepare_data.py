@@ -146,6 +146,7 @@ def slice_midi_file(
     seg_size=1,
     resolution=24,
     binarize=False,
+    resize_bars_to_4_beats=False,
     drum_roll=False,
     create_images=False,
     im_size=None,
@@ -162,6 +163,9 @@ def slice_midi_file(
 
         resolution: int
             Number of subdivisions per beat.
+
+        resize_bars_to_4_beats: bool
+            Pad/truncate every segment to the same, 4/4 length
 
         prefix: str
             An identifier for output filenames.
@@ -180,15 +184,14 @@ def slice_midi_file(
     if not pmid:
         return None, None
 
-    # There seems to be an off-by-one bug in pypianoroll. Skip the files it can't parse.
+    # There seems to be a bug in pypianoroll. Skip the files it can't parse.
     try:
         multitrack = pypianoroll.from_pretty_midi(pmid, resolution=resolution)
     except:
         return None, None
 
     # Create an iterable to segment each track's piano roll equally
-    # TODO: using len of the first track assumes all tracks are the same length. Is that always true?
-    track_len = max([len(t) for t in multitrack.tracks])
+    track_len = len(multitrack.tempo)
     seg_iter = get_segment_iterator(
         pmid, resolution, seg_size, track_len, overlapping=True
     )
@@ -230,13 +233,19 @@ def slice_midi_file(
             if not roll_has_activity(segroll):
                 continue
 
-            # Pad/truncate every n-bar segment to the same length
-            # TODO: this makes everything 4/4. Is that acceptable?
-            if len(segroll) < n_seg_ticks:
-                pad_right = np.zeros((n_seg_ticks - segroll.shape[0], N_MIDI_PITCHES))
-                segroll = np.vstack((segroll, pad_right)).astype(np.uint8)
-            elif len(segroll) > n_seg_ticks:
-                segroll = segroll[:n_seg_ticks]
+            if len(segroll) != n_seg_ticks:
+                # Skip segments that aren't the same length
+                if not resize_bars_to_4_beats:
+                    continue
+
+                # Pad/truncate every segment to the same, 4/4 length
+                if len(segroll) < n_seg_ticks:
+                    pad_right = np.zeros(
+                        (n_seg_ticks - segroll.shape[0], N_MIDI_PITCHES)
+                    )
+                    segroll = np.vstack((segroll, pad_right)).astype(np.uint8)
+                elif len(segroll) > n_seg_ticks:
+                    segroll = segroll[:n_seg_ticks]
 
             if binarize:
                 segroll = (segroll > 0).astype(np.uint8)
@@ -313,6 +322,11 @@ if __name__ == "__main__":
         help="Replace [0,127] MIDI velocity values in piano rolls with binary values representing onsets.",
     )
     parser.add_argument(
+        "--resize_bars_to_4_beats",
+        action="store_true",
+        help="Pad/truncate every segment to the same, 4/4 length",
+    )
+    parser.add_argument(
         "--subset",
         type=int,
         default=None,
@@ -345,6 +359,7 @@ if __name__ == "__main__":
     seg_size = args.seg_size
     resolution = args.resolution
     binarize = args.binarize
+    resize_bars_to_4_beats = args.resize_bars_to_4_beats
     prefix = args.prefix if args.prefix else os.path.splitext(path)[0].replace("/", "_")
     create_images = args.create_images
     im_size = args.im_size
@@ -383,12 +398,13 @@ if __name__ == "__main__":
             seg_size=seg_size,
             resolution=resolution,
             binarize=binarize,
+            resize_bars_to_4_beats=resize_bars_to_4_beats,
             drum_roll=drum_roll,
             create_images=create_images,
             im_size=im_size,
         )
 
-        if part_segrolls is None:
+        if part_segrolls is None or not seg_list:
             failed_paths.append(filepath)
             continue
 
