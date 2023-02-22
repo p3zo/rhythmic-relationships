@@ -29,42 +29,6 @@ global VERBOSE
 VERBOSE = False
 
 
-def get_bar_start_times(pmid, beat_division=24):
-    """Adapted from https://github.com/ruiguo-bio/midi-miner/blob/master/tension_calculation.py#L687-L718
-    TODO: Replace this with pypianoroll downbeats
-    """
-
-    beats = pmid.get_beats()
-    beats = np.unique(beats, axis=0)
-
-    subdivision_beats = []
-    for i in range(len(beats) - 1):
-        for j in range(beat_division):
-            subdivision_beats.append(
-                (beats[i + 1] - beats[i]) / beat_division * j + beats[i]
-            )
-    subdivision_beats.append(beats[-1])
-    subdivision_beats = np.unique(subdivision_beats, axis=0)
-
-    beat_ixs = []
-    for beat in beats:
-        beat_ixs.append(np.argwhere(subdivision_beats == beat)[0][0])
-
-    # Bar starts
-    down_beats = pmid.get_downbeats()
-    if len(down_beats) > 1 and subdivision_beats[-1] > down_beats[-1]:
-        down_beats = np.append(
-            down_beats, down_beats[-1] - down_beats[-2] + down_beats[-1]
-        )
-    down_beats = np.unique(down_beats, axis=0)
-
-    down_beat_ixs = []
-    for down_beat in down_beats:
-        down_beat_ixs.append(np.argmin(np.abs(down_beat - subdivision_beats)))
-
-    return down_beats, down_beat_ixs
-
-
 def get_9voice_drum_roll(roll):
     """Convert a piano roll to a 9-voice roll for drums"""
 
@@ -113,6 +77,70 @@ def roll_has_activity(roll, min_pitches=MIN_SEG_PITCHES, min_beats=MIN_SEG_BEATS
     return (n_pitches >= min_pitches) and (n_beats >= min_beats)
 
 
+def get_bar_start_ixs(pmid, resolution):
+    """Adapted from https://github.com/ruiguo-bio/midi-miner/blob/master/tension_calculation.py#L687-L718
+    TODO: Replace this with pypianoroll downbeats
+    """
+
+    beats = pmid.get_beats()
+    beats = np.unique(beats, axis=0)
+
+    subdivision_beats = []
+    for i in range(len(beats) - 1):
+        for j in range(resolution):
+            subdivision_beats.append(
+                (beats[i + 1] - beats[i]) / resolution * j + beats[i]
+            )
+    subdivision_beats.append(beats[-1])
+    subdivision_beats = np.unique(subdivision_beats, axis=0)
+
+    # Bar start times
+    down_beats = pmid.get_downbeats()
+    if len(down_beats) > 1 and subdivision_beats[-1] > down_beats[-1]:
+        down_beats = np.append(
+            down_beats, down_beats[-1] - down_beats[-2] + down_beats[-1]
+        )
+    down_beats = np.unique(down_beats, axis=0)
+
+    # Bar start ixs
+    down_beat_ixs = []
+    for down_beat in down_beats:
+        down_beat_ixs.append(np.argmin(np.abs(down_beat - subdivision_beats)))
+
+    return down_beat_ixs
+
+
+def get_segment_iterator(pmid, resolution, seg_size, track_len, overlapping=True):
+    """Create an iterable with segment start/end indices.
+
+    :param pmid, pretty_midi.PrettyMIDI
+        Pretty MIDI object
+
+    :param resolution, int
+        Number of MIDI ticks per beat
+
+    :param seg_size:
+        Length of each segment in bars
+
+    :param track_len:
+        Length of the entire track, in time steps
+
+    :param overlapping, bool
+        Create the iterator using a sliding window with 1-bar hop-size
+    """
+
+    bar_ixs = get_bar_start_ixs(pmid, resolution)
+
+    seg_iter = list(zip(bar_ixs, bar_ixs[seg_size:]))
+    if not overlapping:
+        seg_iter = list(zip(bar_ixs[::seg_size], bar_ixs[seg_size:][::seg_size]))
+
+    if len(seg_iter) == 0:
+        seg_iter = [(0, track_len)]
+
+    return seg_iter
+
+
 def slice_midi_file(
     filepath,
     seg_size=1,
@@ -152,21 +180,18 @@ def slice_midi_file(
     if not pmid:
         return None, None
 
-    bar_times, bar_ixs = get_bar_start_times(pmid, resolution)
-
     # There seems to be an off-by-one bug in pypianoroll. Skip the files it can't parse.
     try:
         multitrack = pypianoroll.from_pretty_midi(pmid, resolution=resolution)
     except:
         return None, None
 
-    # Define an iterable to segment each track's piano roll equally
-    # TODO: make overlapping segments (all possible 2-bar segments)
-    seg_iter = list(zip(bar_ixs[::seg_size], bar_ixs[seg_size:][::seg_size]))
-
-    if len(seg_iter) == 0:
-        # TODO: this assumes all tracks are the same length. Is that always true?
-        seg_iter = [(0, len(multitrack[0]))]
+    # Create an iterable to segment each track's piano roll equally
+    # TODO: using len of the first track assumes all tracks are the same length. Is that always true?
+    track_len = max([len(t) for t in multitrack.tracks])
+    seg_iter = get_segment_iterator(
+        pmid, resolution, seg_size, track_len, overlapping=True
+    )
 
     # Initialize output objects
     n_seg_ticks = resolution * 4 * seg_size
