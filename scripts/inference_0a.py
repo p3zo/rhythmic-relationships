@@ -4,6 +4,7 @@ import numpy as np
 import torch
 from rhythmic_complements.data import PairDataset
 from rhythmic_complements.io import (
+    write_image_from_pattern,
     write_image_from_roll,
     write_midi_from_pattern,
     write_midi_from_roll,
@@ -11,6 +12,7 @@ from rhythmic_complements.io import (
 from rhythmic_complements.model import VariationalAutoEncoder
 from torch.utils.data import DataLoader
 from train_0a import config, get_model_path, get_model_name
+
 
 if __name__ == "__main__":
     model_path = get_model_path(config)
@@ -35,11 +37,7 @@ if __name__ == "__main__":
 
     # Apply an onset threshold
     # TODO: adjust the threshold if the input is not binarized
-    out = np.ma.masked_array(recon, mask=(recon < 0.05), fill_value=0).filled()[0]
-
-    # Assign the onsets a reasonable MIDI velocity
-    out[out.nonzero()] = 80
-    out = out.astype(np.int8)
+    out = np.ma.masked_array(recon, mask=(recon < 0.5), fill_value=0).filled()[0]
 
     # Save the output
     inference_dir = os.path.join(
@@ -48,30 +46,58 @@ if __name__ == "__main__":
     if not os.path.isdir(inference_dir):
         os.makedirs(inference_dir)
 
+    input_x = x_in[0].numpy().astype(np.int8)
+    input_y = y_in[0].numpy().astype(np.int8)
+
+    part_1 = config["dataset"]["part_1"]
+    part_2 = config["dataset"]["part_2"]
+
     if config["dataset"]["repr_1"] == "roll":
-        # Write the output roll as both MIDI and image
-        write_image_from_roll(out, os.path.join(inference_dir, "prediction.png"))
+        # Assign the onsets a reasonable MIDI velocity
+        out[out.nonzero()] = 80
+        out = out.astype(np.int8)
+
+        # Write the prediction
         write_midi_from_roll(
             out,
-            os.path.join(inference_dir, "prediction.mid"),
+            os.path.join(inference_dir, f"predicted_{part_1}.mid"),
             resolution=24,
         )
+        write_image_from_roll(
+            out, os.path.join(inference_dir, f"predicted_{part_1}.png")
+        )
 
-        # Also write the input for reference
-        in_roll = x_in[0].numpy().astype(np.int8)
-        in_roll[in_roll.nonzero()] = 80
-        write_image_from_roll(in_roll, os.path.join(inference_dir, "input.png"))
+        # Write the x from the dataset
         write_midi_from_roll(
-            in_roll, os.path.join(inference_dir, "input.mid"), resolution=24
+            input_x,
+            os.path.join(inference_dir, f"original_{part_1}.mid"),
+            resolution=24,
+        )
+        write_image_from_roll(
+            input_x, os.path.join(inference_dir, f"original_{part_1}.png")
         )
     elif config["dataset"]["repr_1"] == "pattern":
-        # Write the output pattern as MIDI
-        write_midi_from_pattern(out, os.path.join(inference_dir, "prediction.mid"))
+        # Write the prediction
+        write_midi_from_pattern(
+            out, os.path.join(inference_dir, f"predicted_{part_1}.mid"), pitch=50
+        )
+        write_image_from_pattern(
+            out, os.path.join(inference_dir, f"predicted_{part_1}.png")
+        )
 
-        # Write the input pattern as MIDI
-        write_midi_from_pattern(x_in, os.path.join(inference_dir, "input.mid"))
+        # Write the x from the dataset
+        write_midi_from_pattern(
+            input_x, os.path.join(inference_dir, f"original_{part_1}.mid"), pitch=50
+        )
+        write_image_from_pattern(
+            input_x, os.path.join(inference_dir, f"original_{part_1}.png")
+        )
 
     if config["dataset"]["repr_2"] == "pattern":
-        # Write the y pattern as MIDI
-        in_y = y_in[0].numpy().astype(np.int8)
-        write_midi_from_pattern(in_y, os.path.join(inference_dir, "label.mid"))
+        # Write the y from the dataset
+        write_midi_from_pattern(
+            input_y, os.path.join(inference_dir, f"original_{part_2}.mid")
+        )
+        write_image_from_pattern(
+            input_y, os.path.join(inference_dir, f"original_{part_2}.png")
+        )
