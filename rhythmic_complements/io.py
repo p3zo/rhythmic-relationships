@@ -76,12 +76,13 @@ def write_image_from_roll(roll, outpath, im_size=None, binary=False, verbose=Tru
         print(f"  Saved {outpath}")
 
 
-def write_midi_from_pattern(pattern, outpath, pitch=36):
+def write_midi_from_hits(hits, outpath, pitch=36):
+    # TODO: explain choice of note_duration
     note_duration = 0.25
 
     instrument = pm.Instrument(program=0, is_drum=False)
 
-    for event_ix, vel in enumerate(pattern):
+    for event_ix, vel in enumerate(hits):
         if vel:
             start = event_ix * note_duration
             note = pm.Note(
@@ -95,14 +96,58 @@ def write_midi_from_pattern(pattern, outpath, pitch=36):
     print(f"Saved {outpath}")
 
 
-def write_image_from_pattern(pattern, outpath):
-    """Creates a greyscale image of a pattern"""
+def write_image_from_hits(hits, outpath):
     # Map MIDI velocity to pixel brightness
-    arr = np.array(list(map(lambda x: np.interp(x, [0, 1], [0, 255]), pattern)))
+    arr = np.array(list(map(lambda x: 255 if x else x, hits)))
     arr = arr.reshape((1, arr.shape[0]))
 
     # "L" mode is greyscale and requires an 8-bit pixel range of 0-255
     im = Image.fromarray(arr.astype(np.uint8), mode="L")
 
     im.save(outpath)
+    print(f"Saved {outpath}")
+
+
+def write_image_from_pattern(pattern, outpath):
+    binary_pattern = (pattern > 0).astype(int)
+
+    # Map MIDI velocity to pixel brightness
+    arr = np.array(list(map(lambda x: 255 if x else x, binary_pattern)))
+    arr = arr.reshape((1, arr.shape[0]))
+
+    # "L" mode is greyscale and requires an 8-bit pixel range of 0-255
+    im = Image.fromarray(arr.astype(np.uint8), mode="L")
+
+    im.save(outpath)
+    print(f"Saved {outpath}")
+
+
+def tick_to_time(tick, resolution, tempo=100):
+    """Convert absolute time in ticks to seconds.
+    Adapted from https://github.com/mido/mido/blob/main/mido/midifiles/units.py
+    """
+    scale = tempo * 0.005 / resolution
+    return tick * scale
+
+
+def write_midi_from_pattern(pattern, outpath, resolution=24, pitch=36):
+    instrument = pm.Instrument(program=0, is_drum=False)
+
+    binary_pattern = pattern > 0
+    padded = np.pad(binary_pattern, (1, 0), "constant")
+    diff = np.diff(padded.astype(np.int8), axis=0)
+
+    onsets = np.nonzero(diff > 0)[0]
+    offsets = np.nonzero(diff < 0)[0]
+
+    for onset, offset in zip(onsets, offsets):
+        start = tick_to_time(onset, resolution=resolution)
+        end = tick_to_time(offset, resolution=resolution)
+        print(start, end)
+        note = pm.Note(velocity=127, pitch=pitch, start=start, end=end)
+        instrument.notes.append(note)
+
+    track = pm.PrettyMIDI()
+    track.instruments.append(instrument)
+    track.write(outpath)
     print(f"Saved {outpath}")

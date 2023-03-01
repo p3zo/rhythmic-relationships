@@ -13,6 +13,10 @@ class VariationalAutoEncoder(nn.Module):
 
         self.relu = nn.ReLU()
 
+        # TODO: what dim is correct? is that true for all reprs?
+        self.softmax = nn.Softmax(dim=0)
+        self.use_softmax = False
+
         # Encoder
         self.input_to_hidden = nn.Linear(x_dim + y_dim, h_dim)
         self.hidden_to_mu = nn.Linear(h_dim, z_dim)
@@ -34,7 +38,12 @@ class VariationalAutoEncoder(nn.Module):
             z = torch.cat((z, c), dim=-1)
 
         h = self.relu(self.z_to_hidden(z))
-        return torch.sigmoid(self.hidden_to_input(h))
+        x = self.hidden_to_input(h)
+
+        if self.use_softmax:
+            return self.softmax(x)
+        else:
+            return torch.sigmoid(x)
 
     def forward(self, x, c=None):
         mu, sigma = self.encode(x, c)
@@ -45,10 +54,3 @@ class VariationalAutoEncoder(nn.Module):
         x_reconstructed = self.decode(z_reparameterized, c)
 
         return x_reconstructed, mu, sigma
-
-    def loss_function(self, recons, x, mu, sigma):
-        recons_loss = nn.functional.mse_loss(recons, x)
-        kld_loss = torch.mean(
-            -0.5 * torch.sum(1 + sigma - mu**2 - sigma.exp(), dim=1), dim=0
-        )
-        return recons_loss + kld_loss

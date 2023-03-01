@@ -6,7 +6,8 @@ import torch
 from rhythmic_complements.parts import get_part_pairs
 from torch.utils.data import Dataset
 
-REPRESENTATIONS = ["roll", "pattern", "descriptor"]
+DATASETS_DIR = "output"
+REPRESENTATIONS = ["roll", "hits", "pattern", "descriptors"]
 
 
 class PairDataset(Dataset):
@@ -28,8 +29,8 @@ class PairDataset(Dataset):
             The representation of part 1.
     """
 
-    def __init__(self, dataset_dir, part_1, part_2, repr_1, repr_2):
-        self.dataset_dir = dataset_dir
+    def __init__(self, dataset_name, part_1, part_2, repr_1, repr_2):
+        dataset_dir = os.path.join(DATASETS_DIR, dataset_name)
 
         self.part_1 = part_1
         self.part_2 = part_2

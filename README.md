@@ -22,11 +22,13 @@ To train a conditional VAE for a pair of Bass patterns and Drum rolls, use `scri
 ### Load the dataset
 
 Torch `Dataset` classes are provided for both unconditional and conditional use-cases. Each class allows for flexibility
-between three types of representations:
+between several representations:
 
 1. `roll`: a [piano roll](https://en.wikipedia.org/wiki/Piano_roll#In_digital_audio_workstations) matrix
-2. `pattern`: a vector of monophonic onset times
-3. `descriptor`: a vector of rhythmic descriptors computed
+2. `hits`: a binary vector of onsets. `0` is a silence and `1` is an onset.
+3. `pattern`: a ternary vector of onsets and offsets. `0` is a silence, `1` is an onset, and `2` is a continuation of a
+   previous onset.
+4. `descriptors`: a vector of rhythmic descriptors computed
    using [rhythmtoolbox](https://github.com/danielgomezmarin/rhythmtoolbox)
 
 A dataset of segment pairs can be loaded via `PairDataset`. An example of loading an (X, y) dataset of `Bass` rolls
@@ -36,8 +38,8 @@ paired with `Drums` patterns:
 from rhythmic_complements.data import PairDataset
 from torch.utils.data import DataLoader
 
-dataset_dir = 'path/to/your/dataset'
-dataset = PairDataset(dataset_dir, 'Bass', 'Drums', "roll", "pattern")
+dataset_name = 'babyslakh20_1bar_24res'
+dataset = PairDataset(dataset_name, 'Bass', 'Drums', "roll", "pattern")
 loader = DataLoader(dataset, batch_size=32, shuffle=True)
 
 x, y = next(iter(loader))

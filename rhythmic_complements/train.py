@@ -5,21 +5,33 @@ import torch
 from tqdm import tqdm
 
 
+def compute_loss(recons, x, mu, sigma, loss_fn):
+    reconstruction_loss = loss_fn(recons, x)
+    kld_loss = torch.mean(
+        -0.5 * torch.sum(1 + sigma - mu**2 - sigma.exp(), dim=1), dim=0
+    )
+    return reconstruction_loss + kld_loss
+
+
 def train(
     model,
-    train_loader,
+    loader,
     optimizer,
+    loss_fn,
     config,
+    device,
+    checkpoints_dir,
 ):
     x_dim = config["model"]["x_dim"]
     y_dim = config["model"]["y_dim"]
     conditional = config["model"]["conditional"]
     clip_gradients = config["clip_gradients"]
-    device = config["device"]
     num_epochs = config["num_epochs"]
 
+    training_losses = []
+
     for epoch in range(num_epochs):
-        batches = tqdm(train_loader)
+        batches = tqdm(loader)
         for batch in batches:
             # Forward pass
             if conditional:
@@ -34,7 +46,8 @@ def train(
                 x_reconstructed, mu, sigma = model(x)
 
             # Compute loss
-            loss = model.loss_function(x_reconstructed, x, mu, sigma)
+            loss = compute_loss(x_reconstructed, x, mu, sigma, loss_fn)
+            training_losses.append(loss.item())
 
             # Backpropagation
             optimizer.zero_grad()
@@ -49,9 +62,6 @@ def train(
             batches.set_postfix({"loss": loss.item()})
 
         # Save a checkpoint at the end of each epoch
-        checkpoints_dir = os.path.join(
-            config["dataset"]["dataset_dir"], config["checkpoints_dir"]
-        )
         if not os.path.isdir(checkpoints_dir):
             os.makedirs(checkpoints_dir)
 
@@ -68,3 +78,8 @@ def train(
                 f"checkpoint_{epoch}_{dt.datetime.today().strftime('%y%m%d%H%M%S')}",
             ),
         )
+
+        import matplotlib.pyplot as plt
+
+        plt.plot(training_losses)
+        plt.savefig("training_loss.png")

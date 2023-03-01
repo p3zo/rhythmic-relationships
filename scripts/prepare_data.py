@@ -9,10 +9,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pypianoroll
+from tqdm import tqdm
+
 from rhythmic_complements.io import load_midi_file, write_image_from_roll
 from rhythmic_complements.parts import PARTS, get_part_from_program, get_part_pairs
 from rhythmtoolbox import pianoroll2descriptors, resample_pianoroll
-from tqdm import tqdm
 
 OUTPUT_DIR = "output"
 
@@ -23,7 +24,6 @@ N_MIDI_PITCHES = MIDI_PITCH_RANGE[1] - MIDI_PITCH_RANGE[0] + 1
 # Segments with little activity will be filtered out
 MIN_SEG_PITCHES = 1
 MIN_SEG_BEATS = 4
-
 
 global VERBOSE
 VERBOSE = False
@@ -110,6 +110,33 @@ def get_bar_start_ixs(pmid, resolution):
     return down_beat_ixs
 
 
+def get_pattern_from_roll(roll, resolution, seg_size, binarized=False):
+    """A `pattern` is a ternary vector of onsets and offsets. `0` is a silence, `1` is an onset, and `2` is a
+    continuation of a previous onset.
+
+    Adjacent nonzero values of the same pitch will be considered a single note with their mean as its velocity.
+    TODO: parse patterns from MIDI to retain accurate onsets/offsets
+
+    Adapted from https://salu133445.github.io/pypianoroll/_modules/pypianoroll/outputs.html#to_pretty_midi
+    """
+
+    if not binarized:
+        roll = roll > 0
+
+    padded = np.pad(roll, ((1, 1), (0, 0)), "constant")
+    diff = np.diff(padded.astype(np.int8), axis=0)
+
+    onsets = np.nonzero(diff > 0)[0]
+    offsets = np.nonzero(diff < 0)[0]
+
+    pattern = np.zeros(resolution * 4 * seg_size)
+    for onset, offset in zip(onsets, offsets):
+        pattern[onset] = 1
+        pattern[onset + 1 : offset] = 2
+
+    return pattern
+
+
 def get_segment_iterator(pmid, resolution, seg_size, track_len, overlapping=True):
     """Create an iterable with segment start/end indices.
 
@@ -139,6 +166,32 @@ def get_segment_iterator(pmid, resolution, seg_size, track_len, overlapping=True
         seg_iter = [(0, track_len)]
 
     return seg_iter
+
+
+def remap_velocities(roll):
+    # Remap velocities higher than the standard range
+    # TODO: clip them instead?
+    if roll.max() > 127:
+        roll = np.array(
+            list(
+                map(
+                    lambda x: np.interp(x, [0, roll.max()], [0, 127]),
+                    roll,
+                )
+            ),
+            dtype=np.uint8,
+        )
+
+    # Convert MIDI velocities to real numbers in [0, 1]
+    return np.array(
+        list(
+            map(
+                lambda x: np.interp(x, [0, 127], [0, 1]),
+                roll,
+            )
+        ),
+        dtype=np.uint8,
+    )
 
 
 def slice_midi_file(
@@ -250,32 +303,28 @@ def slice_midi_file(
             if binarize:
                 segroll = (segroll > 0).astype(np.uint8)
 
-            # Ensure all MIDI velocities are in the valid range [0, 127]
-            elif segroll.max() > 127:
-                segroll = np.array(
-                    list(
-                        map(
-                            lambda x: np.interp(x, [0, segroll.max()], [0, 127]),
-                            segroll,
-                        )
-                    ),
-                    dtype=np.uint8,
-                )
+            else:
+                segroll = remap_velocities(segroll)
 
-            # Create the pattern representation of the roll
+            # Resample the roll to 4 ticks per beat to create the other representations
             resampled = resample_pianoroll(
                 segroll, from_resolution=resolution, to_resolution=4
             )
-            pattern = (resampled.sum(axis=1) > 0).astype(int)
 
-            # Create the descriptor representation of the roll
-            segdesc = np.array(
+            # Create the `hits` representation of the roll
+            hits = (resampled.sum(axis=1) > 0).astype(int)
+
+            # Create the `pattern` representation of the roll
+            pattern = get_pattern_from_roll(resampled, 4, seg_size, binarized=binarize)
+
+            # Create the `descriptors` representation of the roll
+            descriptors = np.array(
                 list(pianoroll2descriptors(resampled, resolution=4).values())
             )
 
             # Save all the representations together
             part_segrolls[f"{seg_ix}_{part}"].append(
-                np.array([segroll, pattern, segdesc], dtype="object")
+                np.array([segroll, hits, pattern, descriptors], dtype="object")
             )
 
             # Save part metadata for the segment
@@ -382,7 +431,7 @@ if __name__ == "__main__":
 
     print(f"Processing {len(filepaths)} midi file(s)")
 
-    dataset_name = f"{prefix}_{seg_size}bar_{resolution}res_{len(filepaths)}"
+    dataset_name = f"{prefix}_{len(filepaths)}_{seg_size}bar_{resolution}res"
     output_dir = os.path.join(OUTPUT_DIR, dataset_name)
     dataset_dir = os.path.join(output_dir, "rolls")
     if not os.path.isdir(dataset_dir):
@@ -437,7 +486,7 @@ if __name__ == "__main__":
     # Save lookup tables for segment pairs
     print("Creating segment pair lookups...")
     pair_lookups = defaultdict(list)
-    for group_ix, group in annotations_df.groupby(["file_id", "segment_id"]):
+    for group_ix, group in tqdm(annotations_df.groupby(["file_id", "segment_id"])):
         for p in get_part_pairs(group.part_id.unique()):
             p1 = group[group.part_id == p[0]].index.values
             p2 = group[group.part_id == p[1]].index.values
