@@ -1,5 +1,5 @@
 """
-Question: What pct of 1-bar segments are at 4 ticks per beat? n-bar segments at x ticks per beat?
+Question: What % of segments are at 4 ticks per beat?
 
 To answer that, this script loads the same segment at 2 resolutions (4 and 24), scales the 24 down to 4, and checks
 if the two are equal.

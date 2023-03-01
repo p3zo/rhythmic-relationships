@@ -1,4 +1,4 @@
-"""Compute rhythmic descriptors for many samples and compare their distribution to the dataset distribution"""
+"""Compare the descriptor distributions of many latent samples to the distributions of the input data"""
 
 import argparse
 import os
