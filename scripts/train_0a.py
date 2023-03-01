@@ -1,4 +1,7 @@
+import datetime as dt
 import os
+import random
+import yaml
 
 import torch
 from rhythmic_complements.data import PairDataset
@@ -6,64 +9,88 @@ from rhythmic_complements.model import VariationalAutoEncoder
 from rhythmic_complements.train import train
 from torch.utils.data import DataLoader
 
-config = {
-    "dataset": {
-        "dataset_dir": "../output/lmd_clean_1bar_24res_1000",
-        "part_1": "Bass",
-        "part_2": "Drums",
-        "repr_1": "pattern",
-        "repr_2": "pattern",
-    },
-    "model": {
-        "x_dim": 16,
-        "h_dim": 6,
-        "z_dim": 2,
-        "y_dim": 16,
-        "conditional": True,
-    },
-    "clip_gradients": True,
-    "model_dir": "models",
-    "checkpoints_dir": "models/checkpoints",
-    "num_epochs": 5,
-    "batch_size": 128,
-    "lr": 1e-5,
-    "device": torch.device("mps" if torch.backends.mps.is_built() else "cpu"),
-}
+DEVICE = torch.device("mps" if torch.backends.mps.is_built() else "cpu")
+MODELS_DIR = "../output/models"
+CHECKPOINTS_DIR = "models/checkpoints"
+CONFIG_FILEPATH = "model_config.yml"
+
+
+def load_config(filepath):
+    """Loads a model config and adds derived values"""
+    with open(filepath, "r") as fh:
+        config = yaml.safe_load(fh)
+
+    config["lr"] = float(config["lr"])
+
+    return config
 
 
 def get_model_name(config):
+    # a copy of /usr/share/dict/web2 from a macbook air (early 2014)
+    with open("words") as words_file:
+        words = words_file.read().split()
+
+    word = random.choice(words)
+
+    today = dt.datetime.today()
+    timestamp = today.strftime("%y%m%d%H%M%S")
+
     dc = config["dataset"]
-    return f"{dc['part_1']}_{dc['part_2']}_{dc['repr_1']}_{dc['repr_2']}"
+    info_str = f"{dc['dataset_name']}_{dc['part_1']}_{dc['part_2']}_{dc['repr_1']}_{dc['repr_2']}"
+
+    return f"{word}_{info_str}_{timestamp}"
 
 
-def get_model_dir(config):
-    return os.path.join(config["dataset"]["dataset_dir"], config["model_dir"])
+def save_model(model, config):
+    model_name = get_model_name(config)
+    model_path = os.path.join(MODELS_DIR, f"{model_name}.pt")
+    torch.save(
+        {
+            "state_dict": model.state_dict(),
+            "config": config,
+        },
+        model_path,
+    )
+    print(f"Saved {model_path}")
 
 
-def get_model_path(config):
-    return os.path.join(get_model_dir(config), f"{get_model_name(config)}.pt")
+def load_model(model_name):
+    model_path = os.path.join(MODELS_DIR, f"{model_name}.pt")
+    model_obj = torch.load(model_path)
+    config = model_obj["config"]
+    model = VariationalAutoEncoder(**config["model"])
+    model.load_state_dict(state_dict=model_obj["state_dict"])
+    return model, config
 
 
 if __name__ == "__main__":
-    print(f"Config: {config}")
+    config = load_config(CONFIG_FILEPATH)
+    print(yaml.dump(config))
 
     data = PairDataset(**config["dataset"])
     loader = DataLoader(data, batch_size=config["batch_size"], shuffle=True)
 
-    model = VariationalAutoEncoder(**config["model"]).to(config["device"])
+    model = VariationalAutoEncoder(**config["model"]).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
 
+    reduction = config["loss_reduction"]
+    if config["loss_fn"] == "bce":
+        loss_fn = torch.nn.BCELoss(reduction=reduction)
+    elif config["loss_fn"] == "cross-entropy":
+        loss_fn = torch.nn.CrossEntropyLoss(reduction=reduction)
+    elif config["loss_fn"] == "mse":
+        loss_fn = torch.nn.MSELoss(reduction=reduction)
+    else:
+        raise ValueError(f"`{config['loss_fn']}` is not a valid loss function")
+
     train(
-        model,
-        loader,
-        optimizer,
-        config,
+        model=model,
+        loader=loader,
+        optimizer=optimizer,
+        loss_fn=loss_fn,
+        config=config,
+        device=DEVICE,
+        checkpoints_dir=CHECKPOINTS_DIR,
     )
 
-    # Save the model
-    model_dir = get_model_dir(config)
-    if not os.path.isdir(model_dir):
-        os.makedirs(model_dir)
-    model_path = get_model_path(config)
-    torch.save(model.state_dict(), model_path)
-    print(f"Saved {model_path}")
+    save_model(model, config)

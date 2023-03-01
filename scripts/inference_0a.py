@@ -4,21 +4,22 @@ import numpy as np
 import torch
 from rhythmic_complements.data import PairDataset
 from rhythmic_complements.io import (
-    write_image_from_pattern,
+    write_image_from_hits,
     write_image_from_roll,
-    write_midi_from_pattern,
+    write_midi_from_hits,
     write_midi_from_roll,
 )
-from rhythmic_complements.model import VariationalAutoEncoder
 from torch.utils.data import DataLoader
-from train_0a import config, get_model_path, get_model_name
+from train_0a import load_model
 
+INFERENCE_DIR = "../output/inference"
+
+model_name = (
+    "surgerize_lmd_clean_2_bar_24_res_5000_Bass_Drums_pattern_pattern_230222090629"
+)
 
 if __name__ == "__main__":
-    model_path = get_model_path(config)
-    state_dict = torch.load(model_path, map_location=torch.device(config["device"]))
-    model = VariationalAutoEncoder(**config["model"])
-    model.load_state_dict(state_dict=state_dict)
+    model, config = load_model(model_name)
 
     # Load a random x, y pair
     dataset = PairDataset(**config["dataset"])
@@ -40,11 +41,9 @@ if __name__ == "__main__":
     out = np.ma.masked_array(recon, mask=(recon < 0.5), fill_value=0).filled()[0]
 
     # Save the output
-    inference_dir = os.path.join(
-        config["dataset"]["dataset_dir"], "inference", get_model_name(config)
-    )
-    if not os.path.isdir(inference_dir):
-        os.makedirs(inference_dir)
+    outdir = os.path.join(INFERENCE_DIR, model_name)
+    if not os.path.isdir(outdir):
+        os.makedirs(outdir)
 
     input_x = x_in[0].numpy().astype(np.int8)
     input_y = y_in[0].numpy().astype(np.int8)
@@ -60,44 +59,32 @@ if __name__ == "__main__":
         # Write the prediction
         write_midi_from_roll(
             out,
-            os.path.join(inference_dir, f"predicted_{part_1}.mid"),
+            os.path.join(outdir, f"predicted_{part_1}.mid"),
             resolution=24,
         )
-        write_image_from_roll(
-            out, os.path.join(inference_dir, f"predicted_{part_1}.png")
-        )
+        write_image_from_roll(out, os.path.join(outdir, f"predicted_{part_1}.png"))
 
         # Write the x from the dataset
         write_midi_from_roll(
             input_x,
-            os.path.join(inference_dir, f"original_{part_1}.mid"),
+            os.path.join(outdir, f"original_{part_1}.mid"),
             resolution=24,
         )
-        write_image_from_roll(
-            input_x, os.path.join(inference_dir, f"original_{part_1}.png")
-        )
-    elif config["dataset"]["repr_1"] == "pattern":
+        write_image_from_roll(input_x, os.path.join(outdir, f"original_{part_1}.png"))
+    elif config["dataset"]["repr_1"] == "hits":
         # Write the prediction
-        write_midi_from_pattern(
-            out, os.path.join(inference_dir, f"predicted_{part_1}.mid"), pitch=50
+        write_midi_from_hits(
+            out, os.path.join(outdir, f"predicted_{part_1}.mid"), pitch=50
         )
-        write_image_from_pattern(
-            out, os.path.join(inference_dir, f"predicted_{part_1}.png")
-        )
+        write_image_from_hits(out, os.path.join(outdir, f"predicted_{part_1}.png"))
 
         # Write the x from the dataset
-        write_midi_from_pattern(
-            input_x, os.path.join(inference_dir, f"original_{part_1}.mid"), pitch=50
+        write_midi_from_hits(
+            input_x, os.path.join(outdir, f"original_{part_1}.mid"), pitch=50
         )
-        write_image_from_pattern(
-            input_x, os.path.join(inference_dir, f"original_{part_1}.png")
-        )
+        write_image_from_hits(input_x, os.path.join(outdir, f"original_{part_1}.png"))
 
-    if config["dataset"]["repr_2"] == "pattern":
+    if config["dataset"]["repr_2"] == "hits":
         # Write the y from the dataset
-        write_midi_from_pattern(
-            input_y, os.path.join(inference_dir, f"original_{part_2}.mid")
-        )
-        write_image_from_pattern(
-            input_y, os.path.join(inference_dir, f"original_{part_2}.png")
-        )
+        write_midi_from_hits(input_y, os.path.join(outdir, f"original_{part_2}.mid"))
+        write_image_from_hits(input_y, os.path.join(outdir, f"original_{part_2}.png"))

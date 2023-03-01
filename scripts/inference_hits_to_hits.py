@@ -3,29 +3,25 @@ import os
 import numpy as np
 import torch
 from rhythmic_complements.io import (
-    write_image_from_pattern,
-    write_midi_from_pattern,
+    write_image_from_hits,
+    write_midi_from_hits,
 )
 from train_0a import load_model
 
 INFERENCE_DIR = "../output/inference"
 
-model_name = (
-    "surgerize_lmd_clean_2_bar_24_res_5000_Bass_Drums_pattern_pattern_230222090629"
-)
+model_name = "cystotomy_lmd_clean_1bar_24res_1000_Bass_Drums_hits_hits_230222200202"
 
 if __name__ == "__main__":
     model, config = load_model(model_name)
 
     # User-specified y part
-    y_in = np.array(
-        [1, 2, 2, 2, 2, 2, 2, 2, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0] * 8
-    ).astype(np.int8)
+    y_in = np.array([1, 0, 1, 0, 1, 0, 0, 1, 1, 0, 1, 0, 1, 0, 0, 1]).astype(np.int8)
 
     y = torch.from_numpy(y_in).to(torch.float32).view(1, config["model"]["y_dim"])
 
     n_predictions = 5
-    density = 0
+    density = 0.1
 
     # Sample a random point in the latent space
     z = torch.randn(n_predictions, config["model"]["z_dim"])
@@ -49,14 +45,12 @@ if __name__ == "__main__":
     part_2 = config["dataset"]["part_2"]
 
     # Write the user-specified y part
-    write_midi_from_pattern(y_in, os.path.join(outdir, f"input_{part_2}.mid"))
-    write_image_from_pattern(y_in, os.path.join(outdir, f"input_{part_2}.png"))
+    write_midi_from_hits(y_in, os.path.join(outdir, f"input_{part_2}.mid"))
+    write_image_from_hits(y_in, os.path.join(outdir, f"input_{part_2}.png"))
 
     # Write the predicted x parts
     for ix, out in enumerate(outs):
-        write_midi_from_pattern(
+        write_midi_from_hits(
             out, os.path.join(outdir, f"predicted_{part_1}_{ix}.mid"), pitch=50
         )
-        write_image_from_pattern(
-            out, os.path.join(outdir, f"predicted_{part_1}_{ix}.png")
-        )
+        write_image_from_hits(out, os.path.join(outdir, f"predicted_{part_1}_{ix}.png"))
