@@ -3,10 +3,11 @@ import os
 import numpy as np
 import pandas as pd
 import torch
+
+from rhythmic_complements import DATASETS_DIR
 from rhythmic_complements.parts import get_part_pairs
 from torch.utils.data import Dataset
 
-DATASETS_DIR = "output"
 REPRESENTATIONS = ["roll", "hits", "pattern", "descriptors"]
 
 

@@ -11,11 +11,10 @@ import pandas as pd
 import pypianoroll
 from tqdm import tqdm
 
+from rhythmic_complements import DATASETS_DIR
 from rhythmic_complements.io import load_midi_file, write_image_from_roll
 from rhythmic_complements.parts import PARTS, get_part_from_program, get_part_pairs
 from rhythmtoolbox import pianoroll2descriptors, resample_pianoroll
-
-OUTPUT_DIR = "output"
 
 # Piano key numbers
 MIDI_PITCH_RANGE = [21, 108]
@@ -432,10 +431,10 @@ if __name__ == "__main__":
     print(f"Processing {len(filepaths)} midi file(s)")
 
     dataset_name = f"{prefix}_{len(filepaths)}_{seg_size}bar_{resolution}res"
-    output_dir = os.path.join(OUTPUT_DIR, dataset_name)
-    dataset_dir = os.path.join(output_dir, "rolls")
-    if not os.path.isdir(dataset_dir):
-        os.makedirs(dataset_dir)
+    output_dir = os.path.join(DATASETS_DIR, dataset_name)
+    data_dir = os.path.join(output_dir, "rolls")
+    if not os.path.isdir(data_dir):
+        os.makedirs(data_dir)
 
     failed_paths = []
     annotations = {p: [] for p in PARTS}
@@ -464,7 +463,7 @@ if __name__ == "__main__":
         annotations_list.append([file_id, seg_list])
 
         # Write the segrolls by part
-        outpath = os.path.join(dataset_dir, f"{file_id}.npz")
+        outpath = os.path.join(data_dir, f"{file_id}.npz")
         outdir = os.path.dirname(outpath)
         if not os.path.isdir(outdir):
             os.makedirs(outdir)
