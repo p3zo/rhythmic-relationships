@@ -9,12 +9,13 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import pypianoroll
+from rhythmtoolbox import pianoroll2descriptors, resample_pianoroll
 from tqdm import tqdm
 
 from rhythmic_complements import DATASETS_DIR
 from rhythmic_complements.io import load_midi_file, write_image_from_roll
 from rhythmic_complements.parts import PARTS, get_part_from_program, get_part_pairs
-from rhythmtoolbox import pianoroll2descriptors, resample_pianoroll
+
 
 # Piano key numbers
 MIDI_PITCH_RANGE = [21, 108]
@@ -109,6 +110,12 @@ def get_bar_start_ixs(pmid, resolution):
     return down_beat_ixs
 
 
+def get_hits_from_roll(roll):
+    """A binary vector of onsets. `0` is a silence and `1` is an onset."""
+    # TODO: preserve only the onsets of held notes
+    return (roll.sum(axis=1) > 0).astype(int)
+
+
 def get_pattern_from_roll(roll, resolution, seg_size, binarized=False):
     """A `pattern` is a ternary vector of onsets and offsets. `0` is a silence, `1` is an onset, and `2` is a
     continuation of a previous onset.
@@ -134,6 +141,34 @@ def get_pattern_from_roll(roll, resolution, seg_size, binarized=False):
         pattern[onset + 1 : offset] = 2
 
     return pattern
+
+
+def get_binary_chroma_from_roll(roll, resolution, seg_size, binarized=False):
+    """A `chroma` is an N x 12 matrix of pitch class activations, where N is a number of time steps.
+    See https://en.wikipedia.org/wiki/Chroma_feature for background on chroma features.
+    A binary chroma does not retain velocities, so 0 is a silence and 1 is an onset.
+    TODO: write a test for this
+    """
+    if not binarized:
+        roll = roll > 0
+
+    n = resolution * 4 * seg_size
+    chroma = np.zeros((n, 12), np.int8)
+
+    # Squeeze pitches into one octave
+    # TODO: make this more efficient
+    # TODO: need 2s for held notes, like pattern
+    octaves = [i for i in range(0, roll.shape[1] + 12, 12)]
+    for low, high in [o for o in zip(octaves, octaves[1:])]:
+        oct = roll[:, low:high]
+        if oct.shape[1] < 12:
+            pad_top = np.zeros((n, 12 - oct.shape[1]), np.uint8)
+            oct = np.hstack((pad_top, oct))
+        chroma = np.add(chroma, oct)
+
+    chroma = (chroma > 0).astype(np.uint8)
+
+    return chroma
 
 
 def get_segment_iterator(pmid, resolution, seg_size, track_len, overlapping=True):
@@ -311,10 +346,15 @@ def slice_midi_file(
             )
 
             # Create the `hits` representation of the roll
-            hits = (resampled.sum(axis=1) > 0).astype(int)
+            hits = get_hits_from_roll(resampled)
 
             # Create the `pattern` representation of the roll
             pattern = get_pattern_from_roll(resampled, 4, seg_size, binarized=binarize)
+
+            # Create the `chroma` representation of the roll
+            chroma = get_binary_chroma_from_roll(
+                resampled, 4, seg_size, binarized=binarize
+            )
 
             # Create the `descriptors` representation of the roll
             descriptors = np.array(
@@ -323,7 +363,7 @@ def slice_midi_file(
 
             # Save all the representations together
             part_segrolls[f"{seg_ix}_{part}"].append(
-                np.array([segroll, hits, pattern, descriptors], dtype="object")
+                np.array([segroll, hits, pattern, chroma, descriptors], dtype="object")
             )
 
             # Save part metadata for the segment

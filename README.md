@@ -28,18 +28,22 @@ between several representations:
 2. `hits`: a binary vector of onsets. `0` is a silence and `1` is an onset.
 3. `pattern`: a ternary vector of onsets and offsets. `0` is a silence, `1` is an onset, and `2` is a continuation of a
    previous onset.
-4. `descriptors`: a vector of rhythmic descriptors computed
-   using [rhythmtoolbox](https://github.com/danielgomezmarin/rhythmtoolbox)
+4. `chroma`: an `N x 12` matrix of pitch class activations, where N is the number of time steps.
+   See https://en.wikipedia.org/wiki/Chroma_feature for background on chroma features.
+5. `descriptors`: a vector of rhythmic descriptors computed
+   using [rhythmtoolbox](https://github.com/danielgomezmarin/rhythmtoolbox).
 
-A dataset of segment pairs can be loaded via `PairDataset`. An example of loading an (X, y) dataset of `Bass` rolls
-paired with `Drums` patterns:
+#### Conditional
+
+A dataset of segment pairs can be loaded via `PairDataset`. For example, to load a dataset of `Bass` patterns paired
+with `Drums` hits:
 
 ```python
 from rhythmic_complements.data import PairDataset
 from torch.utils.data import DataLoader
 
 dataset_name = 'babyslakh20_1bar_24res'
-dataset = PairDataset(dataset_name, 'Bass', 'Drums', "roll", "pattern")
+dataset = PairDataset(dataset_name, 'Bass', 'Drums', "pattern", "hits")
 loader = DataLoader(dataset, batch_size=32, shuffle=True)
 
 x, y = next(iter(loader))

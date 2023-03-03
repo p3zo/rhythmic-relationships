@@ -7,3 +7,4 @@ notes
 __pycache__
 *.egg-info/
 *.prof
+temp

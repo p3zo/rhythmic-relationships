@@ -63,14 +63,20 @@ def test_dataloaders():
     assert x.size() == torch.Size([BATCH_SIZE, 16])
     assert y.size() == torch.Size([BATCH_SIZE, 16])
 
-    data = PairDataset(DATASET_NAME, part_1, part_2, "pattern", "roll")
-    loader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True)
-    x, y = next(iter(loader))
-    assert x.size() == torch.Size([BATCH_SIZE, 16])
-    assert y.size() == torch.Size([BATCH_SIZE, 96, 88])
-
     data = PairDataset(DATASET_NAME, part_1, part_2, "roll", "pattern")
     loader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True)
     x, y = next(iter(loader))
     assert x.size() == torch.Size([BATCH_SIZE, 96, 88])
     assert y.size() == torch.Size([BATCH_SIZE, 16])
+
+    data = PairDataset(DATASET_NAME, part_1, part_2, "pattern", "chroma")
+    loader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True)
+    x, y = next(iter(loader))
+    assert x.size() == torch.Size([BATCH_SIZE, 16])
+    assert y.size() == torch.Size([BATCH_SIZE, 16, 12])
+
+    data = PairDataset(DATASET_NAME, part_1, part_2, "chroma", "roll")
+    loader = DataLoader(data, batch_size=BATCH_SIZE, shuffle=True)
+    x, y = next(iter(loader))
+    assert x.size() == torch.Size([BATCH_SIZE, 16, 12])
+    assert y.size() == torch.Size([BATCH_SIZE, 96, 88])

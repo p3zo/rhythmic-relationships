@@ -8,7 +8,7 @@ from rhythmic_complements import DATASETS_DIR
 from rhythmic_complements.parts import get_part_pairs
 from torch.utils.data import Dataset
 
-REPRESENTATIONS = ["roll", "hits", "pattern", "descriptors"]
+REPRESENTATIONS = ["roll", "hits", "pattern", "chroma", "descriptors"]
 
 
 class PairDataset(Dataset):
