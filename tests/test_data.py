@@ -1,7 +1,8 @@
 import pytest
 import torch
-from rhythmic_complements.data import PairDataset
 from torch.utils.data import DataLoader
+
+from rhythmic_complements.data import PairDataset
 
 dataset_name = "babyslakh_20_1bar_4res"
 batch_size = 1
@@ -10,7 +11,6 @@ part_2 = "Guitar"
 
 
 def test_dataloaders():
-
     with pytest.raises(Exception):
         PairDataset(dataset_name, part_1, part_2, "desc", "incorrect-descriptor-name")
 
