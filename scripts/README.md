@@ -1,5 +1,8 @@
 ## Scripts
 
+`bigrams.ipynb`: A notebook that walks through a simple bigram model for hits and patterns,
+following [makemore](https://github.com/karpathy/makemore).
+
 `prepare_data.py`: Create a new dataset. See instructions in [Create the dataset](../README.md#create-the-dataset)
 
 `train_0a.py`: Train a model. Update `model_config.yml` to specify a new training configuration.
@@ -20,14 +23,6 @@ randomly sampled observation from the dataset. Use `model_name` in the script to
 These scripts are from outdated experiments and are likely no longer functional.
 
 `predict.py`: Generate a bass roll given a drum roll.
-
-`rsp_pairs_train.py`: Train a conditional VAE on pairs of rhythm space points (RSPs).
-
-`rsp_train.py`: Train a VAE for a single part using a rhythm descriptor representation. Example inference is given
-in `rsp_inference.py`.
-
-`segroll_train.py`: Train a VAE for a single part using a piano roll representation. Example inference is given
-in `segroll_inference.py`.
 
 `analyze_segroll_samples.py`: Compare the descriptor distributions of many latent samples to the distributions of the
 input data
