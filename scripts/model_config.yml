@@ -1,5 +1,5 @@
 dataset:
-  dataset_name: "lmd_clean_1000_2bar_24res"
+  dataset_name: "babyslakh_20_1bar_4res"
   part_1: "Bass"
   part_2: "Drums"
   repr_1: "pattern"

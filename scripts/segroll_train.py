@@ -29,7 +29,7 @@ if __name__ == "__main__":
         "--part",
         type=str,
         default="Bass",
-        help="Name of the part to train the model for. See `prepare_data.py` for a list of part names.",
+        help="Name of the part to train the model for. See `prepare_dataset.py` for a list of part names.",
     )
     args = parser.parse_args()
 

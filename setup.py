@@ -16,7 +16,6 @@ setup(
         "pandas~=1.4.2",
         "pillow~=9.2.0",
         "pretty_midi~=0.2.9",
-        "pypianoroll~=1.0.4",
         "pyyaml~=6.0",
         "torch~=1.13.1",
         "torchvision~=0.14.1",

@@ -3,25 +3,28 @@ import os
 import numpy as np
 import pandas as pd
 import torch
-
-from rhythmic_complements import DATASETS_DIR
+from rhythmic_complements import (
+    ANNOTATIONS_FILENAME,
+    DATASETS_DIR,
+    PAIR_LOOKUPS_DIRNAME,
+    REPRESENTATIONS_DIRNAME,
+)
 from rhythmic_complements.parts import get_part_pairs
+from rhythmic_complements.representations import REPRESENTATIONS
 from torch.utils.data import Dataset
-
-REPRESENTATIONS = ["roll", "hits", "pattern", "chroma", "descriptors"]
 
 
 class PairDataset(Dataset):
     """
     Params
         annotations_filepath, str
-            Path to an output directory created by `prepare_data.py`.
+            Path to an output directory created by `prepare_dataset.py`.
 
         part_1, str
-            The part to use as the X. See the list of parts in `prepare_data.py`
+            The part to use as the X. See the list of parts in `prepare_dataset.py`
 
         part_2, str
-            The part to use as the y. See the list of parts in `prepare_data.py`
+            The part to use as the y. See the list of parts in `prepare_dataset.py`
 
         repr_1, str
             The representation to use for part 1 segments.
@@ -36,23 +39,23 @@ class PairDataset(Dataset):
         self.part_1 = part_1
         self.part_2 = part_2
 
-        assert repr_1 in REPRESENTATIONS
-        assert repr_2 in REPRESENTATIONS
+        if repr_1 not in REPRESENTATIONS or repr_2 not in REPRESENTATIONS:
+            raise ValueError(f"Representation names must be one of: {REPRESENTATIONS}")
 
         self.repr_1 = REPRESENTATIONS.index(repr_1)
         self.repr_2 = REPRESENTATIONS.index(repr_2)
 
-        df = pd.read_csv(os.path.join(dataset_dir, "rolls.csv"))
+        df = pd.read_csv(os.path.join(dataset_dir, ANNOTATIONS_FILENAME))
         df.index.name = "roll_id"
         df["filepath"] = df["file_id"].apply(
-            lambda x: os.path.join(dataset_dir, "rolls", f"{x}.npz")
+            lambda x: os.path.join(dataset_dir, REPRESENTATIONS_DIRNAME, f"{x}.npz")
         )
         df = df.drop("file_id", axis=1)
 
         pair_id = "_".join(get_part_pairs([part_1, part_2])[0])
 
         pairs_df = pd.read_csv(
-            os.path.join(dataset_dir, "pair_lookups", f"{pair_id}.csv")
+            os.path.join(dataset_dir, PAIR_LOOKUPS_DIRNAME, f"{pair_id}.csv")
         )
 
         self.p1_pairs = pairs_df.merge(
@@ -82,55 +85,3 @@ class PairDataset(Dataset):
         # TODO: Handle multiple rolls from the same part. For now we just take the first one
         reprs = npz[f"{pair['segment_id']}_{pair['part_id']}"][0]
         return reprs[repr_ix]
-
-
-class SegrollDataset(Dataset):
-    def __init__(self, filepath):
-        npz = np.load(filepath)
-        print(f"Loading {filepath}...")
-        self.segments = npz["segrolls"]
-
-    def __len__(self):
-        return len(self.segments)
-
-    def __getitem__(self, idx):
-        return torch.from_numpy(self.segments[idx]).to(torch.float32)
-
-
-class DescriptorDataset(Dataset):
-    def __init__(self, filepath):
-        df = pd.read_csv(filepath)
-        df = df.drop(["segment_id", "filepath"], axis=1)
-        df = df.dropna()
-
-        # Rescale to [0, 1]
-        rescaled = (df - df.min()) / (df.max() - df.min())
-
-        self.x = torch.from_numpy(rescaled.values).to(torch.float32)
-
-    def __len__(self):
-        return len(self.x)
-
-    def __getitem__(self, idx):
-        return self.x[idx]
-
-
-class DescriptorPairsDataset(Dataset):
-    def __init__(self, filepath, part_1, part_2):
-        df = pd.read_csv(filepath)
-        df = df.dropna()
-
-        # Rescale to [0, 1]
-        rescaled = (df - df.min()) / (df.max() - df.min())
-
-        p1 = rescaled[[c for c in rescaled.columns if part_1 in c]].values
-        p2 = rescaled[[c for c in rescaled.columns if part_2 in c]].values
-
-        self.x = torch.from_numpy(p1).to(torch.float32)
-        self.y = torch.from_numpy(p2).to(torch.float32)
-
-    def __len__(self):
-        return len(self.x)
-
-    def __getitem__(self, idx):
-        return self.x[idx], self.y[idx]

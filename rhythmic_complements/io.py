@@ -2,41 +2,84 @@ import warnings
 
 import numpy as np
 import pretty_midi as pm
-import pypianoroll
 from PIL import Image
+from rhythmic_complements import logger
 
 # TODO: fix catch_warnings block in load_midi_file and remove this
 warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
-def load_midi_file(filepath, resolution=24, verbose=True):
-    """Load a midi file as a pretty_midi object"""
-    # Warnings can be verbose when midi has no metadata e.g. tempo, key, time signature
+def load_midi_file(filepath, resolution=24):
+    """Load a midi file as a PrettyMidi object"""
+    # Warnings occur when midi has no metadata e.g. tempo, key, time signature
     with warnings.catch_warnings():
         # TODO: why doesn't filterwarnings work inside of catch_warnings?
         warnings.filterwarnings("ignore", category=RuntimeWarning)
         try:
             midi = pm.PrettyMIDI(filepath, resolution=resolution)
         except Exception as e:
-            if verbose:
-                print(f"Failed loading file {filepath}: {e}")
+            logger.debug(f"Failed loading file {filepath}: {e}")
             return
 
     return midi
 
 
-def write_midi_from_roll(roll, outpath, resolution=24, binary=False):
-    tracks = []
-    if binary:
-        tracks.append(pypianoroll.BinaryTrack(pianoroll=roll))
-    else:
-        tracks.append(pypianoroll.StandardTrack(pianoroll=roll))
-    pp_roll = pypianoroll.Multitrack(tracks=tracks, resolution=resolution)
-    pp_roll.write(outpath)
-    print(f"Saved {outpath}")
+def piano_roll_to_pretty_midi(roll, fs=8, program=0):
+    """Convert a piano roll to a PrettyMidi object with a single instrument.
+
+    From https://github.com/craffel/pretty-midi/blob/main/examples/reverse_pianoroll.py
+
+    Parameters
+        roll : np.ndarray, shape=(voices ,frames), dtype=int
+            Piano roll of one instrument
+        fs : int
+            Sampling frequency of the columns, i.e. each column is spaced apart by 1./fs seconds.
+        program : int
+            The program number of the instrument.
+    """
+    notes, frames = roll.shape
+    pmid = pm.PrettyMIDI()
+    instrument = pm.Instrument(program=program)
+
+    # Pad 1 column of zeros to accommodate the starting and ending events
+    roll = np.pad(roll, [(0, 0), (1, 1)], "constant")
+
+    # use changes in velocities to find note on / note off events
+    velocity_changes = np.nonzero(np.diff(roll).T)
+
+    # keep track on velocities and note on times
+    prev_velocities = np.zeros(notes, dtype=int)
+    note_on_time = np.zeros(notes)
+
+    for time, note in zip(*velocity_changes):
+        # use time + 1 because of padding above
+        velocity = roll[note, time + 1]
+        time = time / fs
+        if velocity > 0:
+            if prev_velocities[note] == 0:
+                note_on_time[note] = time
+                prev_velocities[note] = velocity
+        else:
+            pm_note = pm.Note(
+                velocity=prev_velocities[note],
+                pitch=note,
+                start=note_on_time[note],
+                end=time,
+            )
+            instrument.notes.append(pm_note)
+            prev_velocities[note] = 0
+    pmid.instruments.append(instrument)
+
+    return pmid
 
 
-def write_image_from_roll(roll, outpath, im_size=None, binary=False, verbose=True):
+def write_midi_from_roll(roll, outpath, resolution=4):
+    pmid = piano_roll_to_pretty_midi(roll.T, fs=resolution * 2)
+    pmid.write(outpath)
+    logger.debug(f"Saved {outpath}")
+
+
+def write_image_from_roll(roll, outpath, im_size=None, binary=False):
     """Create a greyscale image of a piano roll.
 
     Parameters
@@ -72,8 +115,7 @@ def write_image_from_roll(roll, outpath, im_size=None, binary=False, verbose=Tru
     im = Image.fromarray(arr.T.astype(np.uint8), mode="L")
 
     im.save(outpath)
-    if verbose:
-        print(f"  Saved {outpath}")
+    logger.debug(f"  Saved {outpath}")
 
 
 def write_midi_from_hits(hits, outpath, pitch=36):
@@ -93,7 +135,7 @@ def write_midi_from_hits(hits, outpath, pitch=36):
     track = pm.PrettyMIDI()
     track.instruments.append(instrument)
     track.write(outpath)
-    print(f"Saved {outpath}")
+    logger.debug(f"Saved {outpath}")
 
 
 def write_image_from_hits(hits, outpath):
@@ -105,7 +147,7 @@ def write_image_from_hits(hits, outpath):
     im = Image.fromarray(arr.astype(np.uint8), mode="L")
 
     im.save(outpath)
-    print(f"Saved {outpath}")
+    logger.debug(f"Saved {outpath}")
 
 
 def write_image_from_pattern(pattern, outpath):
@@ -119,7 +161,7 @@ def write_image_from_pattern(pattern, outpath):
     im = Image.fromarray(arr.astype(np.uint8), mode="L")
 
     im.save(outpath)
-    print(f"Saved {outpath}")
+    logger.debug(f"Saved {outpath}")
 
 
 def tick_to_time(tick, resolution, tempo=100):
@@ -143,11 +185,10 @@ def write_midi_from_pattern(pattern, outpath, resolution=24, pitch=36):
     for onset, offset in zip(onsets, offsets):
         start = tick_to_time(onset, resolution=resolution)
         end = tick_to_time(offset, resolution=resolution)
-        print(start, end)
         note = pm.Note(velocity=127, pitch=pitch, start=start, end=end)
         instrument.notes.append(note)
 
     track = pm.PrettyMIDI()
     track.instruments.append(instrument)
     track.write(outpath)
-    print(f"Saved {outpath}")
+    logger.debug(f"Saved {outpath}")
