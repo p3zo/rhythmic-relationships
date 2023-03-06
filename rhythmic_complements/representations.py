@@ -52,18 +52,6 @@ def get_9voice_drum_roll(roll):
     return clip
 
 
-def get_ticks_from_time(times, beats, subdivisions, resolution):
-    # TODO: are these really not quantized? Understand what these ratios do
-    beat_ixs = np.searchsorted(beats, times) - 1
-    remained = times - beats[beat_ixs]
-    ratios = remained / (beats[beat_ixs + 1] - beats[beat_ixs])
-    ticks = np.round((beat_ixs + ratios) * resolution).astype(int)
-
-    quantized = [np.argmin(np.abs(t - subdivisions)) for t in times]
-
-    return ticks, quantized
-
-
 def get_multitrack_roll(tracks, drums=False):
     """Aggregate the piano rolls for all tracks into one.
 
@@ -92,23 +80,11 @@ def get_multitrack_roll(tracks, drums=False):
     return multitrack_roll.T
 
 
-def remap_velocities(arr):
-    """Convert MIDI velocities to real numbers in [0, 1]"""
-    return np.array(
-        list(
-            map(
-                lambda x: np.interp(x, [0, 127], [0, 1]),
-                arr,
-            )
-        ),
-        dtype=np.float32,
-    )
-
-
-def parse_representations(pmid, resolution, quantize=True, binarize=True):
+def parse_representations(pmid, resolution, binarize=True):
     """Parse all representations from a PrettyMIDI object.
 
     Adapted from https://github.com/salu133445/pypianoroll/blob/18a68d4a7e39673a739396d409a2ff99af06d643/pypianoroll/inputs.py#L103-L338
+    and https://github.com/ruiguo-bio/midi-miner/blob/794dac3bdf95cc17ffb6b67ff254d9c56cd479f5/tension_calculation.py#L687-L718
     """
 
     beats = pmid.get_beats()
@@ -127,63 +103,53 @@ def parse_representations(pmid, resolution, quantize=True, binarize=True):
     for bar_start in pmid.get_downbeats():
         bar_start_ticks.append(np.argmin(np.abs(bar_start - subdivisions)))
 
-    n_time_steps = resolution * len(beats)
+    n_ticks = len(subdivisions)
 
     tracks = []
     for instrument in pmid.instruments:
         if len(instrument.notes) == 0:
             continue
 
-        roll = np.zeros((n_time_steps, 128), np.uint8)
-        chroma = np.zeros((n_time_steps, 12), np.uint8)
-        pattern = np.zeros(n_time_steps, np.uint8)
-        hits = np.zeros(n_time_steps, np.uint8)
+        roll = np.zeros((n_ticks, 128), np.uint8)
+        chroma = np.zeros((n_ticks, 12), np.uint8)
+        pattern = np.zeros(n_ticks, np.uint8)
+        hits = np.zeros(n_ticks, np.uint8)
 
-        onset_times = np.array([note.start for note in instrument.notes])
-
-        onsets, onsets_quantized = get_ticks_from_time(
-            onset_times, beats_plus_one, subdivisions, resolution
-        )
-
+        onset_times = [note.start for note in instrument.notes]
+        onsets = [np.argmin(np.abs(t - subdivisions)) for t in onset_times]
         velocities = [note.velocity for note in instrument.notes]
         pitches = [note.pitch for note in instrument.notes]
 
         hits[onsets] = velocities
 
         if instrument.is_drum:
+            # Drum representations don't need to preserve offsets
             roll[onsets, pitches] = velocities
             chroma[onsets, [p % 12 for p in pitches]] = 1
             pattern[onsets] = 1
         else:
-            offset_times = np.array([note.end for note in instrument.notes])
-            offsets, offsets_quantized = get_ticks_from_time(
-                offset_times, beats_plus_one, subdivisions, resolution
-            )
+            offset_times = [note.end for note in instrument.notes]
+            offsets = [np.argmin(np.abs(t - subdivisions)) for t in offset_times]
 
-            note_iter = (
-                zip(onsets_quantized, offsets_quantized)
-                if quantize
-                else zip(onsets, offsets)
-            )
-
-            for ix, (start, end) in enumerate(note_iter):
-                # If start and end were quantized to the same tick, move end back by 1 tick
-                if quantize and end - start <= 0:
-                    end += 1
-
+            for ix, (start, end) in enumerate(zip(onsets, offsets)):
                 pitch = pitches[ix]
                 velocity = velocities[ix]
 
                 if velocity <= 0:
                     continue
+
                 if velocity > 127:
                     velocity = 127
 
-                if 0 < start < n_time_steps:
+                # If start and end were quantized to the same tick, move end back by 1 tick
+                if end - start <= 0:
+                    end += 1
+
+                if 0 < start < n_ticks:
                     if roll[start - 1, pitch]:
                         roll[start - 1, pitch] = 0
 
-                if end < n_time_steps - 1:
+                if end < n_ticks - 1:
                     if roll[end, pitch]:
                         end -= 1
 
@@ -206,13 +172,17 @@ def parse_representations(pmid, resolution, quantize=True, binarize=True):
         if binarize:
             roll = (roll > 0).astype(np.uint8)
 
+        # Convert MIDI velocities to real numbers in [0, 1]
+        roll = roll / 127.0
+        hits = hits / 127.0
+
         tracks.append(
             {
                 "name": instrument.name,
                 "program": instrument.program,
                 "is_drum": instrument.is_drum,
-                "roll": remap_velocities(roll),
-                "hits": remap_velocities(hits),
+                "roll": roll,
+                "hits": hits,
                 "pattern": pattern,
                 "chroma": chroma,
                 # "drum_roll": get_9voice_drum_roll(roll),

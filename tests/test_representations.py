@@ -65,7 +65,7 @@ def test_parse_respresentations():
     resolution = 4
 
     pmid = load_midi_file(BOSKA_3_PIANO_FILEPATH)
-    tracks, _ = parse_representations(pmid, resolution=resolution, quantize=True)
+    tracks, _ = parse_representations(pmid, resolution=resolution)
     track = tracks[0]
     boska_3_onsets = [1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1]
     assert np.array_equal(
@@ -101,7 +101,7 @@ def test_parse_respresentations():
     )
 
     pmid = load_midi_file(BOSKA_3_DRUMS_FILEPATH)
-    tracks, _ = parse_representations(pmid, resolution=resolution, quantize=True)
+    tracks, _ = parse_representations(pmid, resolution=resolution)
     track = tracks[0]
     binary_hits = (track["hits"] > 0).astype(int)
     assert np.array_equal(binary_hits, boska_3_onsets)
@@ -132,7 +132,7 @@ def test_parse_respresentations():
     )
 
     pmid = load_midi_file(BOSKA_8_PIANO_FILEPATH)
-    tracks, _ = parse_representations(pmid, resolution=resolution, quantize=True)
+    tracks, _ = parse_representations(pmid, resolution=resolution)
     track = tracks[0]
     boska_8_onsets = [1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1]
     assert np.array_equal(
@@ -168,7 +168,7 @@ def test_parse_respresentations():
     )
 
     pmid = load_midi_file(BOSKA_8_DRUMS_FILEPATH)
-    tracks, _ = parse_representations(pmid, resolution=resolution, quantize=True)
+    tracks, _ = parse_representations(pmid, resolution=resolution)
     track = tracks[0]
     binary_hits = (track["hits"] > 0).astype(int)
     assert np.array_equal(binary_hits, boska_8_onsets)
@@ -199,7 +199,7 @@ def test_parse_respresentations():
     )
 
     pmid = load_midi_file(BOSKA_9_PIANO_FILEPATH)
-    tracks, _ = parse_representations(pmid, resolution=resolution, quantize=True)
+    tracks, _ = parse_representations(pmid, resolution=resolution)
     track = tracks[0]
     boska_9_onsets = [1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0]
     assert np.array_equal(
@@ -235,7 +235,7 @@ def test_parse_respresentations():
     )
 
     pmid = load_midi_file(BOSKA_9_DRUMS_FILEPATH)
-    tracks, _ = parse_representations(pmid, resolution=resolution, quantize=True)
+    tracks, _ = parse_representations(pmid, resolution=resolution)
     track = tracks[0]
     binary_hits = (track["hits"] > 0).astype(int)
     assert np.array_equal(binary_hits, boska_9_onsets)
