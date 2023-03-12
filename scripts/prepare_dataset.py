@@ -1,6 +1,7 @@
 import argparse
 import glob
 import itertools
+import logging
 import os
 import sys
 from collections import defaultdict
@@ -14,7 +15,9 @@ from rhythmic_complements import (
     ANNOTATIONS_FILENAME,
     DATASETS_DIR,
     PAIR_LOOKUPS_DIRNAME,
+    PLOTS_DIRNAME,
     REPRESENTATIONS_DIRNAME,
+    logger,
 )
 from rhythmic_complements.io import load_midi_file
 from rhythmic_complements.parts import PARTS, get_part_pairs
@@ -91,7 +94,8 @@ if __name__ == "__main__":
     subset = args.subset
     min_seg_pitches = args.min_seg_pitches
     min_seg_beats = args.min_seg_beats
-    # TODO: if args.verbose, set log level to debug
+    if args.verbose:
+        logger.setLevel(logging.DEBUG)
 
     filepaths = [path]
     if os.path.isdir(path):
@@ -101,10 +105,10 @@ if __name__ == "__main__":
 
     filepaths = filepaths[:subset]
     if len(filepaths) == 0:
-        print(f"No MIDI files found in {path}")
+        logger.info(f"No MIDI files found in {path}")
         sys.exit(0)
 
-    print(f"Processing {len(filepaths)} midi file(s)")
+    logger.info(f"Processing {len(filepaths)} midi file(s)")
 
     dataset_name = f"{prefix}_{len(filepaths)}_{seg_size}bar_{resolution}res"
     output_dir = os.path.join(DATASETS_DIR, dataset_name)
@@ -138,36 +142,33 @@ if __name__ == "__main__":
             failed_paths.append(filepath)
             continue
 
-        # Create a unique ID for each file that isn't the input path
+        # Save segment metadata
         file_id = os.path.splitext(filepath)[0].split(path)[1]
-
-        # Update the top-level annotations
         annotations_list.append([file_id, seg_list])
 
-        # Write the seg_rolls by part
+        # Save segment-part representations
         outpath = os.path.join(data_dir, f"{file_id}.npz")
         outdir = os.path.dirname(outpath)
         if not os.path.isdir(outdir):
             os.makedirs(outdir)
         np.savez_compressed(outpath, **part_seg_rolls)
 
-    # Save the top-level segment map
-    adf_files = []
-    for i in annotations_list:
-        adf_files.extend([i[0]] * len(i[1]))
+    # Save the segment map
+    annotations_path = os.path.join(output_dir, ANNOTATIONS_FILENAME)
     annotations_df = pd.DataFrame(
         np.concatenate([i[1] for i in annotations_list]),
         columns=["segment_id", "part_id"],
     )
-    annotations_df["file_id"] = adf_files
     annotations_df["segment_id"] = annotations_df["segment_id"].astype(int)
-
-    annotations_path = os.path.join(output_dir, ANNOTATIONS_FILENAME)
+    adf_files = []
+    for i in annotations_list:
+        adf_files.extend([i[0]] * len(i[1]))
+    annotations_df["file_id"] = adf_files
     annotations_df.to_csv(annotations_path, index=False)
-    print(f"Saved {annotations_path}")
+    logger.info(f"Saved {annotations_path}")
 
     # Save lookup tables for segment pairs
-    print("Creating segment pair lookups...")
+    logger.info("Creating segment pair lookups...")
     pair_lookups = defaultdict(list)
     for group_ix, group in tqdm(annotations_df.groupby(["file_id", "segment_id"])):
         for p in get_part_pairs(group.part_id.unique()):
@@ -184,6 +185,11 @@ if __name__ == "__main__":
         pair_df_path = os.path.join(pair_lookups_dir, f"{pair_id}.csv")
         pair_df.to_csv(pair_df_path, index=False)
 
+    # Initialize plots dir
+    plots_dir = os.path.join(output_dir, PLOTS_DIRNAME)
+    if not os.path.isdir(plots_dir):
+        os.makedirs(plots_dir)
+
     # Plot the percent of segments by part
     part_counts = annotations_df.part_id.value_counts()
     n_segments = part_counts.sum()
@@ -194,9 +200,9 @@ if __name__ == "__main__":
     plt.title(f"Distribution of parts in {dataset_name}\n{n_segments} segments total")
     plt.ylabel("Fraction of segments")
     plt.tight_layout()
-    dist_plot_path = os.path.join(output_dir, "segments_by_part.png")
+    dist_plot_path = os.path.join(plots_dir, "segments_by_part.png")
     plt.savefig(dist_plot_path)
-    print(f"Saved {dist_plot_path}")
+    logger.info(f"Saved {dist_plot_path}")
 
     # Plot the percent of segments by part pair
     # TODO: reduce xtick font size a bit and make the figsize a bit wider
@@ -209,13 +215,13 @@ if __name__ == "__main__":
     plt.title(f"Distribution of part pairs in {dataset_name}\n{n_pairs} pairs total")
     plt.ylabel("Fraction of segments")
     plt.tight_layout()
-    pair_dist_plot_path = os.path.join(output_dir, "segments_by_part_pair.png")
+    pair_dist_plot_path = os.path.join(plots_dir, "segments_by_part_pair.png")
     plt.savefig(pair_dist_plot_path)
-    print(f"Saved {pair_dist_plot_path}")
+    logger.info(f"Saved {pair_dist_plot_path}")
 
     n_failed = len(failed_paths)
     if n_failed > 0:
         failed_paths_str = "\n".join(failed_paths)
-        print(
+        logger.info(
             f"Successfully processed {len(filepaths) - n_failed} files; Failed to process {n_failed}"
         )

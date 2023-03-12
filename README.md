@@ -17,11 +17,12 @@ To generate a bass pattern given a drum roll, use `scripts/train_0a.py`
 
 To train a conditional VAE for a pair of Bass patterns and Drum rolls, use `scripts/train_0a.py`
 
-## Dataset
+## Data
 
-### Load a dataset
+### Representations
 
-A Torch `Dataset` class allows for flexibility between various representations:
+Rhythms can be encoded into various representations, each of which gives a different view into rhythmic relationships.
+This repository implements the following:
 
 - `roll`: a [piano roll](https://en.wikipedia.org/wiki/Piano_roll#In_digital_audio_workstations) with MIDI velocities
   converted to real numbers in [0, 1]
@@ -33,16 +34,25 @@ A Torch `Dataset` class allows for flexibility between various representations:
 - `descriptors`: a vector of rhythmic descriptors computed
   using [rhythmtoolbox](https://github.com/danielgomezmarin/rhythmtoolbox)
 
-A dataset of segment pairs can be loaded via `PairDataset`. For example, to load a dataset of `Bass` patterns paired
+### Load a dataset
+
+A dataset of segment pairs can be loaded via the `PairDataset` class, which is a Torch `Dataset` that takes parameters
+to allow for flexibility between parts and representations. For example, to load a dataset of `Bass` patterns paired
 with `Drums` hits:
 
 ```python
 from rhythmic_complements.data import PairDataset
 from torch.utils.data import DataLoader
 
-dataset_name = 'babyslakh20_1bar_24res'
-dataset = PairDataset(dataset_name, 'Bass', 'Drums', "pattern", "hits")
-loader = DataLoader(dataset, batch_size=32, shuffle=True)
+dataset_config = {
+    "dataset_name": "babyslakh_20_1bar_4res",
+    "part_1": "Bass",
+    "part_2": "Drums",
+    "repr_1": "pattern",
+    "repr_2": "hits",
+}
+dataset = PairDataset(**dataset_config)
+loader = DataLoader(dataset, batch_size=1, shuffle=True)
 
 x, y = next(iter(loader))
 print(f"x batch shape: {x.size()}")
@@ -63,22 +73,23 @@ the number of segments, `N` is the number of time steps in a segment, and `V` is
 the `--binarize` option is used, the array values are either `0` or `1` representing onsets, else they are integer MIDI
 velocities in the range `[0-127]`. A map of all the segments is saved in the top-level directory as `segments.csv`.
 Additionally, a set of lookup tables for all segment pairs are stored in the `pair_lookups`directory, one for each pair
-of parts. Finally, two plots displaying the distribution of segments by both part and part pair are saved to the
-top-level directory. The final dataset directory structure looks like this, assuming 3 parts and a flat input directory
-of MIDI files:
+of parts. Finally, two plots displaying the distribution of segments by both part and part pair are saved to the `plots`
+directory. The final dataset directory structure looks like this, assuming 3 parts and a flat input directory of MIDI
+files:
 
 ```
 ├── pair_lookups
-│   ├── Part1_Part2.csv
-│   ├── Part1_Part3.csv
-│   ├── Part2_Part3.csv
+│   ├── part1_part2.csv
+│   ├── part1_part3.csv
+│   ├── part2_part3.csv
 ├── representations
 │   ├── track1.npz
 │   ├── track2.npz
 │   └── track3.npz
-├── segments.csv
-├── segments_by_part.png
-└── segments_by_part_pair.png
+├── plots
+│   ├── segments_by_part.png
+│   └── segments_by_part_pair.png
+└── segments.csv
 ```
 
 The piano roll images created with the `--create_images` flag can be listened to using the notebook
