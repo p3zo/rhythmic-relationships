@@ -4,6 +4,7 @@ import numpy as np
 import pretty_midi as pm
 from PIL import Image
 from rhythmic_complements import logger
+from rhythmic_complements.parts import get_program_from_part
 
 # TODO: fix catch_warnings block in load_midi_file and remove this
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -20,26 +21,37 @@ def load_midi_file(filepath, resolution=24):
         except Exception as e:
             logger.debug(f"Failed loading file {filepath}: {e}")
             return
-
     return midi
 
 
-def piano_roll_to_pretty_midi(roll, fs=8, program=0):
+def get_pretty_midi_from_roll(roll, resolution, binary=False, program=0, is_drum=False):
     """Convert a piano roll to a PrettyMidi object with a single instrument.
 
-    From https://github.com/craffel/pretty-midi/blob/main/examples/reverse_pianoroll.py
+    Adapted from https://github.com/craffel/pretty-midi/blob/main/examples/reverse_pianoroll.py
 
     Parameters
-        roll : np.ndarray, shape=(voices ,frames), dtype=int
+        roll : np.ndarray, shape=(voices, frames), dtype=int
             Piano roll of one instrument
-        fs : int
-            Sampling frequency of the columns, i.e. each column is spaced apart by 1./fs seconds.
+        resolution : int
+            The ticks per beat resolution of the piano roll
         program : int
             The program number of the instrument.
+        is_drum : bool
+            Indicates if the instrument is a drum or not
+        binary : bool
+            Indicates if the piano roll has been binarized or not
     """
+    # TODO: remove this transpose once the rest of the lib is refactored to use (voices, frames) rolls
+    roll = roll.T
+
+    fs = resolution * 2
+
+    if binary:
+        roll[roll.nonzero()] = 100
+
     notes, frames = roll.shape
     pmid = pm.PrettyMIDI()
-    instrument = pm.Instrument(program=program)
+    instrument = pm.Instrument(program=program, is_drum=is_drum)
 
     # Pad 1 column of zeros to accommodate the starting and ending events
     roll = np.pad(roll, [(0, 0), (1, 1)], "constant")
@@ -73,10 +85,58 @@ def piano_roll_to_pretty_midi(roll, fs=8, program=0):
     return pmid
 
 
-def write_midi_from_roll(roll, outpath, resolution=4):
-    pmid = piano_roll_to_pretty_midi(roll.T, fs=resolution * 2)
+def get_pretty_midi_from_roll_list(roll_list, resolution=4, binary=False, parts=[]):
+    """Combines a list of piano rolls into a single PrettyMidi object.
+
+    Param: parts, list[str]
+        A list of parts corresponding to the rolls, in the same order.
+    """
+    pmid = pm.PrettyMIDI()
+    for ix, roll in enumerate(roll_list):
+        program = 0
+        is_drum = False
+
+        if parts:
+            program = get_program_from_part(parts[ix])
+            if parts[ix] == "Drums":
+                is_drum = True
+
+        roll_pm = get_pretty_midi_from_roll(
+            roll,
+            resolution=resolution,
+            binary=binary,
+            program=program,
+            is_drum=is_drum,
+        )
+
+        pmid.instruments.append(roll_pm.instruments[0])
+
+    return pmid
+
+
+def write_midi_from_roll(roll, outpath, resolution=4, binary=False, part=None):
+    """Writes a single piano roll to a MIDI file"""
+    program = 0
+    is_drum = False
+    if part:
+        program = get_program_from_part(part)
+        if part == "Drums":
+            is_drum = True
+
+    pmid = get_pretty_midi_from_roll(
+        roll, resolution=resolution, binary=binary, program=program, is_drum=is_drum
+    )
     pmid.write(outpath)
     logger.debug(f"Saved {outpath}")
+
+
+def write_midi_from_roll_list(roll_list, outpath, resolution=4, binary=False, parts=[]):
+    """Combines a list of piano rolls into a single multi-track MIDI file"""
+    pmid = get_pretty_midi_from_roll_list(
+        roll_list, resolution=resolution, binary=binary, parts=parts
+    )
+    pmid.write(outpath)
+    logger.info(f"Saved {outpath}")
 
 
 def write_image_from_roll(roll, outpath, im_size=None, binary=False):

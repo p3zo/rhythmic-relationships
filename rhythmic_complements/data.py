@@ -14,6 +14,17 @@ from rhythmic_complements.representations import REPRESENTATIONS
 from torch.utils.data import Dataset
 
 
+def load_dataset_annotations(dataset_name):
+    """Load the top-level annotations file for a given dataset"""
+    dataset_dir = os.path.join(DATASETS_DIR, dataset_name)
+    df = pd.read_csv(os.path.join(dataset_dir, ANNOTATIONS_FILENAME))
+    df.index.name = "roll_id"
+    df["filepath"] = df["file_id"].apply(
+        lambda x: os.path.join(dataset_dir, REPRESENTATIONS_DIRNAME, f"{x}.npz")
+    )
+    return df.drop("file_id", axis=1)
+
+
 class PairDataset(Dataset):
     """
     Params
@@ -34,8 +45,6 @@ class PairDataset(Dataset):
     """
 
     def __init__(self, dataset_name, part_1, part_2, repr_1, repr_2):
-        dataset_dir = os.path.join(DATASETS_DIR, dataset_name)
-
         self.part_1 = part_1
         self.part_2 = part_2
 
@@ -45,18 +54,13 @@ class PairDataset(Dataset):
         self.repr_1 = REPRESENTATIONS.index(repr_1)
         self.repr_2 = REPRESENTATIONS.index(repr_2)
 
-        df = pd.read_csv(os.path.join(dataset_dir, ANNOTATIONS_FILENAME))
-        df.index.name = "roll_id"
-        df["filepath"] = df["file_id"].apply(
-            lambda x: os.path.join(dataset_dir, REPRESENTATIONS_DIRNAME, f"{x}.npz")
-        )
-        df = df.drop("file_id", axis=1)
+        df = load_dataset_annotations(dataset_name)
 
         pair_id = "_".join(get_part_pairs([part_1, part_2])[0])
-
-        pairs_df = pd.read_csv(
-            os.path.join(dataset_dir, PAIR_LOOKUPS_DIRNAME, f"{pair_id}.csv")
+        pair_lookup_path = os.path.join(
+            DATASETS_DIR, dataset_name, PAIR_LOOKUPS_DIRNAME, f"{pair_id}.csv"
         )
+        pairs_df = pd.read_csv(pair_lookup_path)
 
         self.p1_pairs = pairs_df.merge(
             df, how="left", left_on=part_1, right_on="roll_id"

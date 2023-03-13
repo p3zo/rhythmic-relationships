@@ -26,11 +26,19 @@ PARTS = ["Drums"] + list(PROGRAM_CATEGORIES.values())
 
 
 def get_part_from_program(program):
+    """Returns the part name associated with a given program number"""
     if program < 0 or program > 127:
         raise ValueError(
             f"Program number {program} is not in the valid range of [0, 127]"
         )
     return PROGRAM_CATEGORIES[[p for p in PROGRAM_CATEGORIES if p <= program + 1][-1]]
+
+
+def get_program_from_part(part):
+    """Returns the program number associated with a given part name"""
+    if part == "Drums":
+        return 0
+    return list(PROGRAM_CATEGORIES)[list(PROGRAM_CATEGORIES.values()).index(part)]
 
 
 def get_part_pairs(parts):
