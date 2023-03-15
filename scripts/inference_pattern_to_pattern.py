@@ -2,7 +2,7 @@ import os
 
 import numpy as np
 import torch
-from rhythmic_complements.io import (
+from rhythmic_relationships.io import (
     write_image_from_pattern,
     write_midi_from_pattern,
 )

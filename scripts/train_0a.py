@@ -4,9 +4,9 @@ import random
 import yaml
 
 import torch
-from rhythmic_complements.data import PairDataset
-from rhythmic_complements.model import VariationalAutoEncoder
-from rhythmic_complements.train import train
+from rhythmic_relationships.data import PairDataset
+from rhythmic_relationships.model import VariationalAutoEncoder
+from rhythmic_relationships.train import train
 from torch.utils.data import DataLoader
 
 DEVICE = torch.device("mps" if torch.backends.mps.is_built() else "cpu")

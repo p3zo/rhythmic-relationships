@@ -1,10 +1,10 @@
 from setuptools import find_packages, setup
 
 setup(
-    name="rhythmic-complements",
+    name="rhythmic-relationships",
     author="p3zo",
     version="0.1.0",
-    url="https://github.com/p3zo/rhythmic-complements",
+    url="https://github.com/p3zo/rhythmic-relationships",
     packages=find_packages(
         exclude=[
             "tests*",

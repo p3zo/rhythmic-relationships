@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-from rhythmic_complements.model import VariationalAutoEncoder
+from rhythmic_relationships.model import VariationalAutoEncoder
 from rhythmtoolbox import pianoroll2descriptors
 from segroll_train import H_DIM, Z_DIM
 

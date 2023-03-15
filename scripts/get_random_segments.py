@@ -1,10 +1,10 @@
 """Select segments with at least n parts from a dataset at random."""
 import os
 import numpy as np
-from rhythmic_complements.data import load_dataset_annotations
-from rhythmic_complements.io import write_midi_from_roll_list
-from rhythmic_complements.parts import PARTS
-from rhythmic_complements.representations import REPRESENTATIONS
+from rhythmic_relationships.data import load_dataset_annotations
+from rhythmic_relationships.io import write_midi_from_roll_list
+from rhythmic_relationships.parts import PARTS
+from rhythmic_relationships.representations import REPRESENTATIONS
 
 dataset_name = "lmdc_1000_1bar_4res"
 representation = "roll"

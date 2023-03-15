@@ -11,7 +11,7 @@ import numpy as np
 import pandas as pd
 from tqdm import tqdm
 
-from rhythmic_complements import (
+from rhythmic_relationships import (
     ANNOTATIONS_FILENAME,
     DATASETS_DIR,
     PAIR_LOOKUPS_DIRNAME,
@@ -19,9 +19,9 @@ from rhythmic_complements import (
     REPRESENTATIONS_DIRNAME,
     logger,
 )
-from rhythmic_complements.io import load_midi_file
-from rhythmic_complements.parts import PARTS, get_part_pairs
-from rhythmic_complements.representations import slice_midi
+from rhythmic_relationships.io import load_midi_file
+from rhythmic_relationships.parts import PARTS, get_part_pairs
+from rhythmic_relationships.representations import slice_midi
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

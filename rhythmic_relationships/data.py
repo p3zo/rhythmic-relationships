@@ -3,14 +3,14 @@ import os
 import numpy as np
 import pandas as pd
 import torch
-from rhythmic_complements import (
+from rhythmic_relationships import (
     ANNOTATIONS_FILENAME,
     DATASETS_DIR,
     PAIR_LOOKUPS_DIRNAME,
     REPRESENTATIONS_DIRNAME,
 )
-from rhythmic_complements.parts import get_part_pairs
-from rhythmic_complements.representations import REPRESENTATIONS
+from rhythmic_relationships.parts import get_part_pairs
+from rhythmic_relationships.representations import REPRESENTATIONS
 from torch.utils.data import Dataset
 
 

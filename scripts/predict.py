@@ -3,9 +3,9 @@ import os
 import numpy as np
 import pandas as pd
 import torch
-from rhythmic_complements.data import DescriptorDataset, SegrollDataset
-from rhythmic_complements.io import write_image_from_roll, write_midi_from_roll
-from rhythmic_complements.model import VariationalAutoEncoder
+from rhythmic_relationships.data import DescriptorDataset, SegrollDataset
+from rhythmic_relationships.io import write_image_from_roll, write_midi_from_roll
+from rhythmic_relationships.model import VariationalAutoEncoder
 from rhythmtoolbox import pianoroll2descriptors
 from torch.utils.data import DataLoader
 

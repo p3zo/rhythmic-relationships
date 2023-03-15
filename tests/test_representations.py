@@ -1,6 +1,6 @@
 import numpy as np
-from rhythmic_complements.io import load_midi_file
-from rhythmic_complements.representations import (
+from rhythmic_relationships.io import load_midi_file
+from rhythmic_relationships.representations import (
     parse_representations,
     remap_velocities,
     slice_midi,

@@ -6,7 +6,7 @@
 - Install this repo and [rhythmtoolbox](https://github.com/danielgomezmarin/rhythmtoolbox) from source:
 
 ```
-pip install git+https://github.com/p3zo/rhythmic-complements git+https://github.com/danielgomezmarin/rhythmtoolbox
+pip install git+https://github.com/p3zo/rhythmic-relationships git+https://github.com/danielgomezmarin/rhythmtoolbox
 ```
 
 ## Inference
@@ -41,7 +41,7 @@ to allow for flexibility between parts and representations. For example, to load
 with `Drums` hits:
 
 ```python
-from rhythmic_complements.data import PairDataset
+from rhythmic_relationships.data import PairDataset
 from torch.utils.data import DataLoader
 
 dataset_config = {

@@ -1,6 +1,5 @@
 import pytest
-
-from rhythmic_complements.parts import get_part_from_program, get_part_pairs
+from rhythmic_relationships.parts import get_part_from_program, get_part_pairs
 
 
 def test_get_part_from_program():

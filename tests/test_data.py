@@ -1,8 +1,7 @@
 import pytest
 import torch
+from rhythmic_relationships.data import PairDataset
 from torch.utils.data import DataLoader
-
-from rhythmic_complements.data import PairDataset
 
 dataset_name = "babyslakh_20_1bar_4res"
 batch_size = 1

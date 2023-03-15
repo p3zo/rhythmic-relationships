@@ -3,8 +3,8 @@ import warnings
 import numpy as np
 import pretty_midi as pm
 from PIL import Image
-from rhythmic_complements import logger
-from rhythmic_complements.parts import get_program_from_part
+from rhythmic_relationships import logger
+from rhythmic_relationships.parts import get_program_from_part
 
 # TODO: fix catch_warnings block in load_midi_file and remove this
 warnings.filterwarnings("ignore", category=RuntimeWarning)

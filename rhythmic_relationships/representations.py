@@ -1,8 +1,7 @@
 from collections import defaultdict
 
 import numpy as np
-
-from rhythmic_complements.parts import get_part_from_program
+from rhythmic_relationships.parts import get_part_from_program
 from rhythmtoolbox import pianoroll2descriptors
 
 REPRESENTATIONS = ["roll", "chroma", "pattern", "hits", "descriptors"]
@@ -291,7 +290,7 @@ def slice_midi(
             )
 
             # Join all representations in a single object array
-            # IMPORTANT: these should be in the same order as `rhythmic_complements.representations.REPRESENTATIONS`
+            # IMPORTANT: these should be in the same order as `representations.REPRESENTATIONS`
             seg_part_reprs[f"{seg_ix}_{part}"].append(
                 np.array(
                     [seg_roll, seg_chroma, seg_pattern, seg_hits, seg_descriptors],
