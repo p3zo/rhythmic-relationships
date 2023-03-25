@@ -99,7 +99,7 @@ if __name__ == "__main__":
             xdf["polysync"] = xdf["polysync"].fillna(0).astype(int)
             ydf["polysync"] = ydf["polysync"].fillna(0).astype(int)
 
-        # Each row is a p1_p2 pair with all desciptors for both parts
+        # Each row is a p1_p2 pair with all descriptors for both parts
         pair_df = xdf.join(ydf, lsuffix=p1, rsuffix=p2)
 
         xdf["part"] = p1

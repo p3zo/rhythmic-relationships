@@ -1,8 +1,5 @@
 ## Scripts
 
-`bigrams.ipynb`: A notebook that walks through a simple bigram model for hits and patterns,
-following [makemore](https://github.com/karpathy/makemore).
-
 `prepare_data.py`: Create a new dataset. See instructions in [Create the dataset](../README.md#create-the-dataset)
 
 `train_0a.py`: Train a model. Update `model_config.yml` to specify a new training configuration.
@@ -17,6 +14,22 @@ in the script to point to the model to use.
 randomly sampled observation from the dataset. Use `model_name` in the script to point to the model to use.
 
 `analyze_segment_resolutions.py`: Answers the question, "What % of segments are at `n` ticks per beat?"
+
+`plot_part_pair_dists.py`: Create various part pair distribution plots.
+
+## Notebooks
+
+`create_chroma_vocabulary.ipynb`: A notebook that creates a reduced vocabulary of chord types to use for modeling
+chromas.
+
+`bigrams.ipynb`: A notebook that walks through a bigram model for hits and chromas,
+following [makemore](https://github.com/karpathy/makemore).
+
+`MLP.ipynb`: A notebook that walks through a finished trigram MLP model for chromas,
+following [makemore](https://github.com/karpathy/makemore).
+
+`MLP_initial.ipynb`: A notebook that walks through initial explorations towards a trigram MLP model for chromas,
+following [makemore](https://github.com/karpathy/makemore).
 
 #### DEFUNCT
 

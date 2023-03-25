@@ -19,6 +19,24 @@ To train a conditional VAE for a pair of Bass patterns and Drum rolls, use `scri
 
 ## Data
 
+### Parts
+
+The "parts" of a piece of music are style-dependent, but can be loosely categorized according to orchestration
+principles and musical texture. For styles like pop, rock, or jazz, an appropriate split might be percussive, bassline,
+harmonic, and melodic.
+
+Because there is no publicly available dataset with these category labels, we use a list of instrumental categories
+adapted from the program categories in the [General MIDI spec (Level 2)](https://en.wikipedia.org/wiki/General_MIDI_Level_2):
+
+- Drums
+- Piano
+- Guitar
+- Bass
+- Orchestra Solo
+- Orchestra Ensemble
+- Wind
+- Synth Lead
+
 ### Representations
 
 Rhythms can be encoded into various representations, each of which gives a different view into rhythmic relationships.
