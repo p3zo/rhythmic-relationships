@@ -2,6 +2,9 @@
 
 `prepare_data.py`: Create a new dataset. See instructions in [Create the dataset](../README.md#create-the-dataset)
 
+`dimensionality_reduction.py`: performs dimensionality reduction over PartDatasets using both MDS and t-SNE, and
+visualizes the resulting low-dimensional space.
+
 `train_0a.py`: Train a model. Update `model_config.yml` to specify a new training configuration.
 
 `inference_pattern_to_pattern.py`: Load a pattern_to_pattern model and perform inference using a specified input.
