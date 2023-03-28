@@ -4,13 +4,10 @@ import os
 
 import matplotlib.pyplot as plt
 import numpy as np
-import pandas as pd
-import rhythmtoolbox as rtb
 import seaborn as sns
 from rhythmic_relationships import DATASETS_DIR, PLOTS_DIRNAME
 from rhythmic_relationships.data import PartPairDataset
 from rhythmic_relationships.parts import get_part_pairs
-from torch.utils.data import DataLoader
 
 sns.set_style("white")
 sns.set_context("paper")
@@ -33,15 +30,15 @@ def save_fig(filepath, title=None):
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
-        "--dataset_name",
+        "--dataset",
         type=str,
         default="babyslakh_20_1bar_4res",
         help="Name of the dataset to make plots for. Create a new dataset using `prepare_dataset.py`.",
     )
     parser.add_argument(
-        "--skip_pairplot_constituents",
+        "--keep_pairplot_constituents",
         action="store_true",
-        help="Several joint distributions are shown by the pairplot. Switching this flag to true skips individual plots in favor of viewing them in the pairplot.",
+        help="Several joint distributions are shown by the pairplot. When this flag is false, individual plots are skipped in favor of viewing them in the pairplot.",
     )
     parser.add_argument(
         "--parts_to_analyze",
@@ -63,48 +60,18 @@ if __name__ == "__main__":
     )
     args = parser.parse_args()
 
-    dataset_name = args.dataset_name
-    skip_pairplot_constituents = args.skip_pairplot_constituents
+    dataset_name = args.dataset
+    keep_pairplot_constituents = args.keep_pairplot_constituents
     parts_to_analyze = args.parts_to_analyze
     descriptors_to_analyze = args.descriptors_to_analyze
 
     for p1, p2 in get_part_pairs(parts_to_analyze):
-        print(f"Loading {p1}_{p2} pairs")
+        pair_df, stacked_df = PartPairDataset(
+            dataset_name, p1, p2, "descriptors", "descriptors"
+        ).as_dfs()
 
-        # Load the data
-        config = {
-            "dataset_name": dataset_name,
-            "part_1": p1,
-            "part_2": p2,
-            "repr_1": "descriptors",
-            "repr_2": "descriptors",
-        }
-        dataset = PartPairDataset(**config)
-        n_pairs = len(dataset)
-
-        loader = DataLoader(dataset, batch_size=n_pairs)
-        x, y = next(iter(loader))
-
-        xdf = pd.DataFrame(x, columns=rtb.DESCRIPTOR_NAMES)
-        ydf = pd.DataFrame(y, columns=rtb.DESCRIPTOR_NAMES)
-
-        xdf = xdf[descriptors_to_analyze]
-        ydf = ydf[descriptors_to_analyze]
-
-        if "noi" in descriptors_to_analyze:
-            xdf["noi"] = xdf["noi"].fillna(0).astype(int)
-            ydf["noi"] = ydf["noi"].fillna(0).astype(int)
-
-        if "polysync" in descriptors_to_analyze:
-            xdf["polysync"] = xdf["polysync"].fillna(0).astype(int)
-            ydf["polysync"] = ydf["polysync"].fillna(0).astype(int)
-
-        # Each row is a p1_p2 pair with all descriptors for both parts
-        pair_df = xdf.join(ydf, lsuffix=p1, rsuffix=p2)
-
-        xdf["part"] = p1
-        ydf["part"] = p2
-        stacked_df = pd.concat([xdf, ydf]).reset_index(drop=True)
+        stacked_df = stacked_df[descriptors_to_analyze + ["part"]]
+        n_pairs = len(pair_df)
 
         # Create the output directory
         plots_dir = os.path.join(
@@ -134,7 +101,7 @@ if __name__ == "__main__":
             sns.displot(stacked_df, x=col, hue="part", kind="ecdf")
             save_fig(os.path.join(plots_dir, f"{col}_cdf.png"), title="CDF")
 
-            if not skip_pairplot_constituents:
+            if keep_pairplot_constituents:
                 # As KDEs
                 sns.displot(stacked_df, x=col, hue="part", kind="kde", fill=True, cut=0)
                 save_fig(os.path.join(plots_dir, f"{col}_kde.png"), title="KDE")
@@ -176,7 +143,7 @@ if __name__ == "__main__":
                 title=f"Distribution of distances between pairs\n{p1} {p2}, {xcol} {ycol}\n{dataset_name}, {n_pairs} pairs",
             )
 
-            if not skip_pairplot_constituents:
+            if keep_pairplot_constituents:
                 sns.displot(stacked_df, x=xcol, y=ycol, hue="part", kind="kde")
                 save_fig(
                     os.path.join(plots_dir, f"{xcol}_{ycol}_contour.png"),

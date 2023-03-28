@@ -3,6 +3,7 @@ import os
 import numpy as np
 import pandas as pd
 import torch
+import rhythmtoolbox as rtb
 from rhythmic_relationships import (
     ANNOTATIONS_FILENAME,
     DATASETS_DIR,
@@ -12,6 +13,7 @@ from rhythmic_relationships import (
 from rhythmic_relationships.parts import PARTS, get_part_pairs
 from rhythmic_relationships.representations import REPRESENTATIONS
 from torch.utils.data import Dataset
+from tqdm import tqdm
 
 
 def load_dataset_annotations(dataset_name):
@@ -94,6 +96,53 @@ class PartPairDataset(Dataset):
 
         return x, y
 
+    def as_dfs(self):
+        """Returns the entire dataset in two dataframes. Useful for analysis.
+
+        :return: Tuple of two dataframes
+            pair_df, in which each row is a p1_p2 pair with all descriptors for both parts
+            stacked_df: in which the part dfs are vertically stacked
+        """
+        print(f"Loading {self.part_1} segments")
+
+        x_reprs = []
+        x_filenames = []
+        for ix, row in tqdm(self.p1_pairs.iterrows(), total=self.__len__()):
+            x_reprs.append(load_repr(row, self.repr_1))
+            x_filenames.append(os.path.splitext(os.path.basename(row.filepath))[0])
+
+        print(f"Loading {self.part_2} segments")
+        y_reprs = []
+        y_filenames = []
+        for ix, row in tqdm(self.p2_pairs.iterrows(), total=self.__len__()):
+            y_reprs.append(load_repr(row, self.repr_2))
+            y_filenames.append(os.path.splitext(os.path.basename(row.filepath))[0])
+
+        xdf = pd.DataFrame(x_reprs)
+        ydf = pd.DataFrame(y_reprs)
+
+        if self.repr_1 == REPRESENTATIONS.index("descriptors"):
+            xdf.columns = rtb.DESCRIPTOR_NAMES
+            xdf["noi"] = xdf["noi"].fillna(0).astype(int)
+            xdf["polysync"] = xdf["polysync"].fillna(0).astype(int)
+
+        if self.repr_2 == REPRESENTATIONS.index("descriptors"):
+            ydf.columns = rtb.DESCRIPTOR_NAMES
+            ydf["noi"] = ydf["noi"].fillna(0).astype(int)
+            ydf["polysync"] = ydf["polysync"].fillna(0).astype(int)
+
+        xdf["filename"] = x_filenames
+        ydf["filename"] = y_filenames
+
+        # Each row is a p1_p2 pair with all descriptors for both parts
+        pair_df = xdf.join(ydf, lsuffix=self.part_1, rsuffix=self.part_2)
+
+        xdf["part"] = self.part_1
+        ydf["part"] = self.part_2
+        stacked_df = pd.concat([xdf, ydf]).reset_index(drop=True)
+
+        return pair_df, stacked_df
+
 
 class PartDataset(Dataset):
     """
@@ -128,3 +177,17 @@ class PartDataset(Dataset):
         seg = self.part_df.iloc[idx]
         seg_repr = load_repr(seg, self.representation)
         return torch.from_numpy(seg_repr).to(torch.float32)
+
+    def as_df(self):
+        """Returns the entire dataset in a dataframe. Useful for analysis."""
+        print(f"Loading {self.part} segment {REPRESENTATIONS[self.representation]}")
+        reprs = []
+        filenames = []
+        for ix, row in tqdm(self.part_df.iterrows(), total=self.__len__()):
+            reprs.append(load_repr(row, self.representation))
+            filenames.append(os.path.splitext(os.path.basename(row.filepath))[0])
+        df = pd.DataFrame(reprs)
+        if self.representation == "descriptors":
+            df.columns = rtb.DESCRIPTOR_NAMES
+        df["filename"] = filenames
+        return df
