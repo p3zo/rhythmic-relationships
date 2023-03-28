@@ -54,12 +54,32 @@ This repository implements the following:
 
 ### Load a dataset
 
-A dataset of segment pairs can be loaded via the `PairDataset` class, which is a Torch `Dataset` that takes parameters
-to allow for flexibility between parts and representations. For example, to load a dataset of `Bass` patterns paired
+We use Torch `Dataset` classes to allow for flexibility to load datasets with different parts and representations.
+
+A dataset of part segments can be loaded via the `PartDataset` class. For example, to load a dataset of `Guitar` rolls:
+
+```python
+from rhythmic_relationships.data import PartDataset
+from torch.utils.data import DataLoader
+
+dataset_config = {
+    "dataset_name": "babyslakh_20_1bar_4res",
+    "part": "Guitar",
+    "representation": "roll",
+}
+dataset = PartDataset(**dataset_config)
+loader = DataLoader(dataset, batch_size=1, shuffle=True)
+
+x = next(iter(loader))
+print(f"x batch shape: {x.size()}")
+```
+
+A dataset of segment pairs can be loaded via the `PartPairDataset` class. For example, to load a dataset of `Bass`
+patterns paired
 with `Drums` hits:
 
 ```python
-from rhythmic_relationships.data import PairDataset
+from rhythmic_relationships.data import PartPairDataset
 from torch.utils.data import DataLoader
 
 dataset_config = {
@@ -69,7 +89,7 @@ dataset_config = {
     "repr_1": "pattern",
     "repr_2": "hits",
 }
-dataset = PairDataset(**dataset_config)
+dataset = PartPairDataset(**dataset_config)
 loader = DataLoader(dataset, batch_size=1, shuffle=True)
 
 x, y = next(iter(loader))

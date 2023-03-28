@@ -2,7 +2,7 @@ import os
 
 import numpy as np
 import torch
-from rhythmic_relationships.data import PairDataset
+from rhythmic_relationships.data import PartPairDataset
 from rhythmic_relationships.io import (
     write_image_from_hits,
     write_image_from_roll,
@@ -22,7 +22,7 @@ if __name__ == "__main__":
     model, config = load_model(model_name)
 
     # Load a random x, y pair
-    dataset = PairDataset(**config["dataset"])
+    dataset = PartPairDataset(**config["dataset"])
     loader = DataLoader(dataset, batch_size=1, shuffle=True)
     x_in, y_in = next(iter(loader))
 

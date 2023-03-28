@@ -9,7 +9,7 @@ from rhythmic_relationships import (
     PAIR_LOOKUPS_DIRNAME,
     REPRESENTATIONS_DIRNAME,
 )
-from rhythmic_relationships.parts import get_part_pairs
+from rhythmic_relationships.parts import PARTS, get_part_pairs
 from rhythmic_relationships.representations import REPRESENTATIONS
 from torch.utils.data import Dataset
 
@@ -25,32 +25,42 @@ def load_dataset_annotations(dataset_name):
     return df.drop("file_id", axis=1)
 
 
-class PairDataset(Dataset):
+def load_repr(segment, repr_ix):
+    """Load a representation of a segment"""
+    npz = np.load(segment["filepath"], allow_pickle=True)
+    # TODO: Handle multiple rolls from the same part. For now we just take the first one
+    reprs = npz[f"{segment['segment_id']}_{segment['part_id']}"][0]
+    return reprs[repr_ix]
+
+
+class PartPairDataset(Dataset):
     """
     Params
-        annotations_filepath, str
-            Path to an output directory created by `prepare_dataset.py`.
+        dataset_name, str
+            Name of a dataset created by `prepare_dataset.py`.
 
         part_1, str
-            The part to use as the X. See the list of parts in `prepare_dataset.py`
+            The part to use as the X. See the list of parts in `parts.py`
 
         part_2, str
-            The part to use as the y. See the list of parts in `prepare_dataset.py`
+            The part to use as the y. See the list of parts in `parts.py`
 
         repr_1, str
-            The representation to use for part 1 segments.
+            The representation to use for part 1 segments. See the list of representations in `representations.py`
 
-        repr_1, str
-            The representation of part 1.
+        repr_2, str
+            The representation to use for part 2 segments. See the list of representations in `representations.py`
     """
 
     def __init__(self, dataset_name, part_1, part_2, repr_1, repr_2):
-        self.part_1 = part_1
-        self.part_2 = part_2
+        if part_1 not in PARTS or part_2 not in PARTS:
+            raise ValueError(f"Part names must be one of: {PARTS}")
 
         if repr_1 not in REPRESENTATIONS or repr_2 not in REPRESENTATIONS:
             raise ValueError(f"Representation names must be one of: {REPRESENTATIONS}")
 
+        self.part_1 = part_1
+        self.part_2 = part_2
         self.repr_1 = REPRESENTATIONS.index(repr_1)
         self.repr_2 = REPRESENTATIONS.index(repr_2)
 
@@ -73,19 +83,48 @@ class PairDataset(Dataset):
         return len(self.p1_pairs)
 
     def __getitem__(self, idx):
-        p1 = self.p1_pairs.iloc[idx]
-        p2 = self.p2_pairs.iloc[idx]
+        p1_seg = self.p1_pairs.iloc[idx]
+        p2_seg = self.p2_pairs.iloc[idx]
 
-        p1_repr = self.load_repr(p1, self.repr_1)
-        p2_repr = self.load_repr(p2, self.repr_2)
+        p1_seg_repr = load_repr(p1_seg, self.repr_1)
+        p2_seg_repr = load_repr(p2_seg, self.repr_2)
 
-        x = torch.from_numpy(p1_repr).to(torch.float32)
-        y = torch.from_numpy(p2_repr).to(torch.float32)
+        x = torch.from_numpy(p1_seg_repr).to(torch.float32)
+        y = torch.from_numpy(p2_seg_repr).to(torch.float32)
 
         return x, y
 
-    def load_repr(self, pair, repr_ix):
-        npz = np.load(pair["filepath"], allow_pickle=True)
-        # TODO: Handle multiple rolls from the same part. For now we just take the first one
-        reprs = npz[f"{pair['segment_id']}_{pair['part_id']}"][0]
-        return reprs[repr_ix]
+
+class PartDataset(Dataset):
+    """
+    Params
+        dataset_name, str
+            Name of a dataset created by `prepare_dataset.py`.
+
+        part, str
+            The part to use. See the list of parts in `parts.py`
+
+        representation, str
+            The representation to use. See the list of representations in `representations.py`
+    """
+
+    def __init__(self, dataset_name, part, representation):
+        if part not in PARTS:
+            raise ValueError(f"Part must be one of: {PARTS}")
+
+        if representation not in REPRESENTATIONS:
+            raise ValueError(f"Representation must be one of: {REPRESENTATIONS}")
+
+        self.part = part
+        self.representation = REPRESENTATIONS.index(representation)
+
+        df = load_dataset_annotations(dataset_name)
+        self.part_df = df[df.part_id == part]
+
+    def __len__(self):
+        return len(self.part_df)
+
+    def __getitem__(self, idx):
+        seg = self.part_df.iloc[idx]
+        seg_repr = load_repr(seg, self.representation)
+        return torch.from_numpy(seg_repr).to(torch.float32)

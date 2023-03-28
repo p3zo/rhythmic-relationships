@@ -4,7 +4,7 @@ import random
 import yaml
 
 import torch
-from rhythmic_relationships.data import PairDataset
+from rhythmic_relationships.data import PartPairDataset
 from rhythmic_relationships.model import VariationalAutoEncoder
 from rhythmic_relationships.train import train
 from torch.utils.data import DataLoader
@@ -67,7 +67,7 @@ if __name__ == "__main__":
     config = load_config(CONFIG_FILEPATH)
     print(yaml.dump(config))
 
-    data = PairDataset(**config["dataset"])
+    data = PartPairDataset(**config["dataset"])
     loader = DataLoader(data, batch_size=config["batch_size"], shuffle=True)
 
     model = VariationalAutoEncoder(**config["model"]).to(DEVICE)
