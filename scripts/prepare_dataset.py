@@ -9,8 +9,6 @@ from collections import defaultdict
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-from tqdm import tqdm
-
 from rhythmic_relationships import (
     ANNOTATIONS_FILENAME,
     DATASETS_DIR,
@@ -22,6 +20,7 @@ from rhythmic_relationships import (
 from rhythmic_relationships.io import load_midi_file
 from rhythmic_relationships.parts import PARTS, get_part_pairs
 from rhythmic_relationships.representations import slice_midi
+from tqdm import tqdm
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()

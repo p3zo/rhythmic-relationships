@@ -1,0 +1,16 @@
+dataset:
+  dataset_name: "babyslakh_20_1bar_4res"
+  part: "Bass"
+  representation: "descriptors"
+model:
+  x_dim: 18
+  h_dim: 8
+  z_dim: 2
+  conditional: False
+  y_dim: 0
+loss_fn: "bce"
+loss_reduction: 'sum'
+clip_gradients: True
+num_epochs: 10
+batch_size: 256
+lr: 1e-4

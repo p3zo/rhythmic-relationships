@@ -63,9 +63,9 @@ from rhythmic_relationships.data import PartDataset
 from torch.utils.data import DataLoader
 
 dataset_config = {
-    "dataset_name": "babyslakh_20_1bar_4res",
-    "part": "Guitar",
-    "representation": "roll",
+  "dataset_name": "babyslakh_20_1bar_4res",
+  "part": "Guitar",
+  "representation": "roll",
 }
 dataset = PartDataset(**dataset_config)
 loader = DataLoader(dataset, batch_size=1, shuffle=True)
@@ -83,11 +83,11 @@ from rhythmic_relationships.data import PartPairDataset
 from torch.utils.data import DataLoader
 
 dataset_config = {
-    "dataset_name": "babyslakh_20_1bar_4res",
-    "part_1": "Bass",
-    "part_2": "Drums",
-    "repr_1": "pattern",
-    "repr_2": "hits",
+  "dataset_name": "babyslakh_20_1bar_4res",
+  "part_1": "Bass",
+  "part_2": "Drums",
+  "repr_1": "pattern",
+  "repr_2": "hits",
 }
 dataset = PartPairDataset(**dataset_config)
 loader = DataLoader(dataset, batch_size=1, shuffle=True)

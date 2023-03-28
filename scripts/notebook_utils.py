@@ -4,10 +4,7 @@ from io import BytesIO
 
 import numpy as np
 from chord_progressions.chord import get_note_from_midi_num
-from chord_progressions.io.audio import (
-    mk_chord_buffer,
-    mk_sin,
-)
+from chord_progressions.io.audio import mk_chord_buffer, mk_sin
 from chord_progressions.solver import select_voicing
 from chord_progressions.type_templates import TYPE_TEMPLATES
 

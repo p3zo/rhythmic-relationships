@@ -11,11 +11,10 @@ Results:
 
 import glob
 import os
-from tqdm import tqdm
 
 from prepare_data import slice_midi_file
 from scipy import ndimage
-
+from tqdm import tqdm
 
 dataset_dir = "../input/lmd_clean"
 filepaths = glob.glob(os.path.join(dataset_dir, "**/*.mid"), recursive=True)

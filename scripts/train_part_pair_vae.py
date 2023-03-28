@@ -1,9 +1,8 @@
-import datetime as dt
 import os
-import random
-import yaml
 
 import torch
+import yaml
+from model_utils import load_config, save_model
 from rhythmic_relationships.data import PartPairDataset
 from rhythmic_relationships.model import VariationalAutoEncoder
 from rhythmic_relationships.train import train
@@ -13,45 +12,6 @@ DEVICE = torch.device("mps" if torch.backends.mps.is_built() else "cpu")
 MODELS_DIR = "../output/models"
 CHECKPOINTS_DIR = "models/checkpoints"
 CONFIG_FILEPATH = "model_config.yml"
-
-
-def load_config(filepath):
-    """Loads a model config and adds derived values"""
-    with open(filepath, "r") as fh:
-        config = yaml.safe_load(fh)
-
-    config["lr"] = float(config["lr"])
-
-    return config
-
-
-def get_model_name(config):
-    # a copy of /usr/share/dict/web2 from a macbook air (early 2014)
-    with open("words") as words_file:
-        words = words_file.read().split()
-
-    word = random.choice(words)
-
-    today = dt.datetime.today()
-    timestamp = today.strftime("%y%m%d%H%M%S")
-
-    dc = config["dataset"]
-    info_str = f"{dc['dataset_name']}_{dc['part_1']}_{dc['part_2']}_{dc['repr_1']}_{dc['repr_2']}"
-
-    return f"{word}_{info_str}_{timestamp}"
-
-
-def save_model(model, config):
-    model_name = get_model_name(config)
-    model_path = os.path.join(MODELS_DIR, f"{model_name}.pt")
-    torch.save(
-        {
-            "state_dict": model.state_dict(),
-            "config": config,
-        },
-        model_path,
-    )
-    print(f"Saved {model_path}")
 
 
 def load_model(model_name):

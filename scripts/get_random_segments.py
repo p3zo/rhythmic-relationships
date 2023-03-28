@@ -1,12 +1,13 @@
 """Select segments with at least n parts from a dataset at random."""
 import os
+
 import numpy as np
 from rhythmic_relationships.data import load_dataset_annotations
 from rhythmic_relationships.io import write_midi_from_roll_list
 from rhythmic_relationships.parts import PARTS
 from rhythmic_relationships.representations import REPRESENTATIONS
 
-dataset_name = "lmdc_1000_1bar_4res"
+dataset_name = "lmdc_250_2bar_4res"
 representation = "roll"
 n_parts_min = 2
 
@@ -34,4 +35,6 @@ for n in range(5):
     parts = seg_df.part_id.tolist()
     filename = os.path.splitext(os.path.basename(fp))[0]
     print(f"Selected segment {seg_id} from {filename}\n\tParts: {parts}\n")
-    write_midi_from_roll_list(seg_reprs, f"{filename}_{seg_id}.mid", binary=True, parts=parts)
+    write_midi_from_roll_list(
+        seg_reprs, f"{filename}_{seg_id}.mid", binary=True, parts=parts
+    )

@@ -2,8 +2,8 @@ import os
 
 import numpy as np
 import pandas as pd
-import torch
 import rhythmtoolbox as rtb
+import torch
 from rhythmic_relationships import (
     ANNOTATIONS_FILENAME,
     DATASETS_DIR,

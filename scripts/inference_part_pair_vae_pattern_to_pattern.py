@@ -2,11 +2,8 @@ import os
 
 import numpy as np
 import torch
-from rhythmic_relationships.io import (
-    write_image_from_pattern,
-    write_midi_from_pattern,
-)
-from train_0a import load_model
+from rhythmic_relationships.io import write_image_from_pattern, write_midi_from_pattern
+from train_part_pair_vae import load_model
 
 INFERENCE_DIR = "../output/inference"
 

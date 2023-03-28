@@ -10,7 +10,7 @@ from rhythmic_relationships.io import (
     write_midi_from_roll,
 )
 from torch.utils.data import DataLoader
-from train_0a import load_model
+from train_part_pair_vae import load_model
 
 INFERENCE_DIR = "../output/inference"
 
