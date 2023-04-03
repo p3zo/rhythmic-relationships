@@ -29,9 +29,9 @@ def load_dataset_annotations(dataset_name):
 
 def load_repr(segment, repr_ix):
     """Load a representation of a segment"""
-    npz = np.load(segment["filepath"], allow_pickle=True)
-    # TODO: Handle multiple rolls from the same part. For now we just take the first one
-    reprs = npz[f"{segment['segment_id']}_{segment['part_id']}"][0]
+    with np.load(segment["filepath"], allow_pickle=True) as npz:
+        # TODO: Handle multiple rolls from the same part. For now we just take the first one
+        reprs = npz[f"{segment['segment_id']}_{segment['part_id']}"][0]
     return reprs[repr_ix]
 
 
