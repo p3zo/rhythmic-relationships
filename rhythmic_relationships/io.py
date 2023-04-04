@@ -4,7 +4,7 @@ import numpy as np
 import pretty_midi as pm
 from PIL import Image
 from rhythmic_relationships import logger
-from rhythmic_relationships.parts import get_program_from_part
+from rhythmic_relationships.parts import get_part_from_program, get_program_from_part
 
 # TODO: fix catch_warnings block in load_midi_file and remove this
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -49,7 +49,9 @@ def parse_bar_start_ticks(pmid, resolution):
     return bar_start_ticks, subdivisions
 
 
-def get_pmid_segment(pmid, segment_num, seg_size=2, resolution=4, n_beat_bars=4):
+def get_pmid_segment(
+    pmid, segment_num, seg_size=2, resolution=4, n_beat_bars=4, parts=[]
+):
     """Get a segment of a midi file as a PrettyMIDI object.
 
     :parameters:
@@ -63,6 +65,8 @@ def get_pmid_segment(pmid, segment_num, seg_size=2, resolution=4, n_beat_bars=4)
             The resolution of the midi file
         n_beat_bars : int
             Process only segments with this number of beats per bar.
+        parts: list
+            A list of parts to include in the output midi file. If empty, include all parts.
 
     :returns:
         pmid_slice : pretty_midi.PrettyMIDI
@@ -82,8 +86,18 @@ def get_pmid_segment(pmid, segment_num, seg_size=2, resolution=4, n_beat_bars=4)
     for instrument in pmid.instruments:
         if len(instrument.notes) == 0:
             continue
-        instrument_slice = pm.Instrument(program=instrument.program)
-        # TODO: Preserve the tempo of the original midi file
+
+        # Note: this swap may look redundant, but it keeps the program numbers consistent per part
+        part = get_part_from_program(instrument.program)
+        if instrument.is_drum:
+            part = "Drums"
+        program = get_program_from_part(part)
+
+        if parts and part not in parts:
+            continue
+
+        instrument_slice = pm.Instrument(program=program, is_drum=instrument.is_drum)
+
         for note in instrument.notes:
             if (
                 note.start >= subdivisions[slice_start]
@@ -92,8 +106,11 @@ def get_pmid_segment(pmid, segment_num, seg_size=2, resolution=4, n_beat_bars=4)
                 note.start = note.start - subdivisions[slice_start]
                 note.end = note.end - subdivisions[slice_start]
                 instrument_slice.notes.append(note)
-                print(note)
+
         pmid_slice.instruments.append(instrument_slice)
+
+    if len(pmid_slice.instruments) == 0:
+        logger.warning("No instruments found in segment.")
 
     return pmid_slice
 
