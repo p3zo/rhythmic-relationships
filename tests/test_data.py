@@ -1,5 +1,6 @@
 import pytest
 import torch
+from rhythmtoolbox import DESCRIPTOR_NAMES
 from rhythmic_relationships.data import PartDataset, PartPairDataset
 from torch.utils.data import DataLoader
 
@@ -7,6 +8,8 @@ dataset_name = "babyslakh_20_1bar_4res"
 batch_size = 1
 part_1 = "Drums"
 part_2 = "Guitar"
+
+N_DESCRIPTORS = len(DESCRIPTOR_NAMES)
 
 
 def test_PartDataset():
@@ -16,7 +19,7 @@ def test_PartDataset():
     data = PartDataset(dataset_name, part_1, "descriptors")
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     x = next(iter(loader))
-    assert x.size() == torch.Size([batch_size, 18])
+    assert x.size() == torch.Size([batch_size, N_DESCRIPTORS])
 
     data = PartDataset(dataset_name, part_1, "roll")
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
@@ -39,19 +42,19 @@ def test_PartPairDatasets():
     data = PartPairDataset(dataset_name, part_1, part_2, "descriptors", "descriptors")
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     x, y = next(iter(loader))
-    assert x.size() == torch.Size([batch_size, 18])
-    assert y.size() == torch.Size([batch_size, 18])
+    assert x.size() == torch.Size([batch_size, N_DESCRIPTORS])
+    assert y.size() == torch.Size([batch_size, N_DESCRIPTORS])
 
     data = PartPairDataset(dataset_name, part_1, part_2, "roll", "descriptors")
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     x, y = next(iter(loader))
     assert x.size() == torch.Size([batch_size, 16, 128])
-    assert y.size() == torch.Size([batch_size, 18])
+    assert y.size() == torch.Size([batch_size, N_DESCRIPTORS])
 
     data = PartPairDataset(dataset_name, part_1, part_2, "descriptors", "roll")
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     x, y = next(iter(loader))
-    assert x.size() == torch.Size([batch_size, 18])
+    assert x.size() == torch.Size([batch_size, N_DESCRIPTORS])
     assert y.size() == torch.Size([batch_size, 16, 128])
 
     data = PartPairDataset(dataset_name, part_1, part_2, "hits", "hits")
@@ -69,7 +72,7 @@ def test_PartPairDatasets():
     data = PartPairDataset(dataset_name, part_1, part_2, "descriptors", "hits")
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     x, y = next(iter(loader))
-    assert x.size() == torch.Size([batch_size, 18])
+    assert x.size() == torch.Size([batch_size, N_DESCRIPTORS])
     assert y.size() == torch.Size([batch_size, 16])
 
     data = PartPairDataset(dataset_name, part_1, part_2, "pattern", "pattern")

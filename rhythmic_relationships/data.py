@@ -123,13 +123,8 @@ class PartPairDataset(Dataset):
 
         if self.repr_1 == REPRESENTATIONS.index("descriptors"):
             xdf.columns = rtb.DESCRIPTOR_NAMES
-            xdf["noi"] = xdf["noi"].fillna(0).astype(int)
-            xdf["polysync"] = xdf["polysync"].fillna(0).astype(int)
-
         if self.repr_2 == REPRESENTATIONS.index("descriptors"):
             ydf.columns = rtb.DESCRIPTOR_NAMES
-            ydf["noi"] = ydf["noi"].fillna(0).astype(int)
-            ydf["polysync"] = ydf["polysync"].fillna(0).astype(int)
 
         xdf["filename"] = x_filenames
         ydf["filename"] = y_filenames
