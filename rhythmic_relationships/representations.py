@@ -2,6 +2,8 @@ from collections import defaultdict
 
 import numpy as np
 from rhythmic_relationships.parts import get_part_from_program
+
+from rhythmic_relationships.io import parse_bar_start_ticks
 from rhythmtoolbox import pianoroll2descriptors
 
 REPRESENTATIONS = ["roll", "chroma", "pattern", "hits", "descriptors"]
@@ -79,30 +81,13 @@ def get_multitrack_roll(tracks, drums=False):
     return multitrack_roll.T
 
 
-def parse_representations(pmid, resolution, binarize=True):
+def get_representations(pmid, subdivisions, binarize=True):
     """Parse all representations from a PrettyMIDI object.
 
     Adapted from https://github.com/salu133445/pypianoroll/blob/18a68d4a7e39673a739396d409a2ff99af06d643/pypianoroll/inputs.py#L103-L338
-    and https://github.com/ruiguo-bio/midi-miner/blob/794dac3bdf95cc17ffb6b67ff254d9c56cd479f5/tension_calculation.py#L687-L718
     """
 
-    beats = pmid.get_beats()
-    one_more_beat = 2 * beats[-1] - beats[-2]
-    beats_plus_one = np.append(beats, one_more_beat)
-
-    # Upsample beat times to the input resolution using linear interpolation
-    subdivisions = []
-    for start, end in zip(beats_plus_one, beats_plus_one[1:]):
-        for j in range(resolution):
-            subdivisions.append((end - start) / resolution * j + start)
-    subdivisions.append(beats_plus_one[-1])
-    subdivisions = np.array(subdivisions)
-
-    bar_start_ticks = []
-    for bar_start in pmid.get_downbeats():
-        bar_start_ticks.append(np.argmin(np.abs(bar_start - subdivisions)))
-
-    n_ticks = len(subdivisions)
+    n_ticks = len(subdivisions) - 1
 
     tracks = []
     for instrument in pmid.instruments:
@@ -188,7 +173,7 @@ def parse_representations(pmid, resolution, binarize=True):
             }
         )
 
-    return tracks, bar_start_ticks
+    return tracks
 
 
 def roll_has_activity(roll, min_pitches, min_beats):
@@ -246,7 +231,8 @@ def slice_midi(
             A dictionary with all representations for each segment-part pair.
     """
 
-    tracks, bar_start_ticks = parse_representations(pmid, resolution, binarize)
+    bar_start_ticks, subdivisions = parse_bar_start_ticks(pmid, resolution)
+    tracks = get_representations(pmid, subdivisions, binarize)
 
     seg_iter = list(zip(bar_start_ticks, bar_start_ticks[seg_size:]))
     if len(bar_start_ticks) <= seg_size:
@@ -285,7 +271,7 @@ def slice_midi(
 
             # Compute the `descriptors` representation of the roll
             seg_descriptors = np.array(
-                list(pianoroll2descriptors(seg_roll.T, resolution=resolution).values()),
+                list(pianoroll2descriptors(seg_roll, resolution=resolution).values()),
                 dtype=np.float32,
             )
 

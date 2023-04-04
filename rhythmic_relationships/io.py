@@ -24,6 +24,80 @@ def load_midi_file(filepath, resolution=24):
     return midi
 
 
+def parse_bar_start_ticks(pmid, resolution):
+    """Parse the bar start times from a PrettyMIDI object.
+
+    Adapted from https://github.com/ruiguo-bio/midi-miner/blob/794dac3bdf95cc17ffb6b67ff254d9c56cd479f5/tension_calculation.py#L687-L718
+    """
+
+    beats = pmid.get_beats()
+    one_more_beat = 2 * beats[-1] - beats[-2]
+    beats_plus_one = np.append(beats, one_more_beat)
+
+    # Upsample beat times to the input resolution using linear interpolation
+    subdivisions = []
+    for start, end in zip(beats_plus_one, beats_plus_one[1:]):
+        for j in range(resolution):
+            subdivisions.append((end - start) / resolution * j + start)
+    subdivisions.append(beats_plus_one[-1])
+    subdivisions = np.array(subdivisions)
+
+    bar_start_ticks = []
+    for bar_start in pmid.get_downbeats():
+        bar_start_ticks.append(np.argmin(np.abs(bar_start - subdivisions)))
+
+    return bar_start_ticks, subdivisions
+
+
+def get_pmid_segment(pmid, segment_num, seg_size=2, resolution=4, n_beat_bars=4):
+    """Get a segment of a midi file as a PrettyMIDI object.
+
+    :parameters:
+        pmid : pretty_midi.PrettyMIDI
+            The PrettyMIDI object to slice
+        segment_num : int
+            The segment number to slice
+        seg_size : int
+            The number of bars per segment
+        resolution : int
+            The resolution of the midi file
+        n_beat_bars : int
+            Process only segments with this number of beats per bar.
+
+    :returns:
+        pmid_slice : pretty_midi.PrettyMIDI
+    """
+    bar_start_ticks, subdivisions = parse_bar_start_ticks(pmid, resolution)
+
+    seg_iter = list(zip(bar_start_ticks, bar_start_ticks[seg_size:]))
+    if len(bar_start_ticks) <= seg_size:
+        # There is only one segment in the track
+        seg_iter = [(0, resolution * n_beat_bars * seg_size)]
+
+    slice_start, slice_end = seg_iter[segment_num]
+
+    pmid_slice = pm.PrettyMIDI()
+
+    # Create a new PrettyMIDI object with only the notes in the segment
+    for instrument in pmid.instruments:
+        if len(instrument.notes) == 0:
+            continue
+        instrument_slice = pm.Instrument(program=instrument.program)
+        # TODO: Preserve the tempo of the original midi file
+        for note in instrument.notes:
+            if (
+                note.start >= subdivisions[slice_start]
+                and note.end <= subdivisions[slice_end]
+            ):
+                note.start = note.start - subdivisions[slice_start]
+                note.end = note.end - subdivisions[slice_start]
+                instrument_slice.notes.append(note)
+                print(note)
+        pmid_slice.instruments.append(instrument_slice)
+
+    return pmid_slice
+
+
 def get_pretty_midi_from_roll(roll, resolution, binary=False, program=0, is_drum=False):
     """Convert a piano roll to a PrettyMidi object with a single instrument.
 
