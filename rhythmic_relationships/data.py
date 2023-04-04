@@ -96,7 +96,7 @@ class PartPairDataset(Dataset):
 
         return x, y
 
-    def as_dfs(self):
+    def as_dfs(self, shuffle=False):
         """Returns the entire dataset in two dataframes. Useful for analysis.
 
         :return: Tuple of two dataframes
@@ -104,7 +104,6 @@ class PartPairDataset(Dataset):
             stacked_df: in which the part dfs are vertically stacked
         """
         print(f"Loading {self.part_1} segments")
-
         x_reprs = []
         x_filenames = []
         for ix, row in tqdm(self.p1_pairs.iterrows(), total=self.__len__()):
@@ -135,6 +134,9 @@ class PartPairDataset(Dataset):
         xdf["part"] = self.part_1
         ydf["part"] = self.part_2
         stacked_df = pd.concat([xdf, ydf]).reset_index(drop=True)
+
+        if shuffle:
+            return pair_df.sample(frac=1), stacked_df.sample(frac=1)
 
         return pair_df, stacked_df
 
@@ -173,16 +175,23 @@ class PartDataset(Dataset):
         seg_repr = load_repr(seg, self.representation)
         return torch.from_numpy(seg_repr).to(torch.float32)
 
-    def as_df(self):
+    def as_df(self, shuffle=False):
         """Returns the entire dataset in a dataframe. Useful for analysis."""
         print(f"Loading {self.part} segment {REPRESENTATIONS[self.representation]}")
+
         reprs = []
         filenames = []
         for ix, row in tqdm(self.part_df.iterrows(), total=self.__len__()):
             reprs.append(load_repr(row, self.representation))
             filenames.append(os.path.splitext(os.path.basename(row.filepath))[0])
+
         df = pd.DataFrame(reprs)
+
         if self.representation == "descriptors":
             df.columns = rtb.DESCRIPTOR_NAMES
         df["filename"] = filenames
+
+        if shuffle:
+            return df.sample(frac=1)
+
         return df
