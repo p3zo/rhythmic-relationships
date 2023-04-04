@@ -96,6 +96,10 @@ if __name__ == "__main__":
     if args.verbose:
         logger.setLevel(logging.DEBUG)
 
+    if not os.path.exists(path):
+        logger.error(f"Path does not exist: {path}")
+        sys.exit(0)
+
     filepaths = [path]
     if os.path.isdir(path):
         filepaths = glob.glob(os.path.join(path, "**/*.mid"), recursive=True)
@@ -104,10 +108,8 @@ if __name__ == "__main__":
 
     filepaths = filepaths[:subset]
     if len(filepaths) == 0:
-        logger.info(f"No MIDI files found in {path}")
+        logger.error(f"No MIDI files found in {path}")
         sys.exit(0)
-
-    logger.info(f"Processing {len(filepaths)} midi file(s)")
 
     dataset_name = f"{prefix}_{len(filepaths)}_{seg_size}bar_{resolution}res"
     output_dir = os.path.join(DATASETS_DIR, dataset_name)
@@ -119,6 +121,7 @@ if __name__ == "__main__":
     annotations = {p: [] for p in PARTS}
     annotations_list = []
 
+    logger.info(f"Processing {len(filepaths)} midi file(s)")
     for file_ix, filepath in enumerate(tqdm(filepaths)):
         pmid = load_midi_file(filepath)
         if not pmid:
