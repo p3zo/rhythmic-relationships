@@ -1,3 +1,9 @@
+"""
+Create a new dataset
+
+Example usage:
+    python scripts/prepare_dataset.py --path input/babyslakh --prefix babyslakh --seg_size 1 --binarize
+"""
 import argparse
 import glob
 import itertools

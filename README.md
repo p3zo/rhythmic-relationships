@@ -9,13 +9,9 @@
 pip install git+https://github.com/p3zo/rhythmic-relationships git+https://github.com/danielgomezmarin/rhythmtoolbox
 ```
 
-## Inference
+## Scripts
 
-To generate a bass pattern given a drum roll, use `scripts/train_0a.py`
-
-## Training
-
-To train a conditional VAE for a pair of Bass patterns and Drum rolls, use `scripts/train_0a.py`
+See [scripts/README.md](scripts/README.md) for a list of scripts and notebooks.
 
 ## Data
 
@@ -26,7 +22,8 @@ principles and musical texture. For styles like pop, rock, or jazz, an appropria
 harmonic, and melodic.
 
 Because there is no publicly available dataset with these category labels, we use a list of instrumental categories
-adapted from the program categories in the [General MIDI spec (Level 2)](https://en.wikipedia.org/wiki/General_MIDI_Level_2):
+adapted from the program categories in
+the [General MIDI spec (Level 2)](https://en.wikipedia.org/wiki/General_MIDI_Level_2):
 
 - Drums
 - Piano
@@ -63,9 +60,9 @@ from rhythmic_relationships.data import PartDataset
 from torch.utils.data import DataLoader
 
 dataset_config = {
-  "dataset_name": "babyslakh_20_1bar_4res",
-  "part": "Guitar",
-  "representation": "roll",
+    "dataset_name": "babyslakh_20_1bar_4res",
+    "part": "Guitar",
+    "representation": "roll",
 }
 dataset = PartDataset(**dataset_config)
 loader = DataLoader(dataset, batch_size=1, shuffle=True)
@@ -75,19 +72,18 @@ print(f"x batch shape: {x.size()}")
 ```
 
 A dataset of segment pairs can be loaded via the `PartPairDataset` class. For example, to load a dataset of `Bass`
-patterns paired
-with `Drums` hits:
+patterns paired with `Drums` hits:
 
 ```python
 from rhythmic_relationships.data import PartPairDataset
 from torch.utils.data import DataLoader
 
 dataset_config = {
-  "dataset_name": "babyslakh_20_1bar_4res",
-  "part_1": "Bass",
-  "part_2": "Drums",
-  "repr_1": "pattern",
-  "repr_2": "hits",
+    "dataset_name": "babyslakh_20_1bar_4res",
+    "part_1": "Bass",
+    "part_2": "Drums",
+    "repr_1": "pattern",
+    "repr_2": "hits",
 }
 dataset = PartPairDataset(**dataset_config)
 loader = DataLoader(dataset, batch_size=1, shuffle=True)
