@@ -4,7 +4,11 @@ import numpy as np
 import pretty_midi as pm
 from PIL import Image
 from rhythmic_relationships import logger
-from rhythmic_relationships.parts import get_part_from_program, get_program_from_part
+from rhythmic_relationships.parts import (
+    get_part_from_program,
+    get_program_from_part,
+    PARTS,
+)
 
 # TODO: fix catch_warnings block in load_midi_file and remove this
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -50,7 +54,7 @@ def parse_bar_start_ticks(pmid, resolution):
 
 
 def get_pmid_segment(
-    pmid, segment_num, seg_size=2, resolution=4, n_beat_bars=4, parts=[]
+    pmid, segment_num, seg_size=1, resolution=4, n_beat_bars=4, parts=[]
 ):
     """Get a segment of a midi file as a PrettyMIDI object.
 
@@ -80,6 +84,9 @@ def get_pmid_segment(
 
     slice_start, slice_end = seg_iter[segment_num]
 
+    # Sort instruments by part index for convenience
+    pmid.instruments.sort(key=lambda x: PARTS.index(get_part_from_program(x.program)))
+
     pmid_slice = pm.PrettyMIDI()
 
     # Create a new PrettyMIDI object with only the notes in the segment
@@ -96,7 +103,9 @@ def get_pmid_segment(
         if parts and part not in parts:
             continue
 
-        instrument_slice = pm.Instrument(program=program, is_drum=instrument.is_drum)
+        instrument_slice = pm.Instrument(
+            program=program, is_drum=instrument.is_drum, name=instrument.name
+        )
 
         for note in instrument.notes:
             if (
