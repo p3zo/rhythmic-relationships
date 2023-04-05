@@ -43,9 +43,9 @@ visualizes the resulting low-dimensional space.
 
 ### Utility
 
-`model_utils.py`: Helper functions for modeling scripts
+`utils.py`: Generic helper functions used in multiple scripts
 
-`plot_utils.py`: Helper functions for plotting
+`model_utils.py`: Helper functions for modeling scripts
 
 `notebook_utils.py`: Helper functions for notebooks
 

@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from plot_utils import save_fig
+from utils import save_fig, play_midi_file
 from rhythmic_relationships import DATASETS_DIR, PLOTS_DIRNAME
 from rhythmic_relationships.data import PartPairDataset
 from rhythmic_relationships.io import get_pmid_segment, load_midi_file
@@ -159,9 +159,62 @@ def get_midi_for_closest(coord, emb, parts=[]):
     # Load the MIDI file
     pmid = load_midi_file(os.path.join(INPUT_DATA_DIR, closest["filename"] + ".mid"))
     pmid_slice = get_pmid_segment(
-        pmid, segment_num=30, resolution=4, seg_size=2, n_beat_bars=4, parts=parts
+        pmid,
+        segment_num=closest.name,
+        resolution=4,
+        seg_size=2,
+        n_beat_bars=4,
+        parts=parts,
     )
+    print(f'Loaded MIDI for {closest["filename"]} segment {closest.name}')
     return pmid_slice
+
+
+def plot_emb_interactive(emb):
+    """Create an interactive plot of the embedding space"""
+
+    # Enable interactive plotting
+    plt.ion()
+
+    fig, ax = plt.subplots(figsize=(8, 6))
+    sns.scatterplot(
+        data=emb,
+        x="component_1",
+        y="component_2",
+        hue="filename",
+        legend=False,
+        ax=ax,
+    )
+
+    tmp_filepath = "interactive-plotting-temp-01934893.mid"
+
+    def onclick(event):
+        if event.button != 1:
+            return
+
+        print(f"Clicked {event.xdata}, {event.ydata}")
+
+        # Retrieve MIDI for the closest point to the input coord
+        pmid = get_midi_for_closest(
+            (event.xdata, event.ydata), emb, parts=["Drums", "Piano"]
+        )
+
+        pmid.write(tmp_filepath)
+        play_midi_file(tmp_filepath)
+
+    def onclose(event):
+        print("Figure closed")
+        os.remove(tmp_filepath)
+        fig.canvas.mpl_disconnect(cid_click)
+        fig.canvas.mpl_disconnect(cid_close)
+        plt.ioff()
+
+    # Connect to the event manager
+    cid_click = fig.canvas.mpl_connect("button_press_event", onclick)
+    cid_close = fig.canvas.mpl_connect("close_event", onclose)
+
+    # Start plot
+    plt.show()
 
 
 if __name__ == "__main__":
@@ -255,8 +308,8 @@ if __name__ == "__main__":
         paired_emb_mds, filenames, title="paired embedding", method="MDS"
     )
 
-    # Example 1: Take a coordinate in embedding space and retrieve MIDI
-    get_midi_for_closest((8, 14), drums_emb_tsne, parts=["Drums", "Piano"])
-
-    # Example 2: Get corresponding points from Drums <--> Piano
+    # Example: Get corresponding points from Drums <--> Piano
     find_corresponding_point((1, -1), piano_emb_mds, drums_emb_mds)
+
+    # Example: Make an interactive plot of an embedding space
+    plot_emb_interactive(drums_emb_mds)

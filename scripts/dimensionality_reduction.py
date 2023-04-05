@@ -4,7 +4,7 @@ import os
 
 import pandas as pd
 import seaborn as sns
-from plot_utils import save_fig
+from utils import save_fig
 from rhythmic_relationships import DATASETS_DIR, PLOTS_DIRNAME
 from rhythmic_relationships.data import PartDataset
 from sklearn.manifold import MDS, TSNE
