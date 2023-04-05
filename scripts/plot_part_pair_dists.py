@@ -5,6 +5,7 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
+from plot_utils import save_fig
 from rhythmic_relationships import DATASETS_DIR, PLOTS_DIRNAME
 from rhythmic_relationships.data import PartPairDataset
 from rhythmic_relationships.parts import get_part_pairs
@@ -16,15 +17,6 @@ sns.set_context("paper")
 def get_distance(point1, point2):
     """Compute the Euclidean distance between two points"""
     return np.sqrt((point2[0] - point1[0]) ** 2 + (point2[1] - point1[1]) ** 2)
-
-
-def save_fig(filepath, title=None):
-    if title:
-        plt.title(title)
-    plt.tight_layout()
-    plt.savefig(filepath)
-    print(f"Saved {filepath}")
-    plt.close()
 
 
 if __name__ == "__main__":

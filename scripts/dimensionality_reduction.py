@@ -1,13 +1,10 @@
-"""
-Perform dimensionality reduction over PartDatasets and visualize the resulting low-dimensional spaces.
-Use both MDS and t-SNE.
-"""
+"""Perform dimensionality reduction over PartDatasets and visualize the resulting low-dimensional spaces."""
 import argparse
 import os
 
 import pandas as pd
 import seaborn as sns
-from plot_part_pair_dists import save_fig
+from plot_utils import save_fig
 from rhythmic_relationships import DATASETS_DIR, PLOTS_DIRNAME
 from rhythmic_relationships.data import PartDataset
 from sklearn.manifold import MDS, TSNE

@@ -29,6 +29,9 @@ following [makemore](https://github.com/karpathy/makemore).
 
 ### Analysis
 
+`pairspace.py`: performs dimensionality reduction over PartPairDatasets using both MDS and t-SNE, and
+visualizes the resulting low-dimensional spaces
+
 `dimensionality_reduction.py`: performs dimensionality reduction over PartDatasets using both MDS and t-SNE, and
 visualizes the resulting low-dimensional space.
 
@@ -41,6 +44,8 @@ visualizes the resulting low-dimensional space.
 ### Utility
 
 `model_utils.py`: Helper functions for modeling scripts
+
+`plot_utils.py`: Helper functions for plotting
 
 `notebook_utils.py`: Helper functions for notebooks
 
