@@ -16,9 +16,8 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 
-def load_dataset_annotations(dataset_name):
+def load_dataset_annotations(dataset_dir):
     """Load the top-level annotations file for a given dataset"""
-    dataset_dir = os.path.join(DATASETS_DIR, dataset_name)
     df = pd.read_csv(os.path.join(dataset_dir, ANNOTATIONS_FILENAME))
     df.index.name = "roll_id"
     df["filepath"] = df["file_id"].apply(
@@ -66,7 +65,8 @@ class PartPairDataset(Dataset):
         self.repr_1 = REPRESENTATIONS.index(repr_1)
         self.repr_2 = REPRESENTATIONS.index(repr_2)
 
-        df = load_dataset_annotations(dataset_name)
+        self.dataset_dir = os.path.join(DATASETS_DIR, dataset_name)
+        df = load_dataset_annotations(self.dataset_dir)
 
         pair_id = "_".join(get_part_pairs([part_1, part_2])[0])
         pair_lookup_path = os.path.join(
@@ -103,19 +103,31 @@ class PartPairDataset(Dataset):
             pair_df, in which each row is a p1_p2 pair with all descriptors for both parts
             stacked_df: in which the part dfs are vertically stacked
         """
+
+        def split_filepath(filepath):
+            return os.path.splitext(
+                filepath.split(os.path.join(self.dataset_dir, REPRESENTATIONS_DIRNAME))[
+                    1
+                ]
+            )[0].strip("/")
+
         print(f"Loading {self.part_1} segments")
         x_reprs = []
+        x_segment_ids = []
         x_filenames = []
         for ix, row in tqdm(self.p1_pairs.iterrows(), total=self.__len__()):
             x_reprs.append(load_repr(row, self.repr_1))
-            x_filenames.append(os.path.splitext(os.path.basename(row.filepath))[0])
+            x_segment_ids.append(row.segment_id)
+            x_filenames.append(split_filepath(row.filepath))
 
         print(f"Loading {self.part_2} segments")
         y_reprs = []
+        y_segment_ids = []
         y_filenames = []
         for ix, row in tqdm(self.p2_pairs.iterrows(), total=self.__len__()):
             y_reprs.append(load_repr(row, self.repr_2))
-            y_filenames.append(os.path.splitext(os.path.basename(row.filepath))[0])
+            y_segment_ids.append(row.segment_id)
+            y_filenames.append(split_filepath(row.filepath))
 
         xdf = pd.DataFrame(x_reprs)
         ydf = pd.DataFrame(y_reprs)
@@ -124,6 +136,9 @@ class PartPairDataset(Dataset):
             xdf.columns = rtb.DESCRIPTOR_NAMES
         if self.repr_2 == REPRESENTATIONS.index("descriptors"):
             ydf.columns = rtb.DESCRIPTOR_NAMES
+
+        xdf["segment_id"] = x_segment_ids
+        ydf["segment_id"] = y_segment_ids
 
         xdf["filename"] = x_filenames
         ydf["filename"] = y_filenames
