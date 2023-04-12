@@ -1,11 +1,14 @@
 """
 The transparent glue
 
-Perform dimensionality reduction over PartPairDatasets and visualize the resulting low-dimensional spaces.
-Use both MDS and t-SNE.
+Perform dimensionality reduction over PartPairDatasets.
+
+Use Delaunay triangulation to find corresponding pairs of points in the resulting embedding spaces.
+
+Interpolate in the input domain to treat the embedding spaces as continuous.
 
 Example usage:
-    python scripts/pairspace.py --subset=20
+    python scripts/pairspace.py --subset=2000
 """
 import argparse
 import os
@@ -14,16 +17,23 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
-from utils import save_fig, play_midi_file
 from rhythmic_relationships import DATASETS_DIR, PLOTS_DIRNAME
 from rhythmic_relationships.data import PartPairDataset
-from rhythmic_relationships.io import get_pmid_segment, load_midi_file
+from rhythmic_relationships.io import (
+    get_pmid_segment,
+    load_midi_file,
+    write_midi_from_hits,
+)
+from rhythmic_relationships.representations import (
+    get_representations,
+    parse_bar_start_ticks,
+)
+from scipy.spatial import Delaunay
 from sklearn.manifold import MDS, TSNE
+from utils import save_fig
 
 sns.set_style("white")
 sns.set_context("paper")
-
-INPUT_DATA_DIR = "../input/babyslakh"
 
 
 def get_distance(point1, point2):
@@ -31,7 +41,7 @@ def get_distance(point1, point2):
     return np.sqrt((point2[0] - point1[0]) ** 2 + (point2[1] - point1[1]) ** 2)
 
 
-def get_embeddings(X, filenames, method="t-SNE", title=""):
+def get_embeddings(X, filenames, segment_ids, method="t-SNE", title="", outdir="."):
     """Create a 2D embedding space of the data, plot it, and save it to a csv"""
     reducer = TSNE(n_components=2, init="pca", learning_rate="auto", random_state=42)
     if method == "MDS":
@@ -40,181 +50,141 @@ def get_embeddings(X, filenames, method="t-SNE", title=""):
     # Make the pair space using t-SNE
     X_transform = reducer.fit_transform(X)
 
-    emb = pd.DataFrame(X_transform, columns=["component_1", "component_2"])
+    emb = pd.DataFrame(X_transform, columns=["x", "y"])
     emb["filename"] = filenames
+    emb["segment_id"] = segment_ids
     outname = f"{method}_{title}"
-    emb.to_csv(os.path.join(plots_dir, f"{outname}.csv"))
+    emb.to_csv(os.path.join(outdir, f"{outname}.csv"), index=False)
     sns.relplot(
         data=emb,
-        x="component_1",
-        y="component_2",
+        x="x",
+        y="y",
         hue="filename",
         height=8,
         aspect=1.25,
         legend=False,
     )
-    for ix, row in emb.iterrows():
-        plt.text(
-            row["component_1"],
-            row["component_2"] + 1,
-            str(ix),
-            ha="center",
-            va="center",
-            color="gray",
-        )
+    if len(emb) < 100:
+        for ix, row in emb.iterrows():
+            plt.text(
+                row["x"],
+                row["y"] + 1,
+                str(ix),
+                ha="center",
+                va="center",
+                color="gray",
+            )
     plt.grid("minor")
 
     save_fig(
-        os.path.join(plots_dir, f"{outname}.png"),
+        os.path.join(outdir, f"{outname}.png"),
         title=f"Paired {method} embeddings ({title})\n{dataset_name}\nColored by file",
     )
 
     return emb
 
 
-def get_n_closest(coord, emb, n):
-    """Find the n points in emb closest to coord
+def get_triangles(coords):
+    # Generate triangles
+    tri = Delaunay(coords)
 
-    :parameters:
-        coord : tuple
-            The (x, y) coordinates of the point to find the closest to
-        emb : pd.DataFrame
-            The embedding of the data
-        n : int
-            The number of points to find
+    return tri.simplices
 
-    :returns:
-        closest_emb: pd.DataFrame
-            The n closest points in emb
+
+def get_triangle_area(v1, v2, v3):
+    """Return the area of a triangle given its vertices."""
+    return 0.5 * abs(
+        (v2[0] - v1[0]) * (v3[1] - v1[1]) - (v3[0] - v1[0]) * (v2[1] - v1[1])
+    )
+
+
+def is_coord_inside_triangle(coord, v1, v2, v3):
+    """Return True if a point is inside a triangle.
+
+    :parameter
+        coord: tuple
+            The coordinates of the point to test
+        v1, v2, v3: tuple
+            The coordinates of the vertices of the triangle
+
+    :return
+        True if the point is inside the triangle, False otherwise
     """
-    closest_ixs = []
-    for ix, row in emb.iterrows():
-        dist = get_distance(coord, row[["component_1", "component_2"]])
-        if len(closest_ixs) < n:
-            closest_ixs.append((ix, dist))
-            closest_ixs = sorted(closest_ixs, key=lambda x: x[1])
-        else:
-            if dist < closest_ixs[-1][1]:
-                closest_ixs[-1] = (ix, dist)
-                closest_ixs = sorted(closest_ixs, key=lambda x: x[1])
+    a = get_triangle_area(v1, v2, v3)
+    a1 = get_triangle_area(v1, v2, coord)
+    a2 = get_triangle_area(v2, v3, coord)
+    a3 = get_triangle_area(v1, v3, coord)
 
-    return emb.loc[[i[0] for i in closest_ixs]]
+    if a < (a1 + a2 + a3):
+        return False
+
+    return True
 
 
-def find_corresponding_point(coord, emb1, emb2):
-    """Given a coordinate in the embeddings pace of one part, find a corresponding point in the embedding space of the other part
+def find_triangle(coord, triangles, coords):
+    """Find the triangle to which a 2D coordinate belongs.
 
-    :parameters:
-        coord : tuple
-            The (x, y) coordinates of the point to find the closest to
-        emb1 : pd.DataFrame
-            The embedding of the data for the first part
-        emb2 : pd.DataFrame
-            The embedding of the data for the second part
+    :parameter
+        coord: tuple
+            The coordinates of the point to test
+        triangles: list of tuples
+            The triangles of the triangulation
+        coords: list of tuples
+            The coordinates of the vertices of the triangles
 
-    :returns:
-        closest_ix : int
+    :return
+        The index of the triangle to which the coordinate belongs.
+        If the coordinate is not in any triangle, return None.
     """
-    # Find the three closest points to the input coord
-    three_closest = get_n_closest(coord, emb1, n=3)
+    for t in triangles:
+        v1, v2, v3 = coords[t].tolist()
+        if is_coord_inside_triangle(coord, v1, v2, v3):
+            return t
 
-    # Get the corresponding points from emb2
-    corresponding_emb2 = emb2.iloc[three_closest.index]
-
-    # Return the point from emb2 closest to average of those three corresponding points
-    mean_corresponding_coord = (
-        corresponding_emb2.component_1.mean(),
-        corresponding_emb2.component_2.mean(),
-    )
-    closest_ix = (
-        get_n_closest(mean_corresponding_coord, corresponding_emb2, n=1).iloc[0].name
-    )
-
-    return emb2.loc[closest_ix]
+    print("The coordinate is not in any triangle")
+    return None
 
 
-def get_midi_for_closest(coord, emb, parts=[]):
-    """Find the point in emb closest to coord and loads the corresponding MIDI for the segment
+def get_vertex_weights(coord, vertex_coords):
+    """Compute the weights of each vertex of a triangle on a point that falls inside the triangle.
 
-    :parameters:
-        coord : tuple
-            The (x, y) coordinates of the point to find the closest to
-        emb : pd.DataFrame
-            The embedding of the data
-        parts : list
-            The parts to load from the MIDI file
+    :param: coord, tuple
+        A coordinate that falls inside the given triangle
 
-    :returns:
-        pmid_slice : pretty_midi.PrettyMIDI
+    :param: vertex_coords, np.array
+        Coordinates of the triangle vertices
+
+    :return:
+        The weight of each vertex on the coord
     """
-    # Find the closest point
-    closest = emb.iloc[0]
-    closest_dist = get_distance(coord, closest[["component_1", "component_2"]])
-    for ix, row in emb.iterrows():
-        dist = get_distance(coord, row[["component_1", "component_2"]])
-        if dist < closest_dist:
-            closest = row
-            closest_dist = dist
+    A, B, C = vertex_coords
+    a = get_triangle_area(coord, B, C)
+    b = get_triangle_area(coord, A, C)
+    c = get_triangle_area(coord, A, B)
 
-    # Load the MIDI file
-    pmid = load_midi_file(os.path.join(INPUT_DATA_DIR, closest["filename"] + ".mid"))
-    pmid_slice = get_pmid_segment(
-        pmid,
-        segment_num=closest.name,
-        resolution=4,
-        seg_size=2,
-        n_beat_bars=4,
-        parts=parts,
-    )
-    print(f'Loaded MIDI for {closest["filename"]} segment {closest.name}')
-    return pmid_slice
+    # TODO: pull this assertion to a unit test
+    assert np.allclose(np.array(coord), (a * A + b * B + c * C) / (a + b + c))
+
+    return a, b, c
 
 
-def plot_emb_interactive(emb):
-    """Create an interactive plot of the embedding space"""
+def interpolate_three_patterns(hits_list, weights):
+    """Interpolate 3 hits vectors given a set of weights"""
+    a, b, c = weights
 
-    # Enable interactive plotting
-    plt.ion()
+    # Sum the weight vectors of the three patterns
+    w0 = a * hits_list[0]
+    w1 = b * hits_list[1]
+    w2 = c * hits_list[2]
+    w = w0 + w1 + w2
 
-    fig, ax = plt.subplots(figsize=(8, 6))
-    sns.scatterplot(
-        data=emb,
-        x="component_1",
-        y="component_2",
-        hue="filename",
-        legend=False,
-        ax=ax,
-    )
+    # Keep the N onsets with the highest weights, where N is the avg density
+    mean_density = np.mean([sum(h) for h in hits_list])
+    onset_ixs = w.argsort()[-int(mean_density) :]
+    interpolated = np.zeros(len(w), dtype=np.int8)
+    interpolated[onset_ixs] = 1
 
-    tmp_filepath = "interactive-plotting-temp-01934893.mid"
-
-    def onclick(event):
-        if event.button != 1:
-            return
-
-        print(f"Clicked {event.xdata}, {event.ydata}")
-
-        # Retrieve MIDI for the closest point to the input coord
-        pmid = get_midi_for_closest(
-            (event.xdata, event.ydata), emb, parts=["Drums", "Piano"]
-        )
-
-        pmid.write(tmp_filepath)
-        play_midi_file(tmp_filepath)
-
-    def onclose(event):
-        print("Figure closed")
-        os.remove(tmp_filepath)
-        fig.canvas.mpl_disconnect(cid_click)
-        fig.canvas.mpl_disconnect(cid_close)
-        plt.ioff()
-
-    # Connect to the event manager
-    cid_click = fig.canvas.mpl_connect("button_press_event", onclick)
-    cid_close = fig.canvas.mpl_connect("close_event", onclose)
-
-    # Start plot
-    plt.show()
+    return interpolated
 
 
 if __name__ == "__main__":
@@ -222,17 +192,23 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dataset",
         type=str,
-        default="babyslakh_20_1bar_4res",
+        default="lmdc_250_1bar_4res",
         help="Name of the dataset to make plots for.",
+    )
+    parser.add_argument(
+        "--midi_dir",
+        type=str,
+        default="../input/lmd_clean",
+        help="Name of the directory from which to load MIDI data.",
     )
     parser.add_argument(
         "--subset",
         type=int,
-        default=25,
-        help="Size of subset to use. If None, use all.",
+        default=2000,
+        help="Number of segments to use. If None, use all.",
     )
     parser.add_argument(
-        "--descriptors_to_analyze",
+        "--feature_names",
         nargs="+",
         default=[
             "noi",
@@ -248,13 +224,14 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     dataset_name = args.dataset
-    descriptors_to_analyze = args.descriptors_to_analyze
+    feature_names = args.feature_names
     subset = args.subset
+    midi_dir = args.midi_dir
 
     # Create the output directory
-    plots_dir = os.path.join(DATASETS_DIR, dataset_name, PLOTS_DIRNAME, "pairspaces")
-    if not os.path.isdir(plots_dir):
-        os.makedirs(plots_dir)
+    output_dir = os.path.join(DATASETS_DIR, dataset_name, PLOTS_DIRNAME, "pairspaces")
+    if not os.path.isdir(output_dir):
+        os.makedirs(output_dir)
 
     # Load the data
     p1 = "Drums"
@@ -271,41 +248,231 @@ if __name__ == "__main__":
     n_pairs = len(df)
 
     filenames = df["filenamePiano"].values
-    df = df[[c for c in df.columns if any([i in c for i in descriptors_to_analyze])]]
+    segment_ids = df["segment_idPiano"].values
+    df = df[[c for c in df.columns if any([i in c for i in feature_names])]]
 
-    # Pair space
-    emb_tsne = get_embeddings(df, filenames, title="paired input")
-    emb_mds = get_embeddings(df, filenames, title="paired input", method="MDS")
+    # # Pair space
+    # emb_tsne = get_embeddings(df, filenames, segment_ids, title="paired input", outdir=output_dir)
+    # emb_mds = get_embeddings(
+    #     df, filenames, segment_ids, title="paired input", method="MDS", outdir=output_dir
+    # )
 
     # Make the Drums space
     dfd = df[[c for c in df.columns if "Drums" in c]]
-    drums_emb_tsne = get_embeddings(dfd, filenames, title="Drums")
-    drums_emb_mds = get_embeddings(dfd, filenames, title="Drums", method="MDS")
+    drums_emb_tsne = get_embeddings(
+        dfd, filenames, segment_ids, title="Drums", outdir=output_dir
+    )
+    # drums_emb_mds = get_embeddings(
+    #     dfd, filenames, segment_ids, title="Drums", method="MDS", outdir=output_dir
+    # )
 
     # Make the Piano space
     dfp = df[[c for c in df.columns if "Piano" in c]]
-    piano_emb_tsne = get_embeddings(dfp, filenames, title="Piano")
-    piano_emb_mds = get_embeddings(dfp, filenames, title="Piano", method="MDS")
-
-    # Embed the paired embedding spaces
-    paired_emb_tsne = pd.concat(
-        [
-            drums_emb_tsne.drop("filename", axis=1),
-            piano_emb_tsne.drop("filename", axis=1),
-        ],
-        axis=1,
+    piano_emb_tsne = get_embeddings(
+        dfp, filenames, segment_ids, title="Piano", outdir=output_dir
     )
-    paired_emb_mds = pd.concat(
-        [
-            drums_emb_mds.drop("filename", axis=1),
-            piano_emb_mds.drop("filename", axis=1),
-        ],
-        axis=1,
+    # piano_emb_mds = get_embeddings(
+    #     dfp, filenames, segment_ids, title="Piano", method="MDS", outdir=output_dir
+    # )
+
+    # # Embed the paired embedding spaces
+    # paired_emb_tsne = pd.concat(
+    #     [
+    #         drums_emb_tsne.drop("filename", axis=1),
+    #         piano_emb_tsne.drop("filename", axis=1),
+    #     ],
+    #     axis=1,
+    # )
+    # paired_emb_mds = pd.concat(
+    #     [
+    #         drums_emb_mds.drop("filename", axis=1),
+    #         piano_emb_mds.drop("filename", axis=1),
+    #     ],
+    #     axis=1,
+    # )
+
+    # emb_emb_tsne = get_embeddings(
+    #     paired_emb_tsne,
+    #     filenames,
+    #     segment_ids,
+    #     title="paired embedding",
+    #     outdir=output_dir,
+    # )
+    # emb_emb_mds = get_embeddings(
+    #     paired_emb_mds,
+    #     filenames,
+    #     segment_ids,
+    #     title="paired embedding",
+    #     method="MDS",
+    #     outdir=output_dir,
+    # )
+
+    # Given a point in the Piano space, get a corresponding point from the Drums space using Delaunay triangulation
+    p_emb = piano_emb_tsne.drop(["segment_id", "filename"], axis=1).values.astype(
+        np.float64
+    )
+    d_emb = drums_emb_tsne.drop(["segment_id", "filename"], axis=1).values.astype(
+        np.float64
     )
 
-    emb_emb_tsne = get_embeddings(paired_emb_tsne, filenames, title="paired embedding")
-    emb_emb_mds = get_embeddings(
-        paired_emb_mds, filenames, title="paired embedding", method="MDS"
+    # Min-max normalize the coordinates to be between 0 and 1
+    piano_coords = (p_emb - p_emb.min()) / (p_emb.max() - p_emb.min())
+    drums_coords = (d_emb - d_emb.min()) / (d_emb.max() - d_emb.min())
+
+    piano_tris = get_triangles(piano_coords)
+    drums_tris = get_triangles(drums_coords)
+
+    # Coord should be a value between 0 and 1 because the coords have been normalized
+    input_coord = (0.5, 0.5)
+    triangle = find_triangle(input_coord, piano_tris, piano_coords)
+    if triangle is None:
+        raise ValueError("The coordinate is not in any triangle")
+
+    piano_tri_coords = piano_coords[triangle]
+    drums_tri_coords = drums_coords[triangle]
+
+    # Compute a point in the second space using a weighted avg of inverse coord-to-vertex ratios in the first
+    a, b, c = get_vertex_weights(input_coord, piano_tri_coords)
+    A, B, C = drums_tri_coords
+    drums_coord = (a * A + b * B + c * C) / (a + b + c)
+
+    fig, ax = plt.subplots(1, 2, figsize=(10, 4), sharey=True, sharex=True)
+
+    ax[0].triplot(
+        piano_coords[:, 0], piano_coords[:, 1], piano_tris, color="gray", lw=0.5
+    )
+    ax[0].plot(piano_coords[:, 0], piano_coords[:, 1], "o", color="black", markersize=1)
+    ax[0].plot(input_coord[0], input_coord[1], "o", color="red")
+    if isinstance(triangle, np.ndarray):
+        ax[0].plot(piano_tri_coords[:, 0], piano_tri_coords[:, 1], "o", color="blue")
+    ax[0].set_title("Piano")
+
+    ax[1].triplot(
+        drums_coords[:, 0], drums_coords[:, 1], drums_tris, color="gray", lw=0.5
+    )
+    ax[1].plot(drums_coords[:, 0], drums_coords[:, 1], "o", color="black", markersize=1)
+    ax[1].plot(drums_coord[0], drums_coord[1], "o", color="red")
+    if isinstance(triangle, np.ndarray):
+        ax[1].plot(drums_tri_coords[:, 0], drums_tri_coords[:, 1], "o", color="blue")
+    ax[1].set_title("Drums")
+
+    for ix, coord in enumerate(piano_tri_coords):
+        ax[0].text(
+            coord[0] - 0.01,
+            coord[1] + 0.05,
+            str(ix),
+            ha="center",
+            va="center",
+            color="blue",
+        )
+
+    for ix, coord in enumerate(drums_tri_coords):
+        ax[1].text(
+            coord[0] - 0.01,
+            coord[1] + 0.05,
+            str(ix),
+            ha="center",
+            va="center",
+            color="blue",
+        )
+
+    plt.xlim(-0.1, 1.1)
+    plt.ylim(-0.1, 1.1)
+    plt.xticks([])
+    plt.yticks([])
+    plt.tight_layout()
+    plt.savefig(os.path.join(output_dir, f"triangles_{subset}.png"))
+
+    # Load the MIDI slices & derive hits representations for each part
+    piano_hits_list = []
+    drums_hits_list = []
+    for ix in triangle:
+        piano_row = piano_emb_tsne.iloc[ix]
+        filename = piano_row["filename"]
+        segment_id = piano_row["segment_id"]
+        pmid = load_midi_file(os.path.join(midi_dir, f"{filename}.mid"))
+
+        # TODO: automatically determine seg_size, or take it as an arg
+        piano_slice = get_pmid_segment(
+            pmid,
+            segment_num=segment_id,
+            resolution=4,
+            seg_size=1,
+            n_beat_bars=4,
+            parts=["Piano"],
+        )
+        drums_slice = get_pmid_segment(
+            pmid,
+            segment_num=segment_id,
+            resolution=4,
+            seg_size=1,
+            n_beat_bars=4,
+            parts=["Drums"],
+        )
+
+        # Derive hits representations from MIDI
+        _, piano_subdivisions = parse_bar_start_ticks(piano_slice, resolution=4)
+        piano_slice_representations = get_representations(
+            piano_slice, piano_subdivisions, binarize=True
+        )[0]
+        piano_hits = (piano_slice_representations["hits"] > 0).astype(np.int8)
+        piano_hits_list.append(piano_hits)
+
+        _, drums_subdivisions = parse_bar_start_ticks(drums_slice, resolution=4)
+        drums_slice_representations = get_representations(
+            drums_slice, drums_subdivisions, binarize=True
+        )[0]
+        drums_hits = (drums_slice_representations["hits"] > 0).astype(np.int8)
+        drums_hits_list.append(drums_hits)
+
+        print(f"Loaded MIDI for {filename} segment {segment_id}")
+
+        # Write MIDI
+        output_filename = filename.replace("/", "_")
+        piano_slice.write(
+            os.path.join(output_dir, f"{output_filename}_{segment_id}_piano.mid")
+        )
+        drums_slice.write(
+            os.path.join(output_dir, f"{output_filename}_{segment_id}_drums.mid")
+        )
+
+        # Write hits as MIDI
+        write_midi_from_hits(
+            piano_hits,
+            os.path.join(output_dir, f"{output_filename}_{segment_id}_piano_hits.mid"),
+            pitch=60,
+        )
+        write_midi_from_hits(
+            drums_hits,
+            os.path.join(output_dir, f"{output_filename}_{segment_id}_drums_hits.mid"),
+            pitch=36,
+        )
+
+    # Pad all hits with 0s to the the same length
+    # TODO: shouldn't this always be the case? Check prepare_dataset for why this happens
+    max_len = max([len(h) for h in piano_hits_list])
+    piano_hits_list = [
+        np.pad(h, (0, max_len - len(h)), mode="constant", constant_values=0)
+        for h in piano_hits_list
+    ]
+    max_len = max([len(h) for h in drums_hits_list])
+    drums_hits_list = [
+        np.pad(h, (0, max_len - len(h)), mode="constant", constant_values=0)
+        for h in drums_hits_list
+    ]
+
+    interpolated_piano_hits = interpolate_three_patterns(piano_hits_list, (a, b, c))
+    interpolated_drums_hits = interpolate_three_patterns(drums_hits_list, (a, b, c))
+
+    write_midi_from_hits(
+        interpolated_piano_hits,
+        os.path.join(output_dir, "interpolated_piano_hits.mid"),
+        pitch=60,
+    )
+    write_midi_from_hits(
+        interpolated_drums_hits,
+        os.path.join(output_dir, "interpolated_drums_hits.mid"),
+        pitch=36,
     )
 
     # Example: Get corresponding points from Drums <--> Piano
