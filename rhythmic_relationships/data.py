@@ -34,6 +34,10 @@ def load_repr(segment, repr_ix):
     return reprs[repr_ix]
 
 
+def split_filepath_on_dirname(filepath, dirname):
+    return os.path.splitext(filepath.split(dirname)[1])[0].strip("/")
+
+
 class PartPairDataset(Dataset):
     """
     Params
@@ -96,7 +100,7 @@ class PartPairDataset(Dataset):
 
         return x, y
 
-    def as_dfs(self, shuffle=False):
+    def as_dfs(self, shuffle=False, subset=None):
         """Returns the entire dataset in two dataframes. Useful for analysis.
 
         :return: Tuple of two dataframes
@@ -104,30 +108,36 @@ class PartPairDataset(Dataset):
             stacked_df: in which the part dfs are vertically stacked
         """
 
-        def split_filepath(filepath):
-            return os.path.splitext(
-                filepath.split(os.path.join(self.dataset_dir, REPRESENTATIONS_DIRNAME))[
-                    1
-                ]
-            )[0].strip("/")
+        n_segments = self.__len__()
+
+        p1_pairs = self.p1_pairs.copy()
+        p2_pairs = self.p2_pairs.copy()
+
+        if subset:
+            p1_pairs = p1_pairs[:subset]
+            p2_pairs = p2_pairs[:subset]
+            n_segments = subset
 
         print(f"Loading {self.part_1} segments")
+
+        segment_ids = []
+        filenames = []
+
         x_reprs = []
-        x_segment_ids = []
-        x_filenames = []
-        for ix, row in tqdm(self.p1_pairs.iterrows(), total=self.__len__()):
+        for ix, row in tqdm(p1_pairs.iterrows(), total=n_segments):
             x_reprs.append(load_repr(row, self.repr_1))
-            x_segment_ids.append(row.segment_id)
-            x_filenames.append(split_filepath(row.filepath))
+
+            # Only necessary to keep metadata for one part because they are the same
+            segment_ids.append(row.segment_id)
+            filename = split_filepath_on_dirname(
+                row.filepath, os.path.join(self.dataset_dir, REPRESENTATIONS_DIRNAME)
+            )
+            filenames.append(filename)
 
         print(f"Loading {self.part_2} segments")
         y_reprs = []
-        y_segment_ids = []
-        y_filenames = []
-        for ix, row in tqdm(self.p2_pairs.iterrows(), total=self.__len__()):
+        for ix, row in tqdm(p2_pairs.iterrows(), total=n_segments):
             y_reprs.append(load_repr(row, self.repr_2))
-            y_segment_ids.append(row.segment_id)
-            y_filenames.append(split_filepath(row.filepath))
 
         xdf = pd.DataFrame(x_reprs)
         ydf = pd.DataFrame(y_reprs)
@@ -137,17 +147,20 @@ class PartPairDataset(Dataset):
         if self.repr_2 == REPRESENTATIONS.index("descriptors"):
             ydf.columns = rtb.DESCRIPTOR_NAMES
 
-        xdf["segment_id"] = x_segment_ids
-        ydf["segment_id"] = y_segment_ids
-
-        xdf["filename"] = x_filenames
-        ydf["filename"] = y_filenames
-
         # Each row is a p1_p2 pair with all descriptors for both parts
-        pair_df = xdf.join(ydf, lsuffix=self.part_1, rsuffix=self.part_2)
+        pair_df = xdf.join(ydf, lsuffix=f'_{self.part_1}', rsuffix=f'_{self.part_2}')
+
+        pair_df.insert(0, "segment_id", segment_ids)
+        pair_df.insert(0, "filename", filenames)
 
         xdf["part"] = self.part_1
         ydf["part"] = self.part_2
+
+        xdf["segment_id"] = segment_ids
+        ydf["segment_id"] = segment_ids
+        xdf["filename"] = filenames
+        ydf["filename"] = filenames
+
         stacked_df = pd.concat([xdf, ydf]).reset_index(drop=True)
 
         if shuffle:
@@ -179,7 +192,9 @@ class PartDataset(Dataset):
         self.part = part
         self.representation = REPRESENTATIONS.index(representation)
 
-        df = load_dataset_annotations(dataset_name)
+        self.dataset_dir = os.path.join(DATASETS_DIR, dataset_name)
+        df = load_dataset_annotations(self.dataset_dir)
+
         self.part_df = df[df.part_id == part]
 
     def __len__(self):
@@ -190,21 +205,37 @@ class PartDataset(Dataset):
         seg_repr = load_repr(seg, self.representation)
         return torch.from_numpy(seg_repr).to(torch.float32)
 
-    def as_df(self, shuffle=False):
+    def as_df(self, shuffle=False, subset=None):
         """Returns the entire dataset in a dataframe. Useful for analysis."""
         print(f"Loading {self.part} segment {REPRESENTATIONS[self.representation]}")
 
+        n_segments = self.__len__()
+
+        part_df = self.part_df.copy()
+
+        if subset:
+            part_df = part_df[:subset]
+            n_segments = subset
+
         reprs = []
+        segment_ids = []
         filenames = []
-        for ix, row in tqdm(self.part_df.iterrows(), total=self.__len__()):
+        for ix, row in tqdm(part_df.iterrows(), total=n_segments):
             reprs.append(load_repr(row, self.representation))
-            filenames.append(os.path.splitext(os.path.basename(row.filepath))[0])
+            segment_ids.append(row.segment_id)
+
+            filename = split_filepath_on_dirname(
+                row.filepath, os.path.join(self.dataset_dir, REPRESENTATIONS_DIRNAME)
+            )
+            filenames.append(filename)
 
         df = pd.DataFrame(reprs)
 
         if self.representation == "descriptors":
             df.columns = rtb.DESCRIPTOR_NAMES
-        df["filename"] = filenames
+
+        df.insert(0, "segment_id", segment_ids)
+        df.insert(0, "filename", filenames)
 
         if shuffle:
             return df.sample(frac=1)
