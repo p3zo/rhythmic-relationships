@@ -35,6 +35,8 @@ Because there is no publicly available dataset with these category labels, we us
 Rhythms can be encoded into various representations, each of which gives a different view into rhythmic relationships. This repository implements the following:
 
 - `roll`: a [piano roll](https://en.wikipedia.org/wiki/Piano_roll#In_digital_audio_workstations) with MIDI velocities converted to real numbers in [0, 1]
+- `onset roll`: a `roll` with only onsets
+- `drum roll`: a `roll` with pitches mapped to 9 drum voices following the "Paper Mapping" of the [Groove MIDI Dataset](https://magenta.tensorflow.org/datasets/groove)
 - `chroma`: a ternary [chroma](https://en.wikipedia.org/wiki/Chroma_feature). `0` is a silence, `1` is an onset, and `2`
   is a continuation of a previous onset.
 - `pattern`: a ternary vector of onsets and offsets. `0` is a silence, `1` is an onset, and `2` is a continuation of a previous onset. Onsets take precedence over continuations.

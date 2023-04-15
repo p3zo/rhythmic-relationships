@@ -7,46 +7,49 @@ REPRESENTATIONS = ["roll", "chroma", "pattern", "hits", "descriptors"]
 # Standard 88-key piano range
 MIDI_PITCH_RANGE = [21, 108]
 
+# Follows paper mapping in https://magenta.tensorflow.org/datasets/groove
+DRUM_MAP_9_VOICE = {
+    36: 36,
+    38: 38,
+    40: 38,
+    37: 38,
+    48: 50,
+    50: 50,
+    45: 47,
+    47: 47,
+    43: 43,
+    58: 43,
+    46: 46,
+    26: 46,
+    42: 42,
+    22: 42,
+    44: 42,
+    49: 49,
+    55: 49,
+    57: 49,
+    52: 49,
+    51: 51,
+    59: 51,
+    53: 51,
+}
 
-def get_9voice_drum_roll(roll):
-    """Convert a piano roll to a 9-voice roll for drums"""
 
-    # Follows paper mapping in https://magenta.tensorflow.org/datasets/groove
-    drum_map_9_voice = {
-        36: 36,
-        38: 38,
-        40: 38,
-        37: 38,
-        48: 50,
-        50: 50,
-        45: 47,
-        47: 47,
-        43: 43,
-        58: 43,
-        46: 46,
-        26: 46,
-        42: 42,
-        22: 42,
-        44: 42,
-        49: 49,
-        55: 49,
-        57: 49,
-        52: 49,
-        51: 51,
-        59: 51,
-        53: 51,
-    }
+def get_9voice_drum_roll_pitches(pitches):
+    """Map a list of pitches to the pitches of a 9-voice drum roll
 
-    voices = list(np.unique(list(drum_map_9_voice.values())))
+    :param pitches: list of MIDI pitches
+    :return: list of drum roll pitches
+    """
+    drum_roll_voices = sorted(list(np.unique(list(DRUM_MAP_9_VOICE.values()))))
 
-    clip = np.zeros((len(roll), 9))
-    for event_ix in range(len(clip)):
-        for inst_ix, i in enumerate(roll[event_ix]):
-            if i > 0 and inst_ix in drum_map_9_voice:
-                clip_ix = voices.index(drum_map_9_voice.get(inst_ix))
-                clip[event_ix][clip_ix] = i
+    drum_roll_pitches = []
+    for p in pitches:
+        drum_roll_pitch = 0
+        if p in DRUM_MAP_9_VOICE:
+            drum_roll_pitch = drum_roll_voices.index(DRUM_MAP_9_VOICE[p])
+        drum_roll_pitches.append(drum_roll_pitch)
 
-    return clip
+    return drum_roll_pitches
 
 
 def get_multitrack_roll(tracks, drums=False):
@@ -78,9 +81,12 @@ def get_multitrack_roll(tracks, drums=False):
 
 
 def get_representations(pmid, subdivisions, binarize=True):
-    """Parse all representations from a PrettyMIDI object.
+    """Parse all representations from a PrettyMIDI object
 
-    Adapted from https://github.com/salu133445/pypianoroll/blob/18a68d4a7e39673a739396d409a2ff99af06d643/pypianoroll/inputs.py#L103-L338
+    :param pmid: PrettyMIDI object
+    :param subdivisions: list of tick times
+    :param binarize: whether to binarize the roll representation
+    :return: dict of representations
     """
 
     # LEFT OFF: handle the case when len(subdivisions) == 1
@@ -93,62 +99,74 @@ def get_representations(pmid, subdivisions, binarize=True):
             continue
 
         roll = np.zeros((n_ticks, 128), np.uint8)
+        onset_roll = np.zeros((n_ticks, 128), np.uint8)
+        drum_roll = np.zeros((n_ticks, 9))
         chroma = np.zeros((n_ticks, 12), np.uint8)
         pattern = np.zeros(n_ticks, np.uint8)
         hits = np.zeros(n_ticks, np.uint8)
 
-        onset_times = [note.start for note in instrument.notes]
-        onsets = [np.argmin(np.abs(t - subdivisions)) for t in onset_times]
-        velocities = [note.velocity for note in instrument.notes]
+        onsets_unquantized = [note.start for note in instrument.notes]
+        onsets = [np.argmin(np.abs(t - subdivisions)) for t in onsets_unquantized]
         pitches = [note.pitch for note in instrument.notes]
+        velocities = [note.velocity for note in instrument.notes]
+        for ix, v in enumerate(velocities):
+            if v < 0:
+                velocities[ix] = 0
+            if v > 127:
+                velocities[ix] = 127
 
+        # Construct representations don't need to preserve offsets
         hits[onsets] = velocities
+        onset_roll[onsets, pitches] = velocities
 
         if instrument.is_drum:
-            # Drum representations don't need to preserve offsets
             roll[onsets, pitches] = velocities
             chroma[onsets, [p % 12 for p in pitches]] = 1
             pattern[onsets] = 1
+
+            drum_roll_pitches = get_9voice_drum_roll_pitches(pitches)
+            drum_roll[onsets, drum_roll_pitches] = velocities
+
         else:
-            offset_times = [note.end for note in instrument.notes]
-            offsets = [np.argmin(np.abs(t - subdivisions)) for t in offset_times]
+            # Construct representations that need to preserve offsets
+            offsets_unquantized = [note.end for note in instrument.notes]
+            offsets = [np.argmin(np.abs(t - subdivisions)) for t in offsets_unquantized]
 
-            for ix, (start, end) in enumerate(zip(onsets, offsets)):
-                pitch = pitches[ix]
-                velocity = velocities[ix]
+            for note_ix, (on_tick, off_tick) in enumerate(zip(onsets, offsets)):
+                pitch = pitches[note_ix]
+                velocity = velocities[note_ix]
 
-                if velocity <= 0:
+                if velocity == 0:
                     continue
 
-                if velocity > 127:
-                    velocity = 127
+                # If on_tick and off_tick were quantized to the same tick, move off_tick back by 1 tick
+                if off_tick - on_tick <= 0:
+                    off_tick += 1
 
-                # If start and end were quantized to the same tick, move end back by 1 tick
-                if end - start <= 0:
-                    end += 1
+                if 0 < on_tick < n_ticks:
+                    if roll[on_tick - 1, pitch]:
+                        roll[on_tick - 1, pitch] = 0
 
-                if 0 < start < n_ticks:
-                    if roll[start - 1, pitch]:
-                        roll[start - 1, pitch] = 0
-
-                if end < n_ticks - 1:
-                    if roll[end, pitch]:
-                        end -= 1
+                if off_tick < n_ticks - 1:
+                    if roll[off_tick, pitch]:
+                        off_tick -= 1
 
                 # In the case of duplicate notes, preserve the one with the highest velocity
-                roll[start:end, pitch] = np.maximum(roll[start:end, pitch], velocity)
+                roll[on_tick:off_tick, pitch] = np.maximum(
+                    roll[on_tick:off_tick, pitch], velocity
+                )
 
                 # Onsets take precedence over continuations
-                continuation_ixs = np.where(pattern[start:end] == 0)[0] + start
+                continuation_ixs = np.where(pattern[on_tick:off_tick] == 0)[0] + on_tick
                 pattern[continuation_ixs] = 2
-                pattern[start] = 1
+                pattern[on_tick] = 1
 
                 pc = pitch % 12
-                chroma[start:end, pc] = 2
-                chroma[start, pc] = 1
+                chroma[on_tick:off_tick, pc] = 2
+                chroma[on_tick, pc] = 1
 
         # Trim the top and bottom pitches of the roll
-        # TODO: uncomment when io code can handle non-128-voiced rolls without transposing
+        # TODO: uncomment when io code handles non-128-voiced rolls without transposing
         # roll = roll[:, MIDI_PITCH_RANGE[0] : MIDI_PITCH_RANGE[1] + 1]
 
         if binarize:
@@ -156,6 +174,7 @@ def get_representations(pmid, subdivisions, binarize=True):
 
         # Convert MIDI velocities to real numbers in [0, 1]
         roll = roll / 127.0
+        onset_roll = onset_roll / 127.0
         hits = hits / 127.0
 
         tracks.append(
@@ -164,10 +183,11 @@ def get_representations(pmid, subdivisions, binarize=True):
                 "program": instrument.program,
                 "is_drum": instrument.is_drum,
                 "roll": roll,
-                "hits": hits,
-                "pattern": pattern,
+                "onset_roll": onset_roll,
+                "drum_roll": drum_roll,
                 "chroma": chroma,
-                # "drum_roll": get_9voice_drum_roll(roll),
+                "pattern": pattern,
+                "hits": hits,
             }
         )
 
