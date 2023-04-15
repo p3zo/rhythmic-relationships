@@ -3,17 +3,18 @@
 import os
 
 import numpy as np
+from rhythmic_relationships import DATASETS_DIR
 from rhythmic_relationships.data import load_dataset_annotations
 from rhythmic_relationships.io import get_pmid_segment, load_midi_file
 
 INPUT_DATA_DIR = "../input/lmd_clean"
 
-dataset_name = "lmdc_250_2bar_4res"
+dataset_name = "lmdc_250_1bar_4res"
 representation = "roll"
 n_parts_min = 2
 
 # Load dataset annotations
-df = load_dataset_annotations(dataset_name)
+df = load_dataset_annotations(os.path.join(DATASETS_DIR, dataset_name))
 df = df.sample(frac=1)  # shuffle
 
 # Choose a random segment with more than `n_parts_min` parts

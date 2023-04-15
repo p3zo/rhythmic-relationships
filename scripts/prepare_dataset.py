@@ -99,6 +99,7 @@ if __name__ == "__main__":
     subset = args.subset
     min_seg_pitches = args.min_seg_pitches
     min_seg_beats = args.min_seg_beats
+
     if args.verbose:
         logger.setLevel(logging.DEBUG)
 
@@ -134,7 +135,7 @@ if __name__ == "__main__":
             failed_paths.append(filepath)
             continue
 
-        part_seg_rolls = slice_midi(
+        seg_part_reprs = slice_midi(
             pmid=pmid,
             seg_size=seg_size,
             resolution=resolution,
@@ -144,9 +145,9 @@ if __name__ == "__main__":
             min_seg_beats=min_seg_beats,
         )
 
-        seg_list = [i.split("_") for i in part_seg_rolls.keys()]
+        seg_list = [i.split("_") for i in seg_part_reprs.keys()]
 
-        if part_seg_rolls is None or not seg_list:
+        if seg_part_reprs is None or not seg_list:
             failed_paths.append(filepath)
             continue
 
@@ -159,7 +160,7 @@ if __name__ == "__main__":
         outdir = os.path.dirname(outpath)
         if not os.path.isdir(outdir):
             os.makedirs(outdir)
-        np.savez_compressed(outpath, **part_seg_rolls)
+        np.savez_compressed(outpath, **seg_part_reprs)
 
     # Save the segment map
     annotations_path = os.path.join(output_dir, ANNOTATIONS_FILENAME)
