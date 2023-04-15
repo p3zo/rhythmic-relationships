@@ -1,4 +1,5 @@
 import warnings
+from collections import defaultdict
 
 import numpy as np
 import pretty_midi as pm
@@ -9,9 +10,20 @@ from rhythmic_relationships.parts import (
     get_program_from_part,
     PARTS,
 )
+from rhythmic_relationships.representations import (
+    get_representations,
+    get_descriptors_from_roll,
+)
 
 # TODO: fix catch_warnings block in load_midi_file and remove this
 warnings.filterwarnings("ignore", category=RuntimeWarning)
+
+
+def roll_has_activity(roll, min_pitches, min_beats):
+    """Verify that a piano roll has at least some number of beats and pitches"""
+    n_pitches = (roll.sum(axis=0) > 0).sum()
+    n_beats = (roll.sum(axis=1) > 0).sum()
+    return (n_pitches >= min_pitches) and (n_beats >= min_beats)
 
 
 def load_midi_file(filepath, resolution=24):
@@ -35,28 +47,149 @@ def parse_bar_start_ticks(pmid, resolution):
     """
 
     beats = pmid.get_beats()
-    one_more_beat = 2 * beats[-1] - beats[-2]
-    beats_plus_one = np.append(beats, one_more_beat)
+
+    if len(beats) == 1:
+        return np.array([0]), np.array([0])
+
+    additional_beat = 2 * beats[-1] - beats[-2]
+    beats = np.append(beats, additional_beat)
 
     # Upsample beat times to the input resolution using linear interpolation
     subdivisions = []
-    for start, end in zip(beats_plus_one, beats_plus_one[1:]):
+    for start, end in zip(beats, beats[1:]):
         for j in range(resolution):
             subdivisions.append((end - start) / resolution * j + start)
-    subdivisions.append(beats_plus_one[-1])
+    subdivisions.append(beats[-1])
     subdivisions = np.array(subdivisions)
 
     bar_start_ticks = []
     for bar_start in pmid.get_downbeats():
         bar_start_ticks.append(np.argmin(np.abs(bar_start - subdivisions)))
+    bar_start_ticks = np.array(bar_start_ticks)
 
     return bar_start_ticks, subdivisions
+
+
+def get_seg_iter(bar_start_ticks, seg_size, resolution, n_beat_bars):
+    """Get an iterator over the start and end ticks of each segment.
+
+    Currently, only non-overlapping segments are supported.
+    # TODO: allow for overlapping segments
+
+    :parameters:
+        bar_start_ticks: np.array
+            The start ticks of each bar in the midi file.
+        seg_size: int
+            The number of bars per segment.
+        resolution: int
+            The resolution of the midi file.
+        n_beat_bars: int
+            Process only segments with this number of beats per bar.
+
+    :returns:
+        seg_iter: list
+            A list of tuples of the start and end ticks of each segment.
+    """
+    # Handle case when there is only one segment in the track
+    if len(bar_start_ticks) <= seg_size:
+        return [(0, resolution * n_beat_bars * seg_size)]
+
+    return list(zip(bar_start_ticks, bar_start_ticks[seg_size:]))
+
+
+def slice_midi(
+    pmid,
+    seg_size=1,
+    resolution=4,
+    n_beat_bars=4,
+    binarize=False,
+    min_seg_pitches=1,
+    min_seg_beats=1,
+):
+    """Slice a midi file and compute several representations for each segment.
+
+    Parameters
+
+        pmid: pretty_midi.PrettyMIDI
+            A PrettyMIDI object
+
+        seg_size: int
+            Number of bars per segment.
+
+        resolution: int
+            Number of subdivisions per beat of the output representations.
+
+        n_beat_bars: int
+            Process only segments with this number of beats per bar.
+
+        min_seg_pitches: int
+            Process only segments with at least this number of pitches.
+
+        min_seg_beats: int
+            Process only segments with at least this number of beats.
+
+    Returns
+
+        seg_part_reprs, defaultdict(list)
+            A dictionary with all representations for each segment-part pair.
+    """
+
+    bar_start_ticks, subdivisions = parse_bar_start_ticks(pmid, resolution)
+    tracks = get_representations(pmid, subdivisions, binarize)
+
+    seg_iter = get_seg_iter(bar_start_ticks, seg_size, resolution, n_beat_bars)
+
+    # Initialize output objects
+    n_seg_ticks = resolution * n_beat_bars * seg_size
+    seg_part_reprs = defaultdict(list)
+
+    for track in tracks:
+        roll = track["roll"]
+        chroma = track["chroma"]
+        hits = track["hits"]
+        pattern = track["pattern"]
+
+        part = get_part_from_program(track["program"])
+        if track["is_drum"]:
+            part = "Drums"
+
+        # Slice the piano roll into segments of equal length
+        for seg_ix, (start, end) in enumerate(seg_iter):
+            seg_chroma = chroma[start:end]
+
+            # Skip segments with little activity
+            if not roll_has_activity(seg_chroma, min_seg_pitches, min_seg_beats):
+                continue
+
+            seg_roll = roll[start:end]
+            seg_hits = hits[start:end]
+            seg_pattern = pattern[start:end]
+
+            # Skip segments that aren't the target number of beats
+            if len(seg_roll) != n_seg_ticks:
+                continue
+
+            # Compute the `descriptors` representation of the roll
+            seg_descriptors = get_descriptors_from_roll(seg_roll, resolution)
+
+            # Join all representations in a single object array
+            # IMPORTANT: these should be in the same order as `representations.REPRESENTATIONS`
+            seg_part_reprs[f"{seg_ix}_{part}"].append(
+                np.array(
+                    [seg_roll, seg_chroma, seg_pattern, seg_hits, seg_descriptors],
+                    dtype="object",
+                )
+            )
+
+    return seg_part_reprs
 
 
 def get_pmid_segment(
     pmid, segment_num, seg_size=1, resolution=4, n_beat_bars=4, parts=[]
 ):
     """Get a segment of a midi file as a PrettyMIDI object.
+
+    # TODO: this is currently broken.
 
     :parameters:
         pmid : pretty_midi.PrettyMIDI
@@ -77,17 +210,14 @@ def get_pmid_segment(
     """
     bar_start_ticks, subdivisions = parse_bar_start_ticks(pmid, resolution)
 
-    seg_iter = list(zip(bar_start_ticks, bar_start_ticks[seg_size:]))
-    if len(bar_start_ticks) <= seg_size:
-        # There is only one segment in the track
-        seg_iter = [(0, resolution * n_beat_bars * seg_size)]
+    seg_iter = get_seg_iter(bar_start_ticks, seg_size, resolution, n_beat_bars)
 
-    slice_start, slice_end = seg_iter[segment_num]
+    seg_start, seg_end = seg_iter[segment_num]
 
     # Sort instruments by part index for convenience
     pmid.instruments.sort(key=lambda x: PARTS.index(get_part_from_program(x.program)))
 
-    pmid_slice = pm.PrettyMIDI()
+    pmid_segment = pm.PrettyMIDI()
 
     # Create a new PrettyMIDI object with only the notes in the segment
     for instrument in pmid.instruments:
@@ -103,28 +233,31 @@ def get_pmid_segment(
         if parts and part not in parts:
             continue
 
-        instrument_slice = pm.Instrument(
+        new_instrument = pm.Instrument(
             program=program, is_drum=instrument.is_drum, name=instrument.name
         )
 
         for note in instrument.notes:
             if (
-                note.start >= subdivisions[slice_start]
-                and note.end <= subdivisions[slice_end]
+                note.start >= subdivisions[seg_start]
+                and note.end <= subdivisions[seg_end]
             ):
-                note.start = note.start - subdivisions[slice_start]
-                note.end = note.end - subdivisions[slice_start]
-                instrument_slice.notes.append(note)
+                note.start = note.start - subdivisions[seg_start]
+                note.end = note.end - subdivisions[seg_start]
+                new_instrument.notes.append(note)
 
-        pmid_slice.instruments.append(instrument_slice)
+        if len(new_instrument.notes) > 0:
+            pmid_segment.instruments.append(new_instrument)
 
-    if len(pmid_slice.instruments) == 0:
+    if len(pmid_segment.instruments) == 0:
         logger.warning("No instruments found in segment.")
 
-    return pmid_slice
+    return pmid_segment
 
 
-def get_pretty_midi_from_roll(roll, resolution, binary=False, program=0, is_drum=False):
+def get_pretty_midi_from_roll(
+    roll, resolution, binary=False, program=0, is_drum=False, part_name=""
+):
     """Convert a piano roll to a PrettyMidi object with a single instrument.
 
     Adapted from https://github.com/craffel/pretty-midi/blob/main/examples/reverse_pianoroll.py
@@ -140,6 +273,8 @@ def get_pretty_midi_from_roll(roll, resolution, binary=False, program=0, is_drum
             Indicates if the instrument is a drum or not
         binary : bool
             Indicates if the piano roll has been binarized or not
+        name : str
+            The name of the instrument
     """
     # TODO: remove this transpose once the rest of the lib is refactored to use (voices, frames) rolls
     roll = roll.T
@@ -151,7 +286,7 @@ def get_pretty_midi_from_roll(roll, resolution, binary=False, program=0, is_drum
 
     notes, frames = roll.shape
     pmid = pm.PrettyMIDI()
-    instrument = pm.Instrument(program=program, is_drum=is_drum)
+    instrument = pm.Instrument(program=program, is_drum=is_drum, name=part_name)
 
     # Pad 1 column of zeros to accommodate the starting and ending events
     roll = np.pad(roll, [(0, 0), (1, 1)], "constant")
@@ -194,10 +329,12 @@ def get_pretty_midi_from_roll_list(roll_list, resolution=4, binary=False, parts=
     pmid = pm.PrettyMIDI()
     for ix, roll in enumerate(roll_list):
         program = 0
+        part_name = ""
         is_drum = False
 
         if parts:
             program = get_program_from_part(parts[ix])
+            part_name = parts[ix]
             if parts[ix] == "Drums":
                 is_drum = True
 
@@ -207,6 +344,7 @@ def get_pretty_midi_from_roll_list(roll_list, resolution=4, binary=False, parts=
             binary=binary,
             program=program,
             is_drum=is_drum,
+            part_name=part_name,
         )
 
         pmid.instruments.append(roll_pm.instruments[0])
@@ -278,11 +416,11 @@ def write_image_from_roll(roll, outpath, im_size=None, binary=False):
     logger.debug(f"  Saved {outpath}")
 
 
-def write_midi_from_hits(hits, outpath, pitch=36):
+def write_midi_from_hits(hits, outpath, pitch=36, part=""):
     # TODO: explain choice of note_duration
     note_duration = 0.25
 
-    instrument = pm.Instrument(program=0, is_drum=False)
+    instrument = pm.Instrument(program=0, is_drum=False, name=part)
 
     for event_ix, vel in enumerate(hits):
         if vel:
@@ -332,8 +470,8 @@ def tick_to_time(tick, resolution, tempo=100):
     return tick * scale
 
 
-def write_midi_from_pattern(pattern, outpath, resolution=24, pitch=36):
-    instrument = pm.Instrument(program=0, is_drum=False)
+def write_midi_from_pattern(pattern, outpath, resolution=24, pitch=36, part=""):
+    instrument = pm.Instrument(program=0, is_drum=False, name=part)
 
     binary_pattern = pattern > 0
     padded = np.pad(binary_pattern, (1, 0), "constant")

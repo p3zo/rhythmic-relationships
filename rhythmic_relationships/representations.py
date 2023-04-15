@@ -1,9 +1,5 @@
-from collections import defaultdict
-
 import numpy as np
-from rhythmic_relationships.parts import get_part_from_program
 
-from rhythmic_relationships.io import parse_bar_start_ticks
 from rhythmtoolbox import pianoroll2descriptors
 
 REPRESENTATIONS = ["roll", "chroma", "pattern", "hits", "descriptors"]
@@ -86,6 +82,8 @@ def get_representations(pmid, subdivisions, binarize=True):
 
     Adapted from https://github.com/salu133445/pypianoroll/blob/18a68d4a7e39673a739396d409a2ff99af06d643/pypianoroll/inputs.py#L103-L338
     """
+
+    # LEFT OFF: handle the case when len(subdivisions) == 1
 
     n_ticks = len(subdivisions) - 1
 
@@ -176,13 +174,6 @@ def get_representations(pmid, subdivisions, binarize=True):
     return tracks
 
 
-def roll_has_activity(roll, min_pitches, min_beats):
-    """Verify that a piano roll has at least some number of beats and pitches"""
-    n_pitches = (roll.sum(axis=0) > 0).sum()
-    n_beats = (roll.sum(axis=1) > 0).sum()
-    return (n_pitches >= min_pitches) and (n_beats >= min_beats)
-
-
 def resize_roll_to_n_beats(roll, n_beats, resolution):
     """Pad/truncate a piano roll to a beat length"""
     n_ticks = n_beats * resolution
@@ -194,94 +185,8 @@ def resize_roll_to_n_beats(roll, n_beats, resolution):
     return roll
 
 
-def slice_midi(
-    pmid,
-    seg_size=1,
-    resolution=4,
-    n_beat_bars=4,
-    binarize=False,
-    min_seg_pitches=1,
-    min_seg_beats=1,
-):
-    """Slice a midi file and compute several representations for each segment.
-
-    Parameters
-
-        pmid: pretty_midi.PrettyMIDI
-            A PrettyMIDI object
-
-        seg_size: int
-            Number of bars per segment.
-
-        resolution: int
-            Number of subdivisions per beat of the output representations.
-
-        n_beat_bars: int
-            Process only segments with this number of beats per bar.
-
-        min_seg_pitches: int
-            Process only segments with at least this number of pitches.
-
-        min_seg_beats: int
-            Process only segments with at least this number of beats.
-
-    Returns
-
-        seg_part_reprs, defaultdict(list)
-            A dictionary with all representations for each segment-part pair.
-    """
-
-    bar_start_ticks, subdivisions = parse_bar_start_ticks(pmid, resolution)
-    tracks = get_representations(pmid, subdivisions, binarize)
-
-    seg_iter = list(zip(bar_start_ticks, bar_start_ticks[seg_size:]))
-    if len(bar_start_ticks) <= seg_size:
-        # There is only one segment in the track
-        seg_iter = [(0, resolution * n_beat_bars * seg_size)]
-
-    # Initialize output objects
-    n_seg_ticks = resolution * n_beat_bars * seg_size
-    seg_part_reprs = defaultdict(list)
-
-    for track in tracks:
-        roll = track["roll"]
-        chroma = track["chroma"]
-        hits = track["hits"]
-        pattern = track["pattern"]
-
-        part = get_part_from_program(track["program"])
-        if track["is_drum"]:
-            part = "Drums"
-
-        # Slice the piano roll into segments of equal length
-        for seg_ix, (start, end) in enumerate(seg_iter):
-            seg_chroma = chroma[start:end]
-
-            # Skip segments with little activity
-            if not roll_has_activity(seg_chroma, min_seg_pitches, min_seg_beats):
-                continue
-
-            seg_roll = roll[start:end]
-            seg_hits = hits[start:end]
-            seg_pattern = pattern[start:end]
-
-            # Skip segments that aren't the target number of beats
-            if len(seg_roll) != n_seg_ticks:
-                continue
-
-            # Compute the `descriptors` representation of the roll
-            seg_descriptors = np.array(
-                list(pianoroll2descriptors(seg_roll, resolution=resolution).values()),
-                dtype=np.float32,
-            )
-
-            # Join all representations in a single object array
-            # IMPORTANT: these should be in the same order as `representations.REPRESENTATIONS`
-            seg_part_reprs[f"{seg_ix}_{part}"].append(
-                np.array(
-                    [seg_roll, seg_chroma, seg_pattern, seg_hits, seg_descriptors],
-                    dtype="object",
-                )
-            )
-
-    return seg_part_reprs
+def get_descriptors_from_roll(roll, resolution):
+    return np.array(
+        list(pianoroll2descriptors(roll, resolution=resolution).values()),
+        dtype=np.float32,
+    )
