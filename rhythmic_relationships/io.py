@@ -13,6 +13,7 @@ from rhythmic_relationships.parts import (
 from rhythmic_relationships.representations import (
     get_representations,
     get_descriptors_from_roll,
+    REPRESENTATIONS,
 )
 
 # TODO: fix catch_warnings block in load_midi_file and remove this
@@ -144,26 +145,21 @@ def slice_midi(
     seg_part_reprs = defaultdict(list)
 
     for track in tracks:
-        roll = track["roll"]
-        chroma = track["chroma"]
-        hits = track["hits"]
-        pattern = track["pattern"]
-
         part = get_part_from_program(track["program"])
         if track["is_drum"]:
             part = "Drums"
 
         # Slice the piano roll into segments of equal length
         for seg_ix, (start, end) in enumerate(seg_iter):
-            seg_chroma = chroma[start:end]
+            seg_chroma = track["chroma"][start:end]
 
             # Skip segments with little activity
             if not roll_has_activity(seg_chroma, min_seg_pitches, min_seg_beats):
                 continue
 
-            seg_roll = roll[start:end]
-            seg_hits = hits[start:end]
-            seg_pattern = pattern[start:end]
+            seg_roll = track["roll"][start:end]
+            seg_hits = track["hits"][start:end]
+            seg_pattern = track["pattern"][start:end]
 
             # Skip segments that aren't the target number of beats
             if len(seg_roll) != n_seg_ticks:
@@ -172,13 +168,21 @@ def slice_midi(
             # Compute the `descriptors` representation of the roll
             seg_descriptors = get_descriptors_from_roll(seg_roll, resolution)
 
-            # Join all representations in a single object array
-            # IMPORTANT: these should be in the same order as `representations.REPRESENTATIONS`
+            # Join all representations in a single object array, ensuring the order follows `REPRESENTATIONS`
+            repr_map = {
+                "roll": seg_roll,
+                "chroma": seg_chroma,
+                "pattern": seg_pattern,
+                "hits": seg_hits,
+                "descriptors": seg_descriptors,
+            }
+            seg_reprs = [
+                repr_map[k]
+                for k in sorted(repr_map, key=lambda x: REPRESENTATIONS.index(x))
+            ]
+
             seg_part_reprs[f"{seg_ix}_{part}"].append(
-                np.array(
-                    [seg_roll, seg_chroma, seg_pattern, seg_hits, seg_descriptors],
-                    dtype="object",
-                )
+                np.array(seg_reprs, dtype="object")
             )
 
     return seg_part_reprs
