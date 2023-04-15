@@ -23,10 +23,47 @@ from rhythmic_relationships import (
     REPRESENTATIONS_DIRNAME,
     logger,
 )
-from rhythmic_relationships.io import load_midi_file
+from rhythmic_relationships.io import load_midi_file, slice_midi
 from rhythmic_relationships.parts import PARTS, get_part_pairs
-from rhythmic_relationships.representations import slice_midi
 from tqdm import tqdm
+
+
+def plot_segments_by_part(annotations_df, dataset_name, plots_dir):
+    """Plot the percent of segments by part"""
+    part_counts = annotations_df.part_id.value_counts()
+    n_segments = part_counts.sum()
+    part_pcts = part_counts / n_segments
+
+    fig, ax = plt.subplots(figsize=(20, 8))
+    part_pcts.sort_values(ascending=False).plot(kind="bar")
+    plt.setp(ax.get_xticklabels(), ha="right", rotation=45)
+    plt.title(f"Distribution of parts in {dataset_name}\n{n_segments} segments total")
+    plt.ylabel("Fraction of segments")
+    plt.tight_layout()
+
+    plot_path = os.path.join(plots_dir, "segments_by_part.png")
+    plt.savefig(plot_path)
+    logger.info(f"Saved {plot_path}")
+
+
+def plot_segments_by_part_pair(pair_lookups, dataset_name, plots_dir):
+    """Plot the percent of segments by part pair"""
+    # TODO: reduce xtick font size a bit and make the figsize a bit wider
+    pair_counts = pd.Series({k: len(v) for k, v in pair_lookups.items()})
+    n_pairs = pair_counts.sum()
+    pair_pcts = pair_counts / n_pairs
+
+    fig, ax = plt.subplots(figsize=(20, 8))
+    pair_pcts.sort_values(ascending=False).plot(kind="bar")
+    plt.setp(ax.get_xticklabels(), ha="right", rotation=45)
+    plt.title(f"Distribution of part pairs in {dataset_name}\n{n_pairs} pairs total")
+    plt.ylabel("Fraction of segments")
+    plt.tight_layout()
+
+    plot_path = os.path.join(plots_dir, "segments_by_part_pair.png")
+    plt.savefig(plot_path)
+    logger.info(f"Saved {plot_path}")
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
@@ -151,18 +188,17 @@ if __name__ == "__main__":
             failed_paths.append(filepath)
             continue
 
-        # Save segment metadata
         file_id = os.path.splitext(filepath)[0].split(path)[1]
         annotations_list.append([file_id, seg_list])
 
-        # Save segment-part representations
+        # Save the segment-part representations
         outpath = os.path.join(data_dir, f"{file_id}.npz")
         outdir = os.path.dirname(outpath)
         if not os.path.isdir(outdir):
             os.makedirs(outdir)
         np.savez_compressed(outpath, **seg_part_reprs)
 
-    # Save the segment map
+    # Save the segment-part map
     annotations_path = os.path.join(output_dir, ANNOTATIONS_FILENAME)
     annotations_df = pd.DataFrame(
         np.concatenate([i[1] for i in annotations_list]),
@@ -194,39 +230,13 @@ if __name__ == "__main__":
         pair_df_path = os.path.join(pair_lookups_dir, f"{pair_id}.csv")
         pair_df.to_csv(pair_df_path, index=False)
 
-    # Initialize plots dir
+    # Plot dataset statistics
     plots_dir = os.path.join(output_dir, PLOTS_DIRNAME)
     if not os.path.isdir(plots_dir):
         os.makedirs(plots_dir)
 
-    # Plot the percent of segments by part
-    part_counts = annotations_df.part_id.value_counts()
-    n_segments = part_counts.sum()
-    part_pcts = part_counts / n_segments
-    fig, ax = plt.subplots(figsize=(20, 8))
-    part_pcts.sort_values(ascending=False).plot(kind="bar")
-    plt.setp(ax.get_xticklabels(), ha="right", rotation=45)
-    plt.title(f"Distribution of parts in {dataset_name}\n{n_segments} segments total")
-    plt.ylabel("Fraction of segments")
-    plt.tight_layout()
-    dist_plot_path = os.path.join(plots_dir, "segments_by_part.png")
-    plt.savefig(dist_plot_path)
-    logger.info(f"Saved {dist_plot_path}")
-
-    # Plot the percent of segments by part pair
-    # TODO: reduce xtick font size a bit and make the figsize a bit wider
-    pair_counts = pd.Series({k: len(v) for k, v in pair_lookups.items()})
-    n_pairs = pair_counts.sum()
-    pair_pcts = pair_counts / n_pairs
-    fig, ax = plt.subplots(figsize=(20, 8))
-    pair_pcts.sort_values(ascending=False).plot(kind="bar")
-    plt.setp(ax.get_xticklabels(), ha="right", rotation=45)
-    plt.title(f"Distribution of part pairs in {dataset_name}\n{n_pairs} pairs total")
-    plt.ylabel("Fraction of segments")
-    plt.tight_layout()
-    pair_dist_plot_path = os.path.join(plots_dir, "segments_by_part_pair.png")
-    plt.savefig(pair_dist_plot_path)
-    logger.info(f"Saved {pair_dist_plot_path}")
+    plot_segments_by_part(annotations_df, dataset_name, plots_dir)
+    plot_segments_by_part_pair(pair_lookups, dataset_name, plots_dir)
 
     n_failed = len(failed_paths)
     if n_failed > 0:
