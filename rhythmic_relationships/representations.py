@@ -139,6 +139,11 @@ def get_representations(pmid, subdivisions):
 
         onsets_unquantized = [note.start for note in instrument.notes]
         onsets = [np.argmin(np.abs(t - subdivisions)) for t in onsets_unquantized]
+        # If an onset is quantized to the last tick, move it to the previous tick
+        for ix, onset in enumerate(onsets):
+            if onset == n_ticks:
+                onsets[onsets.index(onset)] = onset - 1
+
         pitches = [note.pitch for note in instrument.notes]
         velocities = [note.velocity for note in instrument.notes]
         for ix, v in enumerate(velocities):
@@ -178,7 +183,7 @@ def get_representations(pmid, subdivisions):
                 if off_tick - on_tick <= 0:
                     off_tick = on_tick + 1
 
-                # If the note ends after the last tick, move it back to the last tick
+                # If off_tick is after the last tick, move it back to the last tick
                 if off_tick > n_ticks:
                     off_tick = n_ticks
 
