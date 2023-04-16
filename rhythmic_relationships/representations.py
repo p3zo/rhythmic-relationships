@@ -4,15 +4,16 @@ from rhythmtoolbox import pianoroll2descriptors
 
 REPRESENTATIONS = [
     "roll",
-    "onset roll",
-    "binary onset roll",
-    "3-octave onset roll",
-    "drum roll",
+    "onset_roll",
+    "onset_roll_3_octave",
+    "binary_onset_roll",
+    "drum_roll",
     "chroma",
     "pattern",
     "hits",
     "descriptors",
 ]
+
 
 # Standard 88-key piano range
 MIDI_PITCH_RANGE = [21, 108]
@@ -213,10 +214,10 @@ def get_representations(pmid, subdivisions):
                 "program": instrument.program,
                 "is_drum": instrument.is_drum,
                 "roll": roll,
-                "onset roll": onset_roll,
-                "binary onset roll": binary_onset_roll,
-                "3-octave onset roll": onset_roll_3_octave,
-                "drum roll": drum_roll,
+                "onset_roll": onset_roll,
+                "binary_onset_roll": binary_onset_roll,
+                "onset_roll_3_octave": onset_roll_3_octave,
+                "drum_roll": drum_roll,
                 "chroma": chroma,
                 "pattern": pattern,
                 "hits": hits,
