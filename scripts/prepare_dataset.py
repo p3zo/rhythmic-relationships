@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 from rhythmic_relationships import (
     ANNOTATIONS_FILENAME,
+    REPRESENTATIONS_FILENAME,
     DATASETS_DIR,
     PAIR_LOOKUPS_DIRNAME,
     PLOTS_DIRNAME,
@@ -201,6 +202,10 @@ if __name__ == "__main__":
         if not os.path.isdir(outdir):
             os.makedirs(outdir)
         np.savez_compressed(outpath, **seg_part_reprs)
+
+    # Save a file indicating which representations are included in the dataset
+    with open(os.path.join(output_dir, REPRESENTATIONS_FILENAME), "w") as f:
+        f.write(",".join(representations))
 
     # Save the segment-part map
     annotations_path = os.path.join(output_dir, ANNOTATIONS_FILENAME)
