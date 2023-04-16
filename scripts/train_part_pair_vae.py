@@ -8,7 +8,7 @@ from torch.utils.data import DataLoader
 
 DEVICE = torch.device("mps" if torch.backends.mps.is_built() else "cpu")
 MODELS_DIR = "../output/models"
-CONFIG_FILEPATH = "model_config.yml"
+CONFIG_FILEPATH = "part_pair_vae_config.yml"
 
 
 if __name__ == "__main__":

@@ -1,11 +1,10 @@
 import torch
 import yaml
-from model_utils import load_config, save_model
+from model_utils import get_model_name, load_config, save_model
 from rhythmic_relationships.data import PartDataset
 from rhythmic_relationships.model import VariationalAutoEncoder
 from rhythmic_relationships.train import train
 from torch.utils.data import DataLoader
-
 
 DEVICE = torch.device("mps" if torch.backends.mps.is_built() else "cpu")
 CONFIG_FILEPATH = "part_vae_config.yml"
@@ -31,6 +30,8 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"`{config['loss_fn']}` is not a valid loss function")
 
+    model_name = get_model_name(config, paired=False)
+
     train(
         model=model,
         loader=loader,
@@ -38,6 +39,7 @@ if __name__ == "__main__":
         loss_fn=loss_fn,
         config=config,
         device=DEVICE,
+        model_name=model_name,
     )
 
     save_model(model, config)

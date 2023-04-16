@@ -4,10 +4,10 @@ import numpy as np
 import pandas as pd
 import seaborn as sns
 import torch
+from model_utils import load_model
 from rhythmic_relationships.io import write_image_from_roll, write_midi_from_roll
 from rhythmic_relationships.model import VariationalAutoEncoder
 from sklearn.manifold import TSNE
-from model_utils import load_model
 from utils import save_fig
 
 sns.set_style("white")

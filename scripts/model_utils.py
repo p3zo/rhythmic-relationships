@@ -4,8 +4,7 @@ import random
 
 import torch
 import yaml
-
-MODELS_DIR = "../output/models"
+from rhythmic_relationships import MODELS_DIR
 
 
 def load_config(filepath):
@@ -29,7 +28,7 @@ def get_model_name(config, paired=True):
     timestamp = today.strftime("%y%m%d%H%M%S")
 
     dc = config["dataset"]
-    info_str = ""
+
     if paired:
         info_str = f"{dc['dataset_name']}_{dc['part_1']}_{dc['part_2']}_{dc['repr_1']}_{dc['repr_2']}"
     else:
@@ -38,9 +37,7 @@ def get_model_name(config, paired=True):
     return f"{word}_{info_str}_{timestamp}"
 
 
-def save_model(model, config):
-    paired = "part_1" in config["dataset"]
-    model_name = get_model_name(config, paired)
+def save_model(model, config, model_name):
     model_path = os.path.join(MODELS_DIR, f"{model_name}.pt")
     torch.save(
         {

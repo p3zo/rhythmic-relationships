@@ -4,7 +4,7 @@ import os
 import torch
 from tqdm import tqdm
 
-from rhythmic_relationships import DATASETS_DIR, MODELS_DIRNAME, CHECKPOINTS_DIRNAME
+from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
 
 
 def compute_loss(recons, x, mu, sigma, loss_fn):
@@ -15,14 +15,7 @@ def compute_loss(recons, x, mu, sigma, loss_fn):
     return reconstruction_loss + kld_loss
 
 
-def train(
-    model,
-    loader,
-    optimizer,
-    loss_fn,
-    config,
-    device,
-):
+def train(model, loader, optimizer, loss_fn, config, device, model_name):
     x_dim = config["model"]["x_dim"]
     y_dim = config["model"]["y_dim"]
     conditional = config["model"]["conditional"]
@@ -63,9 +56,7 @@ def train(
             batches.set_postfix({"loss": loss.item()})
 
         # Save a checkpoint at the end of each epoch
-        checkpoints_dir = os.path.join(
-            DATASETS_DIR, MODELS_DIRNAME, CHECKPOINTS_DIRNAME
-        )
+        checkpoints_dir = os.path.join(MODELS_DIR, CHECKPOINTS_DIRNAME)
         if not os.path.isdir(checkpoints_dir):
             os.makedirs(checkpoints_dir)
 
@@ -79,11 +70,13 @@ def train(
             },
             os.path.join(
                 checkpoints_dir,
-                f"checkpoint_{epoch}_{dt.datetime.today().strftime('%y%m%d%H%M%S')}",
+                model_name,
+                f"{epoch}_{dt.datetime.today().strftime('%y%m%d%H%M%S')}",
             ),
         )
 
         import matplotlib.pyplot as plt
 
         plt.plot(training_losses)
+        os.path.join(MODELS_DIR, f"{model_name}.pt")
         plt.savefig("training_loss.png")

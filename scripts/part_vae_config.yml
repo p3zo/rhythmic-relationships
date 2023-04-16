@@ -1,16 +1,16 @@
 dataset:
-  dataset_name: "lmdc_500_1bar_4res"
+  dataset_name: "lmdc_3000_1bar_4res"
   part: "Guitar"
-  representation: "binary onset roll"
+  representation: "onset_roll"
 model:
   x_dim: 2048
   h_dim: 128
   z_dim: 30
   conditional: False
   y_dim: 0
-loss_fn: "bce"
+loss_fn: "mse"
 loss_reduction: 'sum'
 clip_gradients: True
-num_epochs: 10
+num_epochs: 20
 batch_size: 256
 lr: 1e-4
