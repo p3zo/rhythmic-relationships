@@ -2,6 +2,7 @@ import numpy as np
 
 from rhythmtoolbox import DESCRIPTOR_NAMES
 from rhythmic_relationships.io import get_seg_iter, slice_midi, load_midi_file
+from rhythmic_relationships.representations import REPRESENTATIONS
 
 N_DESCRIPTORS = len(DESCRIPTOR_NAMES)
 
@@ -25,19 +26,18 @@ def test_slice_midi():
         seg_size=1,
         resolution=4,
         n_beat_bars=4,
-        binarize=True,
         min_seg_pitches=1,
         min_seg_beats=1,
     )
     assert np.array_equal(list(sp_reprs), ["0_Piano"])
 
     reprs = sp_reprs["0_Piano"][0]
-    assert reprs.shape == (5,)
-    assert reprs[0].shape == (16, 128)
-    assert reprs[1].shape == (16, 12)
-    assert reprs[2].shape == (16,)
-    assert reprs[3].shape == (16,)
-    assert reprs[4].shape == (N_DESCRIPTORS,)
+    assert reprs.shape[0] == len(REPRESENTATIONS)
+    assert reprs[REPRESENTATIONS.index("roll")].shape == (16, 128)
+    assert reprs[REPRESENTATIONS.index("chroma")].shape == (16, 12)
+    assert reprs[REPRESENTATIONS.index("pattern")].shape == (16,)
+    assert reprs[REPRESENTATIONS.index("hits")].shape == (16,)
+    assert reprs[REPRESENTATIONS.index("descriptors")].shape == (N_DESCRIPTORS,)
 
     pmid = load_midi_file(BOSKA_3_DRUMS_FILEPATH)
     sp_reprs = slice_midi(
@@ -45,16 +45,15 @@ def test_slice_midi():
         seg_size=1,
         resolution=4,
         n_beat_bars=4,
-        binarize=True,
         min_seg_pitches=1,
         min_seg_beats=1,
     )
     assert np.array_equal(list(sp_reprs), ["0_Drums"])
 
     reprs = sp_reprs["0_Drums"][0]
-    assert reprs.shape == (5,)
-    assert reprs[0].shape == (16, 128)
-    assert reprs[1].shape == (16, 12)
-    assert reprs[2].shape == (16,)
-    assert reprs[3].shape == (16,)
-    assert reprs[4].shape == (N_DESCRIPTORS,)
+    assert reprs.shape[0] == len(REPRESENTATIONS)
+    assert reprs[REPRESENTATIONS.index("roll")].shape == (16, 128)
+    assert reprs[REPRESENTATIONS.index("chroma")].shape == (16, 12)
+    assert reprs[REPRESENTATIONS.index("pattern")].shape == (16,)
+    assert reprs[REPRESENTATIONS.index("hits")].shape == (16,)
+    assert reprs[REPRESENTATIONS.index("descriptors")].shape == (N_DESCRIPTORS,)

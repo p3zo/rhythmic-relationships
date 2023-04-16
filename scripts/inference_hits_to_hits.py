@@ -28,7 +28,7 @@ if __name__ == "__main__":
     recon = recon_x.detach().numpy()
 
     # Apply an onset threshold
-    # TODO: adjust the threshold if the input is not binarized
+    # TODO: adjust the threshold if the input is not binary
     outs = np.ma.masked_array(
         recon, mask=(recon < (1 - density)), fill_value=0
     ).filled()

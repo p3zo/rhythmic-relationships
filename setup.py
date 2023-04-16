@@ -12,9 +12,9 @@ setup(
     ),
     install_requires=[
         "matplotlib~=3.5.1",
-        "numpy~=1.23.3",
+        "numpy~=1.24.2",
         "pandas~=2.0.0",
-        "pillow~=9.2.0",
+        "pillow~=9.5.0",
         "pretty_midi~=0.2.9",
         "pyyaml~=6.0",
         "torch~=1.13.1",

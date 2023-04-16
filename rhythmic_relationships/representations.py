@@ -4,8 +4,10 @@ from rhythmtoolbox import pianoroll2descriptors
 
 REPRESENTATIONS = [
     "roll",
-    "onset_roll",
-    "onset_roll_3_octave",
+    "onset roll",
+    "binary onset roll",
+    "3-octave onset roll",
+    "drum roll",
     "chroma",
     "pattern",
     "hits",
@@ -108,15 +110,15 @@ def get_multitrack_roll(tracks, drums=False):
     return multitrack_roll.T
 
 
-def get_representations(pmid, subdivisions, binarize=False):
-    """Parse all representations from a PrettyMIDI object
+def get_representations(pmid, subdivisions):
+    """Compute all representations from a PrettyMIDI object.
 
     :param pmid: PrettyMIDI object
     :param subdivisions: list of tick times
-    :param binarize: whether to binarize the roll representation
     :return: dict of representations
     """
 
+    # TODO: take a parameter to allow for only a subset of representations to be computed
     # LEFT OFF: handle the case when len(subdivisions) == 1
 
     n_ticks = len(subdivisions) - 1
@@ -175,10 +177,6 @@ def get_representations(pmid, subdivisions, binarize=False):
                 if off_tick - on_tick <= 0:
                     off_tick = on_tick + 1
 
-                # if 0 < on_tick < n_ticks:
-                # if roll[on_tick - 1, pitch]:
-                #     roll[on_tick - 1, pitch] = 0
-
                 # If the note ends after the last tick, move it back to the last tick
                 if off_tick > n_ticks:
                     off_tick = n_ticks
@@ -201,14 +199,13 @@ def get_representations(pmid, subdivisions, binarize=False):
         # TODO: uncomment when io code handles non-128-voiced rolls without transposing
         # roll = roll[:, MIDI_PITCH_RANGE[0] : MIDI_PITCH_RANGE[1] + 1]
 
-        if binarize:
-            roll = (roll > 0).astype(np.uint8)
-
         # Convert MIDI velocities to real numbers in [0, 1]
         roll = roll / 127.0
         onset_roll = onset_roll / 127.0
         onset_roll_3_octave = onset_roll_3_octave / 127.0
         hits = hits / 127.0
+
+        binary_onset_roll = (onset_roll > 0).astype(np.uint8)
 
         tracks.append(
             {
@@ -216,9 +213,10 @@ def get_representations(pmid, subdivisions, binarize=False):
                 "program": instrument.program,
                 "is_drum": instrument.is_drum,
                 "roll": roll,
-                "onset_roll": onset_roll,
-                "drum_roll": drum_roll,
-                "onset_roll_3_octave": onset_roll_3_octave,
+                "onset roll": onset_roll,
+                "binary onset roll": binary_onset_roll,
+                "3-octave onset roll": onset_roll_3_octave,
+                "drum roll": drum_roll,
                 "chroma": chroma,
                 "pattern": pattern,
                 "hits": hits,

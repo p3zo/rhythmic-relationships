@@ -333,7 +333,7 @@ if __name__ == "__main__":
     A, B, C = drums_tri_coords
     drums_coord = (a * A + b * B + c * C) / (a + b + c)
 
-    fig, ax = plt.subplots(1, 2, figsize=(10, 4), sharey=True, sharex=True)
+    fig, ax = plt.subplots(1, 2, figsize=(16, 10), sharey=True, sharex=True)
 
     ax[0].triplot(
         piano_coords[:, 0], piano_coords[:, 1], piano_tris, color="gray", lw=0.5
@@ -413,14 +413,14 @@ if __name__ == "__main__":
         # Derive hits representations from MIDI
         _, piano_subdivisions = parse_bar_start_ticks(piano_slice, resolution=4)
         piano_slice_representations = get_representations(
-            piano_slice, piano_subdivisions, binarize=True
+            piano_slice, piano_subdivisions
         )[0]
         piano_hits = (piano_slice_representations["hits"] > 0).astype(np.int8)
         piano_hits_list.append(piano_hits)
 
         _, drums_subdivisions = parse_bar_start_ticks(drums_slice, resolution=4)
         drums_slice_representations = get_representations(
-            drums_slice, drums_subdivisions, binarize=True
+            drums_slice, drums_subdivisions
         )[0]
         drums_hits = (drums_slice_representations["hits"] > 0).astype(np.int8)
         drums_hits_list.append(drums_hits)

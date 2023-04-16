@@ -37,7 +37,7 @@ if __name__ == "__main__":
     recon = recon_x.view(x_in.shape).detach().numpy()
 
     # Apply an onset threshold
-    # TODO: adjust the threshold if the input is not binarized
+    # TODO: adjust the threshold if the input is not binary
     out = np.ma.masked_array(recon, mask=(recon < 0.5), fill_value=0).filled()[0]
 
     # Save the output

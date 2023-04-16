@@ -2,7 +2,7 @@
 Create a new dataset
 
 Example usage:
-    python scripts/prepare_dataset.py --path input/babyslakh --prefix babyslakh --seg_size 1 --binarize
+    python scripts/prepare_dataset.py --path input/babyslakh --prefix babyslakh --seg_size 1
 """
 import argparse
 import glob
@@ -23,6 +23,7 @@ from rhythmic_relationships import (
     REPRESENTATIONS_DIRNAME,
     logger,
 )
+from rhythmic_relationships.representations import REPRESENTATIONS
 from rhythmic_relationships.io import load_midi_file, slice_midi
 from rhythmic_relationships.parts import PARTS, get_part_pairs
 from tqdm import tqdm
@@ -92,11 +93,6 @@ if __name__ == "__main__":
         help="Number of subdivisions per beat.",
     )
     parser.add_argument(
-        "--binarize",
-        action="store_true",
-        help="Replace [0,127] MIDI velocity values in piano rolls with binary values representing onsets.",
-    )
-    parser.add_argument(
         "--n_beat_bars",
         type=int,
         default=4,
@@ -121,6 +117,12 @@ if __name__ == "__main__":
         help="Number of MIDI files to process, for when you don't want to process everything in the directory.",
     )
     parser.add_argument(
+        "--representations",
+        nargs="+",
+        default=REPRESENTATIONS,
+        help="Names of the representations to include in the dataset. If none, include all.",
+    )
+    parser.add_argument(
         "--verbose",
         action="store_true",
         help="Print debug statements.",
@@ -130,12 +132,12 @@ if __name__ == "__main__":
     path = args.path
     seg_size = args.seg_size
     resolution = args.resolution
-    binarize = args.binarize
     n_beat_bars = args.n_beat_bars
     prefix = args.prefix if args.prefix else os.path.splitext(path)[0].replace("/", "_")
     subset = args.subset
     min_seg_pitches = args.min_seg_pitches
     min_seg_beats = args.min_seg_beats
+    representations = args.representations
 
     if args.verbose:
         logger.setLevel(logging.DEBUG)
@@ -176,10 +178,10 @@ if __name__ == "__main__":
             pmid=pmid,
             seg_size=seg_size,
             resolution=resolution,
-            binarize=binarize,
             n_beat_bars=n_beat_bars,
             min_seg_pitches=min_seg_pitches,
             min_seg_beats=min_seg_beats,
+            representations=representations,
         )
 
         seg_list = [i.split("_") for i in seg_part_reprs.keys()]

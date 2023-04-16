@@ -103,9 +103,9 @@ def slice_midi(
     seg_size=1,
     resolution=4,
     n_beat_bars=4,
-    binarize=False,
     min_seg_pitches=1,
     min_seg_beats=1,
+    representations=REPRESENTATIONS,
 ):
     """Slice a midi file and compute several representations for each segment.
 
@@ -129,6 +129,9 @@ def slice_midi(
         min_seg_beats: int
             Process only segments with at least this number of beats.
 
+        representations: list
+            A list of representations to compute for each segment.
+
     Returns
 
         seg_part_reprs, defaultdict(list)
@@ -136,7 +139,7 @@ def slice_midi(
     """
 
     bar_start_ticks, subdivisions = parse_bar_start_ticks(pmid, resolution)
-    tracks = get_representations(pmid, subdivisions, binarize)
+    tracks = get_representations(pmid, subdivisions)
 
     seg_iter = get_seg_iter(bar_start_ticks, seg_size, resolution, n_beat_bars)
 
@@ -158,39 +161,25 @@ def slice_midi(
                 continue
 
             seg_roll = track["roll"][start:end]
-            seg_or = track["onset_roll"][start:end]
-            seg_or3 = track["onset_roll_3_octave"][start:end]
-            seg_hits = track["hits"][start:end]
-            seg_pattern = track["pattern"][start:end]
 
-            # Skip segments that aren't the target number of beats
+            # Skip segments that don't have the target number of beats
             if len(seg_roll) != n_seg_ticks:
                 continue
 
-            # Compute the `descriptors` representation of the roll
-            seg_descriptors = get_descriptors_from_roll(seg_roll, resolution)
+            # Join the representations into a single object array
+            seg_reprs = []
+            for representation in representations:
+                if representation == "descriptors":
+                    seg_reprs.append(get_descriptors_from_roll(seg_roll, resolution))
+                    continue
+                if representation not in track:
+                    raise ValueError(
+                        f"Invalid representation `{representation}`. Must be one of {REPRESENTATIONS}"
+                    )
 
-            # Join all representations in a single object array, ensuring the order follows `REPRESENTATIONS`
-            repr_map = {
-                "roll": seg_roll,
-                "onset_roll": seg_or,
-                "onset_roll_3_octave": seg_or3,
-                "chroma": seg_chroma,
-                "pattern": seg_pattern,
-                "hits": seg_hits,
-                "descriptors": seg_descriptors,
-            }
-            assert set(repr_map.keys()) == set(
-                REPRESENTATIONS
-            ), "Reprs must match `REPRESENTATIONS`."
-            seg_reprs = [
-                repr_map[k]
-                for k in sorted(repr_map, key=lambda x: REPRESENTATIONS.index(x))
-            ]
+                seg_reprs.append(track[representation][start:end])
 
-            seg_part_reprs[f"{seg_ix}_{part}"].append(
-                np.array(seg_reprs, dtype="object")
-            )
+            seg_part_reprs[f"{seg_ix}_{part}"].append(np.array(seg_reprs, dtype=object))
 
     return seg_part_reprs
 
@@ -211,9 +200,10 @@ def get_pmid_segment_reprs(pmid, segment_id, parts):
     hits_list = []
     for part in parts:
         reprs = seg_part_reprs[f"{segment_id}_{part}"][0]
+        # TODO: convert all reprs to pmid
         roll_list.append(reprs[REPRESENTATIONS.index("roll")])
-        or_list.append(reprs[REPRESENTATIONS.index("onset_roll")])
-        or3_list.append(reprs[REPRESENTATIONS.index("onset_roll_3_octave")])
+        or_list.append(reprs[REPRESENTATIONS.index("onset roll")])
+        or3_list.append(reprs[REPRESENTATIONS.index("3-octave onset roll")])
         hits_list.append(reprs[REPRESENTATIONS.index("hits")] * 127)
 
     pmid_roll = get_pretty_midi_from_roll_list(roll_list, parts=parts)
@@ -327,7 +317,7 @@ def get_pretty_midi_from_roll(
         is_drum : bool
             Indicates if the instrument is a drum or not
         binary : bool
-            Indicates if the piano roll has been binarized or not
+            Indicates if the roll is binary or not
         part : str
             The name of the part
         n_octaves : int
@@ -423,7 +413,7 @@ def get_pretty_midi_from_roll_list(
         The ticks per beat resolution of the piano roll
 
     binary : bool
-        Indicates if the piano roll has been binarized or not
+        Indicates if the roll is binary or not
 
     parts : list[str]
         A list of parts corresponding to the rolls, in the same order.

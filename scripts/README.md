@@ -6,6 +6,8 @@
 
 `create_chroma_vocabulary.ipynb`: A notebook that creates a reduced vocabulary of chord types to use for modeling chromas.
 
+`MIDI_playback_from_image.ipynb`: Piano roll images can be synthesized to audio to using this notebook. It is also available in Colab: [![Open In Colab](https://colab.research.google.com/assets/colab-badge.svg)](https://colab.research.google.com/drive/1okATUg3TI1CsyKi1OUsQTt8FB28XfIm1?usp=sharing).
+
 ### Models
 
 `train_part_pair_vae.py`: Train a conditional VAE over a PartPairDataset. Update `model_config.yml` to specify a new training configuration. Inference can be done in a general way with `inference_part_pair_vae.py` or with specific representations with `inference_part_pair_vae_pattern_to_pattern.py` and `inference_hits_to_hits.py`.
