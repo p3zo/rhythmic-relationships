@@ -9,27 +9,11 @@ from rhythmic_relationships.data import (
 )
 from rhythmic_relationships.io import (
     get_pmid_segment,
+    get_pmid_segment_reprs,
     load_midi_file,
-    slice_midi,
-    get_pretty_midi_from_roll_list,
     write_midi_from_hits,
 )
 from rhythmic_relationships.parts import PARTS
-from rhythmic_relationships.representations import REPRESENTATIONS
-
-
-def slice_first_way(pmid, segment_id, parts):
-    part_seg_reprs = slice_midi(pmid)
-
-    hits_list = []
-    roll_list = []
-    for part in parts:
-        reprs = part_seg_reprs[f"{segment_id}_{part}"][0]
-        roll_list.append(reprs[REPRESENTATIONS.index("roll")] * 127)
-
-        hits_list.append(reprs[REPRESENTATIONS.index("hits")] * 127)
-
-    return get_pretty_midi_from_roll_list(roll_list, parts=parts), hits_list
 
 
 if __name__ == "__main__":
@@ -100,21 +84,30 @@ if __name__ == "__main__":
         parts.sort(key=lambda x: PARTS.index(x))
 
     # Slice first way
-    pmid_slice_1, hits_list = slice_first_way(pmid, seg_id, parts)
+    pmid_roll, pmid_onset_roll, pmid_onset_roll_3o, hits_list = get_pmid_segment_reprs(
+        pmid, seg_id, parts
+    )
     outpath = os.path.join(output_dir, f"{file_seg_id}_roll.mid")
-    pmid_slice_1.write(outpath)
+    pmid_roll.write(outpath)
     print(f"Wrote {outpath}")
+
+    outpath_or = os.path.join(output_dir, f"{file_seg_id}_or.mid")
+    pmid_onset_roll.write(outpath_or)
+    print(f"Wrote {outpath_or}")
+
+    outpath_or3 = os.path.join(output_dir, f"{file_seg_id}_or3.mid")
+    pmid_onset_roll_3o.write(outpath_or3)
+    print(f"Wrote {outpath_or3}")
 
     for (part, hits) in zip(parts, hits_list):
         hits_outpath = os.path.join(output_dir, f"{file_seg_id}_{part}.mid")
         write_midi_from_hits(hits, hits_outpath)
         print(f"Wrote {hits_outpath}")
 
-
     # Slice second way
-    # TODO: second way is not working yet
+    # TODO: debug get_pmid_segment
     pmid_slice_2 = get_pmid_segment(pmid, segment_num=seg_id, parts=parts)
 
-    outpath = os.path.join(output_dir, f"{file_seg_id}.mid")
+    outpath = os.path.join(output_dir, f"{file_seg_id}_slice2.mid")
     pmid_slice_2.write(outpath)
     print(f"Wrote {outpath}")

@@ -158,6 +158,8 @@ def slice_midi(
                 continue
 
             seg_roll = track["roll"][start:end]
+            seg_or = track["onset_roll"][start:end]
+            seg_or3 = track["onset_roll_3_octave"][start:end]
             seg_hits = track["hits"][start:end]
             seg_pattern = track["pattern"][start:end]
 
@@ -171,11 +173,16 @@ def slice_midi(
             # Join all representations in a single object array, ensuring the order follows `REPRESENTATIONS`
             repr_map = {
                 "roll": seg_roll,
+                "onset_roll": seg_or,
+                "onset_roll_3_octave": seg_or3,
                 "chroma": seg_chroma,
                 "pattern": seg_pattern,
                 "hits": seg_hits,
                 "descriptors": seg_descriptors,
             }
+            assert set(repr_map.keys()) == set(
+                REPRESENTATIONS
+            ), "Reprs must match `REPRESENTATIONS`."
             seg_reprs = [
                 repr_map[k]
                 for k in sorted(repr_map, key=lambda x: REPRESENTATIONS.index(x))
@@ -188,10 +195,47 @@ def slice_midi(
     return seg_part_reprs
 
 
+def get_pmid_segment_reprs(pmid, segment_id, parts):
+    """Get the representations for a segment of a MIDI file.
+
+    :param pmid: The PrettyMIDI object to load the segment from.
+    :param segment_id: The ID of the segment to load.
+    :param parts: The parts to load.
+    :return: A tuple of (roll, onset_roll, onset_roll_3_octave, hits) for each part.
+    """
+    seg_part_reprs = slice_midi(pmid)
+
+    roll_list = []
+    or_list = []
+    or3_list = []
+    hits_list = []
+    for part in parts:
+        reprs = seg_part_reprs[f"{segment_id}_{part}"][0]
+        roll_list.append(reprs[REPRESENTATIONS.index("roll")])
+        or_list.append(reprs[REPRESENTATIONS.index("onset_roll")])
+        or3_list.append(reprs[REPRESENTATIONS.index("onset_roll_3_octave")])
+        hits_list.append(reprs[REPRESENTATIONS.index("hits")] * 127)
+
+    pmid_roll = get_pretty_midi_from_roll_list(roll_list, parts=parts)
+    pmid_or = get_pretty_midi_from_roll_list(or_list, parts=parts, onset_roll=True)
+    pmid_or3 = get_pretty_midi_from_roll_list(
+        or3_list, parts=parts, n_octaves=3, onset_roll=True
+    )
+    return (
+        pmid_roll,
+        pmid_or,
+        pmid_or3,
+        hits_list,
+    )
+
+
 def get_pmid_segment(
-    pmid, segment_num, seg_size=1, resolution=4, n_beat_bars=4, parts=[]
+    pmid, segment_num, seg_size=1, resolution=4, n_beat_bars=4, parts=None
 ):
     """Get a segment of a midi file as a PrettyMIDI object.
+
+    This is different from get_pmid_segment_reprs in that it reads and slices the midi directly instead of reading a
+    representation of MIDI and then writing to MIDI, which is lossy in ways depending on the representation.
 
     # TODO: this is currently broken.
 
@@ -260,7 +304,14 @@ def get_pmid_segment(
 
 
 def get_pretty_midi_from_roll(
-    roll, resolution, binary=False, program=0, is_drum=False, part_name=""
+    roll,
+    resolution,
+    binary=False,
+    program=0,
+    is_drum=False,
+    part="",
+    n_octaves=None,
+    onset_roll=False,
 ):
     """Convert a piano roll to a PrettyMidi object with a single instrument.
 
@@ -277,68 +328,127 @@ def get_pretty_midi_from_roll(
             Indicates if the instrument is a drum or not
         binary : bool
             Indicates if the piano roll has been binarized or not
-        name : str
-            The name of the instrument
+        part : str
+            The name of the part
+        n_octaves : int
+            The number of octaves in each roll. Centers the roll in the middle of the midi range at C4 (60).
+            If none, use the entire midi range.
+        onset_roll: bool
+            Indicates if the piano roll is an onset roll or not
+
+    Returns
+        pmid : pretty_midi.PrettyMIDI
     """
-    # TODO: remove this transpose once the rest of the lib is refactored to use (voices, frames) rolls
-    roll = roll.T
+    if binary:
+        roll[roll.nonzero()] = 100
+    else:
+        roll = (roll * 127).astype(np.uint8)
+
+    if n_octaves:
+        # Trim the top and bottom pitches of the roll
+        pad_size_bot = 60 - (n_octaves - 1) * 12 // 2
+        pad_size_top = 128 - (72 + (n_octaves - 1) * 12 // 2)
+
+        pad_bot = np.zeros((roll.shape[0], pad_size_bot), dtype=roll.dtype)
+        pad_top = np.zeros((roll.shape[0], pad_size_top), dtype=roll.dtype)
+
+        roll = np.hstack((pad_bot, roll, pad_top))
+
+    pmid = pm.PrettyMIDI()
+    instrument = pm.Instrument(program=program, is_drum=is_drum, name=part)
 
     fs = resolution * 2
 
-    if binary:
-        roll[roll.nonzero()] = 100
+    if onset_roll:
+        for tick, pitch in zip(*roll.nonzero()):
+            instrument.notes.append(
+                pm.Note(
+                    velocity=roll[tick][pitch],
+                    pitch=pitch,
+                    start=tick / fs,
+                    end=(tick + 1) / fs,
+                )
+            )
+        pmid.instruments.append(instrument)
 
-    notes, frames = roll.shape
-    pmid = pm.PrettyMIDI()
-    instrument = pm.Instrument(program=program, is_drum=is_drum, name=part_name)
+        return pmid
+
+    # TODO: remove this transpose once the lib consistently uses rolls of shape (voices, frames)
+    roll = roll.T
 
     # Pad 1 column of zeros to accommodate the starting and ending events
     roll = np.pad(roll, [(0, 0), (1, 1)], "constant")
 
-    # use changes in velocities to find note on / note off events
+    # Use changes in velocities to infer onsets and offsets
     velocity_changes = np.nonzero(np.diff(roll).T)
 
-    # keep track on velocities and note on times
-    prev_velocities = np.zeros(notes, dtype=int)
-    note_on_time = np.zeros(notes)
+    n_pitches = roll.shape[0]
+    prev_velocities = np.zeros(n_pitches, dtype=int)
+    onset_times = np.zeros(n_pitches)
 
-    for time, note in zip(*velocity_changes):
-        # use time + 1 because of padding above
-        velocity = roll[note, time + 1]
-        time = time / fs
+    for tick, pitch in zip(*velocity_changes):
+        # Use `time + 1` because of padding above
+        velocity = roll[pitch, tick + 1]
+
+        time = tick / fs
         if velocity > 0:
-            if prev_velocities[note] == 0:
-                note_on_time[note] = time
-                prev_velocities[note] = velocity
+            if prev_velocities[pitch] == 0:
+                onset_times[pitch] = time
+                prev_velocities[pitch] = velocity
         else:
             pm_note = pm.Note(
-                velocity=prev_velocities[note],
-                pitch=note,
-                start=note_on_time[note],
+                velocity=prev_velocities[pitch],
+                pitch=pitch,
+                start=onset_times[pitch],
                 end=time,
             )
             instrument.notes.append(pm_note)
-            prev_velocities[note] = 0
+            prev_velocities[pitch] = 0
     pmid.instruments.append(instrument)
 
     return pmid
 
 
-def get_pretty_midi_from_roll_list(roll_list, resolution=4, binary=False, parts=[]):
+def get_pretty_midi_from_roll_list(
+    roll_list, resolution=4, binary=False, parts=None, n_octaves=None, onset_roll=False
+):
     """Combines a list of piano rolls into a single PrettyMidi object.
 
-    Param: parts, list[str]
+    Parameters
+    ----------
+    roll_list : list[np.ndarray]
+        A list of piano rolls, one for each instrument.
+
+    resolution : int
+        The ticks per beat resolution of the piano roll
+
+    binary : bool
+        Indicates if the piano roll has been binarized or not
+
+    parts : list[str]
         A list of parts corresponding to the rolls, in the same order.
+
+    n_octaves : int
+        The number of octaves in each roll. Centers the roll in the middle of the midi range at C4 (60).
+        If none, use the entire midi range.
+
+    onset_roll: bool
+        Indicates if the piano roll is an onset roll or not
+
+    Returns
+    -------
+    pmid : pretty_midi.PrettyMIDI
+        A PrettyMidi object with one instrument per piano roll.
     """
     pmid = pm.PrettyMIDI()
     for ix, roll in enumerate(roll_list):
         program = 0
-        part_name = ""
+        part = ""
         is_drum = False
 
         if parts:
             program = get_program_from_part(parts[ix])
-            part_name = parts[ix]
+            part = parts[ix]
             if parts[ix] == "Drums":
                 is_drum = True
 
@@ -348,7 +458,9 @@ def get_pretty_midi_from_roll_list(roll_list, resolution=4, binary=False, parts=
             binary=binary,
             program=program,
             is_drum=is_drum,
-            part_name=part_name,
+            part=part,
+            n_octaves=n_octaves,
+            onset_roll=onset_roll,
         )
 
         pmid.instruments.append(roll_pm.instruments[0])
@@ -372,7 +484,9 @@ def write_midi_from_roll(roll, outpath, resolution=4, binary=False, part=None):
     logger.debug(f"Saved {outpath}")
 
 
-def write_midi_from_roll_list(roll_list, outpath, resolution=4, binary=False, parts=[]):
+def write_midi_from_roll_list(
+    roll_list, outpath, resolution=4, binary=False, parts=None
+):
     """Combines a list of piano rolls into a single multi-track MIDI file"""
     pmid = get_pretty_midi_from_roll_list(
         roll_list, resolution=resolution, binary=binary, parts=parts
@@ -440,28 +554,24 @@ def write_midi_from_hits(hits, outpath, pitch=36, part=""):
     logger.debug(f"Saved {outpath}")
 
 
-def write_image_from_hits(hits, outpath):
+def get_image_from_vector(hits):
     # Map MIDI velocity to pixel brightness
     arr = np.array(list(map(lambda x: 255 if x else x, hits)))
     arr = arr.reshape((1, arr.shape[0]))
 
     # "L" mode is greyscale and requires an 8-bit pixel range of 0-255
-    im = Image.fromarray(arr.astype(np.uint8), mode="L")
+    return Image.fromarray(arr.astype(np.uint8), mode="L")
 
+
+def write_image_from_hits(hits, outpath):
+    im = get_image_from_vector(hits)
     im.save(outpath)
     logger.debug(f"Saved {outpath}")
 
 
 def write_image_from_pattern(pattern, outpath):
     binary_pattern = (pattern > 0).astype(int)
-
-    # Map MIDI velocity to pixel brightness
-    arr = np.array(list(map(lambda x: 255 if x else x, binary_pattern)))
-    arr = arr.reshape((1, arr.shape[0]))
-
-    # "L" mode is greyscale and requires an 8-bit pixel range of 0-255
-    im = Image.fromarray(arr.astype(np.uint8), mode="L")
-
+    im = get_image_from_vector(binary_pattern)
     im.save(outpath)
     logger.debug(f"Saved {outpath}")
 

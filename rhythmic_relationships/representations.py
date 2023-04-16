@@ -2,7 +2,15 @@ import numpy as np
 
 from rhythmtoolbox import pianoroll2descriptors
 
-REPRESENTATIONS = ["roll", "chroma", "pattern", "hits", "descriptors"]
+REPRESENTATIONS = [
+    "roll",
+    "onset_roll",
+    "onset_roll_3_octave",
+    "chroma",
+    "pattern",
+    "hits",
+    "descriptors",
+]
 
 # Standard 88-key piano range
 MIDI_PITCH_RANGE = [21, 108]
@@ -52,6 +60,26 @@ def get_9voice_drum_roll_pitches(pitches):
     return drum_roll_pitches
 
 
+def get_three_octave_pitches(pitches):
+    """Map a list of pitches three octaves centered around C4 with range [48, 84].
+
+    Pitches above 84 are mapped to the top octave (MIDI range [72, 84]).
+    Pitches below 48 are mapped to the bottom octave with (MIDI range [48, 60]).
+    Pitches between 48 and 84 are mapped to the center octave with (MIDI range [60, 72]).
+    """
+    three_octave_pitches = []
+    for p in pitches:
+        pc = p % 12
+        if p < 48:
+            three_octave_pitches.append(pc)
+        elif p > 84:
+            three_octave_pitches.append(pc + 24)
+        else:
+            three_octave_pitches.append(pc + 12)
+
+    return three_octave_pitches
+
+
 def get_multitrack_roll(tracks, drums=False):
     """Aggregate the piano rolls for all tracks into one.
 
@@ -80,7 +108,7 @@ def get_multitrack_roll(tracks, drums=False):
     return multitrack_roll.T
 
 
-def get_representations(pmid, subdivisions, binarize=True):
+def get_representations(pmid, subdivisions, binarize=False):
     """Parse all representations from a PrettyMIDI object
 
     :param pmid: PrettyMIDI object
@@ -100,6 +128,7 @@ def get_representations(pmid, subdivisions, binarize=True):
 
         roll = np.zeros((n_ticks, 128), np.uint8)
         onset_roll = np.zeros((n_ticks, 128), np.uint8)
+        onset_roll_3_octave = np.zeros((n_ticks, 36), np.uint8)
         drum_roll = np.zeros((n_ticks, 9))
         chroma = np.zeros((n_ticks, 12), np.uint8)
         pattern = np.zeros(n_ticks, np.uint8)
@@ -118,6 +147,9 @@ def get_representations(pmid, subdivisions, binarize=True):
         # Construct representations don't need to preserve offsets
         hits[onsets] = velocities
         onset_roll[onsets, pitches] = velocities
+
+        three_octave_pitches = get_three_octave_pitches(pitches)
+        onset_roll_3_octave[onsets, three_octave_pitches] = velocities
 
         if instrument.is_drum:
             roll[onsets, pitches] = velocities
@@ -141,15 +173,15 @@ def get_representations(pmid, subdivisions, binarize=True):
 
                 # If on_tick and off_tick were quantized to the same tick, move off_tick back by 1 tick
                 if off_tick - on_tick <= 0:
-                    off_tick += 1
+                    off_tick = on_tick + 1
 
-                if 0 < on_tick < n_ticks:
-                    if roll[on_tick - 1, pitch]:
-                        roll[on_tick - 1, pitch] = 0
+                # if 0 < on_tick < n_ticks:
+                # if roll[on_tick - 1, pitch]:
+                #     roll[on_tick - 1, pitch] = 0
 
-                if off_tick < n_ticks - 1:
-                    if roll[off_tick, pitch]:
-                        off_tick -= 1
+                # If the note ends after the last tick, move it back to the last tick
+                if off_tick > n_ticks:
+                    off_tick = n_ticks
 
                 # In the case of duplicate notes, preserve the one with the highest velocity
                 roll[on_tick:off_tick, pitch] = np.maximum(
@@ -175,6 +207,7 @@ def get_representations(pmid, subdivisions, binarize=True):
         # Convert MIDI velocities to real numbers in [0, 1]
         roll = roll / 127.0
         onset_roll = onset_roll / 127.0
+        onset_roll_3_octave = onset_roll_3_octave / 127.0
         hits = hits / 127.0
 
         tracks.append(
@@ -185,6 +218,7 @@ def get_representations(pmid, subdivisions, binarize=True):
                 "roll": roll,
                 "onset_roll": onset_roll,
                 "drum_roll": drum_roll,
+                "onset_roll_3_octave": onset_roll_3_octave,
                 "chroma": chroma,
                 "pattern": pattern,
                 "hits": hits,
