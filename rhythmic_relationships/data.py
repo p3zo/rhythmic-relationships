@@ -116,7 +116,8 @@ class PartPairDataset(Dataset):
         if subset:
             p1_pairs = p1_pairs[:subset]
             p2_pairs = p2_pairs[:subset]
-            n_segments = subset
+            if subset < n_segments:
+                n_segments = subset
 
         print(f"Loading {self.part_1} segments")
 

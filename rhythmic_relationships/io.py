@@ -227,7 +227,8 @@ def get_pmid_segment(
     This is different from get_pmid_segment_reprs in that it reads and slices the midi directly instead of reading a
     representation of MIDI and then writing to MIDI, which is lossy in ways depending on the representation.
 
-    # TODO: this is currently broken.
+    # TODO: this is currently broken
+    # TODO: write a test for this
 
     :parameters:
         pmid : pretty_midi.PrettyMIDI

@@ -190,19 +190,19 @@ if __name__ == "__main__":
     parser.add_argument(
         "--dataset",
         type=str,
-        default="lmdc_250_1bar_4res",
+        default="babyslakh_20_1bar_4res",
         help="Name of the dataset to make plots for.",
     )
     parser.add_argument(
         "--midi_dir",
         type=str,
-        default="../input/lmd_clean",
+        default="../input/babyslakh",
         help="Name of the directory from which to load MIDI data.",
     )
     parser.add_argument(
         "--subset",
         type=int,
-        default=2000,
+        default=None,
         help="Number of segments to use. If None, use all.",
     )
     parser.add_argument(
@@ -233,13 +233,6 @@ if __name__ == "__main__":
     midi_dir = args.midi_dir
     method = args.method
 
-    # Create the output directory
-    output_dir = os.path.join(
-        DATASETS_DIR, dataset_name, PLOTS_DIRNAME, "pairspaces", str(subset)
-    )
-    if not os.path.isdir(output_dir):
-        os.makedirs(output_dir)
-
     # Load the data
     p1 = "Drums"
     p2 = "Piano"
@@ -257,6 +250,13 @@ if __name__ == "__main__":
     filenames = df["filename"].values
     segment_ids = df["segment_id"].values
     fdf = df[[c for c in df.columns if any([i in c for i in feature_names])]]
+
+    # Create the output directory
+    output_dir = os.path.join(
+        DATASETS_DIR, dataset_name, PLOTS_DIRNAME, "pairspaces", str(len(segment_ids))
+    )
+    if not os.path.isdir(output_dir):
+        os.makedirs(output_dir)
 
     # Paired input space
     emb = get_embeddings(
@@ -333,7 +333,7 @@ if __name__ == "__main__":
     A, B, C = drums_tri_coords
     drums_coord = (a * A + b * B + c * C) / (a + b + c)
 
-    fig, ax = plt.subplots(1, 2, figsize=(16, 10), sharey=True, sharex=True)
+    fig, ax = plt.subplots(1, 2, figsize=(20, 10), sharey=True, sharex=True)
 
     ax[0].triplot(
         piano_coords[:, 0], piano_coords[:, 1], piano_tris, color="gray", lw=0.5
@@ -353,7 +353,7 @@ if __name__ == "__main__":
         ax[1].plot(drums_tri_coords[:, 0], drums_tri_coords[:, 1], "o", color="blue")
     ax[1].set_title("Drums")
 
-    if subset < 100:
+    if len(segment_ids) < 100:
         for ix, coord in enumerate(piano_tri_coords):
             ax[0].text(
                 coord[0] - 0.01,
@@ -392,6 +392,7 @@ if __name__ == "__main__":
 
         pmid = load_midi_file(os.path.join(midi_dir, f"{filename}.mid"))
 
+        # TODO: get_pmid_segment is broken. Use another slicing method until it is fixed
         # TODO: automatically determine seg_size from dataset_name, or take it as an arg
         piano_slice = get_pmid_segment(
             pmid,
