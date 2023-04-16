@@ -1,5 +1,3 @@
-import os
-
 import torch
 import yaml
 from model_utils import load_config, save_model
@@ -10,17 +8,7 @@ from torch.utils.data import DataLoader
 
 DEVICE = torch.device("mps" if torch.backends.mps.is_built() else "cpu")
 MODELS_DIR = "../output/models"
-CHECKPOINTS_DIR = "models/checkpoints"
 CONFIG_FILEPATH = "model_config.yml"
-
-
-def load_model(model_name):
-    model_path = os.path.join(MODELS_DIR, f"{model_name}.pt")
-    model_obj = torch.load(model_path)
-    config = model_obj["config"]
-    model = VariationalAutoEncoder(**config["model"])
-    model.load_state_dict(state_dict=model_obj["state_dict"])
-    return model, config
 
 
 if __name__ == "__main__":
@@ -50,7 +38,6 @@ if __name__ == "__main__":
         loss_fn=loss_fn,
         config=config,
         device=DEVICE,
-        checkpoints_dir=CHECKPOINTS_DIR,
     )
 
     save_model(model, config)

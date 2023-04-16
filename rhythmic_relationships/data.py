@@ -149,7 +149,7 @@ class PartPairDataset(Dataset):
             ydf.columns = rtb.DESCRIPTOR_NAMES
 
         # Each row is a p1_p2 pair with all descriptors for both parts
-        pair_df = xdf.join(ydf, lsuffix=f'_{self.part_1}', rsuffix=f'_{self.part_2}')
+        pair_df = xdf.join(ydf, lsuffix=f"_{self.part_1}", rsuffix=f"_{self.part_2}")
 
         pair_df.insert(0, "segment_id", segment_ids)
         pair_df.insert(0, "filename", filenames)

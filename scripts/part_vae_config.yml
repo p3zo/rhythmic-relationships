@@ -1,11 +1,11 @@
 dataset:
-  dataset_name: "babyslakh_20_1bar_4res"
-  part: "Bass"
-  representation: "descriptors"
+  dataset_name: "lmdc_500_1bar_4res"
+  part: "Guitar"
+  representation: "binary onset roll"
 model:
-  x_dim: 18
-  h_dim: 8
-  z_dim: 2
+  x_dim: 2048
+  h_dim: 128
+  z_dim: 30
   conditional: False
   y_dim: 0
 loss_fn: "bce"

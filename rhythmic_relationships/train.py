@@ -4,6 +4,8 @@ import os
 import torch
 from tqdm import tqdm
 
+from rhythmic_relationships import DATASETS_DIR, MODELS_DIRNAME, CHECKPOINTS_DIRNAME
+
 
 def compute_loss(recons, x, mu, sigma, loss_fn):
     reconstruction_loss = loss_fn(recons, x)
@@ -20,7 +22,6 @@ def train(
     loss_fn,
     config,
     device,
-    checkpoints_dir,
 ):
     x_dim = config["model"]["x_dim"]
     y_dim = config["model"]["y_dim"]
@@ -62,6 +63,9 @@ def train(
             batches.set_postfix({"loss": loss.item()})
 
         # Save a checkpoint at the end of each epoch
+        checkpoints_dir = os.path.join(
+            DATASETS_DIR, MODELS_DIRNAME, CHECKPOINTS_DIRNAME
+        )
         if not os.path.isdir(checkpoints_dir):
             os.makedirs(checkpoints_dir)
 

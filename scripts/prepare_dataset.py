@@ -139,6 +139,8 @@ if __name__ == "__main__":
     min_seg_beats = args.min_seg_beats
     representations = args.representations
 
+    print(f"{representations=}")
+
     if args.verbose:
         logger.setLevel(logging.DEBUG)
 
