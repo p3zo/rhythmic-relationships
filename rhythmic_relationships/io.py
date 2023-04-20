@@ -160,17 +160,19 @@ def slice_midi(
             if not roll_has_activity(seg_chroma, min_seg_pitches, min_seg_beats):
                 continue
 
-            seg_roll = track["roll"][start:end]
+            seg_onset_roll = track["onset_roll"][start:end]
 
             # Skip segments that don't have the target number of beats
-            if len(seg_roll) != n_seg_ticks:
+            if len(seg_onset_roll) != n_seg_ticks:
                 continue
 
             # Join the representations into a single object array
             seg_reprs = []
             for representation in representations:
                 if representation == "descriptors":
-                    seg_reprs.append(get_descriptors_from_roll(seg_roll, resolution))
+                    seg_reprs.append(
+                        get_descriptors_from_roll(seg_onset_roll, resolution)
+                    )
                     continue
                 if representation not in track:
                     raise ValueError(
