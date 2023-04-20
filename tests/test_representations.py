@@ -1,6 +1,6 @@
 import numpy as np
 from rhythmtoolbox import DESCRIPTOR_NAMES
-from rhythmic_relationships.io import load_midi_file, parse_bar_start_ticks
+from rhythmic_relationships.io import load_midi_file, get_subdivisions
 from rhythmic_relationships.representations import get_representations
 
 N_DESCRIPTORS = len(DESCRIPTOR_NAMES)
@@ -18,7 +18,7 @@ def test_get_respresentations():
     resolution = 4
 
     pmid = load_midi_file(BOSKA_3_PIANO_FILEPATH)
-    bar_start_ticks, subdivisions = parse_bar_start_ticks(pmid, resolution)
+    subdivisions = get_subdivisions(pmid, resolution)
     tracks = get_representations(pmid, subdivisions)
     track = tracks[0]
     boska_3_onsets = [1, 0, 1, 1, 1, 0, 1, 0, 1, 1, 1, 0, 1, 0, 1, 1]
@@ -55,7 +55,7 @@ def test_get_respresentations():
     )
 
     pmid = load_midi_file(BOSKA_3_DRUMS_FILEPATH)
-    bar_start_ticks, subdivisions = parse_bar_start_ticks(pmid, resolution)
+    subdivisions = get_subdivisions(pmid, resolution)
     tracks = get_representations(pmid, subdivisions)
     track = tracks[0]
     binary_hits = (track["hits"] > 0).astype(int)
@@ -87,7 +87,7 @@ def test_get_respresentations():
     )
 
     pmid = load_midi_file(BOSKA_8_PIANO_FILEPATH)
-    bar_start_ticks, subdivisions = parse_bar_start_ticks(pmid, resolution)
+    subdivisions = get_subdivisions(pmid, resolution)
     tracks = get_representations(pmid, subdivisions)
     track = tracks[0]
     boska_8_onsets = [1, 0, 1, 1, 0, 0, 1, 0, 1, 1, 0, 0, 1, 0, 1, 1]
@@ -124,7 +124,7 @@ def test_get_respresentations():
     )
 
     pmid = load_midi_file(BOSKA_8_DRUMS_FILEPATH)
-    bar_start_ticks, subdivisions = parse_bar_start_ticks(pmid, resolution)
+    subdivisions = get_subdivisions(pmid, resolution)
     tracks = get_representations(pmid, subdivisions)
     track = tracks[0]
     binary_hits = (track["hits"] > 0).astype(int)
@@ -156,7 +156,7 @@ def test_get_respresentations():
     )
 
     pmid = load_midi_file(BOSKA_9_PIANO_FILEPATH)
-    bar_start_ticks, subdivisions = parse_bar_start_ticks(pmid, resolution)
+    subdivisions = get_subdivisions(pmid, resolution)
     tracks = get_representations(pmid, subdivisions)
     track = tracks[0]
     boska_9_onsets = [1, 0, 1, 0, 1, 0, 1, 0, 1, 1, 0, 1, 1, 0, 1, 0]
@@ -193,7 +193,7 @@ def test_get_respresentations():
     )
 
     pmid = load_midi_file(BOSKA_9_DRUMS_FILEPATH)
-    bar_start_ticks, subdivisions = parse_bar_start_ticks(pmid, resolution)
+    subdivisions = get_subdivisions(pmid, resolution)
     tracks = get_representations(pmid, subdivisions)
     track = tracks[0]
     binary_hits = (track["hits"] > 0).astype(int)

@@ -21,7 +21,7 @@ from rhythmic_relationships.io import (
     get_pmid_segment,
     load_midi_file,
     write_midi_from_hits,
-    parse_bar_start_ticks,
+    get_subdivisions,
 )
 from rhythmic_relationships.representations import get_representations
 from scipy.spatial import Delaunay
@@ -412,14 +412,14 @@ if __name__ == "__main__":
         )
 
         # Derive hits representations from MIDI
-        _, piano_subdivisions = parse_bar_start_ticks(piano_slice, resolution=4)
+        piano_subdivisions = get_subdivisions(piano_slice, resolution=4)
         piano_slice_representations = get_representations(
             piano_slice, piano_subdivisions
         )[0]
         piano_hits = (piano_slice_representations["hits"] > 0).astype(np.int8)
         piano_hits_list.append(piano_hits)
 
-        _, drums_subdivisions = parse_bar_start_ticks(drums_slice, resolution=4)
+        drums_subdivisions = get_subdivisions(drums_slice, resolution=4)
         drums_slice_representations = get_representations(
             drums_slice, drums_subdivisions
         )[0]

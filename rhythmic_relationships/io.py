@@ -41,16 +41,17 @@ def load_midi_file(filepath, resolution=24):
     return midi
 
 
-def parse_bar_start_ticks(pmid, resolution):
-    """Parse the bar start times from a PrettyMIDI object.
+def get_subdivisions(pmid, resolution):
+    """Parse beats from a PrettyMIDI object and create an array of subdivisions at a given resolution.
 
-    Adapted from https://github.com/ruiguo-bio/midi-miner/blob/794dac3bdf95cc17ffb6b67ff254d9c56cd479f5/tension_calculation.py#L687-L718
+    :param pmid: PrettyMIDI object
+    :param resolution: Resolution of the output array
+    :return: Array of subdivisions
     """
-
     beats = pmid.get_beats()
 
-    if len(beats) == 1:
-        return np.array([0]), np.array([0])
+    if len(beats) <= 1:
+        return np.array([0])
 
     additional_beat = 2 * beats[-1] - beats[-2]
     beats = np.append(beats, additional_beat)
@@ -61,14 +62,18 @@ def parse_bar_start_ticks(pmid, resolution):
         for j in range(resolution):
             subdivisions.append((end - start) / resolution * j + start)
     subdivisions.append(beats[-1])
-    subdivisions = np.array(subdivisions)
+
+    return np.array(subdivisions)
+
+
+def get_bar_start_ticks(pmid, subdivisions):
+    """Quantize the bar start times from PrettyMIDI object to a subdivision array."""
 
     bar_start_ticks = []
     for bar_start in pmid.get_downbeats():
         bar_start_ticks.append(np.argmin(np.abs(bar_start - subdivisions)))
-    bar_start_ticks = np.array(bar_start_ticks)
 
-    return bar_start_ticks, subdivisions
+    return np.array(bar_start_ticks)
 
 
 def get_seg_iter(bar_start_ticks, seg_size, resolution, n_beat_bars):
@@ -138,9 +143,10 @@ def slice_midi(
             A dictionary with all representations for each segment-part pair.
     """
 
-    bar_start_ticks, subdivisions = parse_bar_start_ticks(pmid, resolution)
+    subdivisions = get_subdivisions(pmid, resolution)
     tracks = get_representations(pmid, subdivisions)
 
+    bar_start_ticks = get_bar_start_ticks(pmid, subdivisions)
     seg_iter = get_seg_iter(bar_start_ticks, seg_size, resolution, n_beat_bars)
 
     # Initialize output objects
@@ -249,8 +255,8 @@ def get_pmid_segment(
     :returns:
         pmid_slice : pretty_midi.PrettyMIDI
     """
-    bar_start_ticks, subdivisions = parse_bar_start_ticks(pmid, resolution)
-
+    subdivisions = get_subdivisions(pmid, resolution)
+    bar_start_ticks = get_bar_start_ticks(pmid, subdivisions)
     seg_iter = get_seg_iter(bar_start_ticks, seg_size, resolution, n_beat_bars)
 
     seg_start, seg_end = seg_iter[segment_num]
