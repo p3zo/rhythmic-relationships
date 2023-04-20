@@ -68,6 +68,8 @@ if __name__ == "__main__":
         write_midi_from_roll(
             out,
             os.path.join(outdir, f"predicted_{part}_{ix}.mid"),
+            part=part,
+            onset_roll=True,
         )
         write_image_from_roll(
             out, os.path.join(outdir, f"predicted_{part}_{ix}.png"), binary=True

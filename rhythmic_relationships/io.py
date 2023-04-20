@@ -467,7 +467,15 @@ def get_pretty_midi_from_roll_list(
     return pmid
 
 
-def write_midi_from_roll(roll, outpath, resolution=4, binary=False, part=None):
+def write_midi_from_roll(
+    roll,
+    outpath,
+    resolution=4,
+    binary=False,
+    part=None,
+    n_octaves=None,
+    onset_roll=False,
+):
     """Writes a single piano roll to a MIDI file"""
     program = 0
     is_drum = False
@@ -477,8 +485,16 @@ def write_midi_from_roll(roll, outpath, resolution=4, binary=False, part=None):
             is_drum = True
 
     pmid = get_pretty_midi_from_roll(
-        roll, resolution=resolution, binary=binary, program=program, is_drum=is_drum
+        roll,
+        resolution=resolution,
+        binary=binary,
+        program=program,
+        is_drum=is_drum,
+        part=part,
+        n_octaves=n_octaves,
+        onset_roll=onset_roll,
     )
+
     pmid.write(outpath)
     logger.debug(f"Saved {outpath}")
 
