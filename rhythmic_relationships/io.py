@@ -41,20 +41,22 @@ def load_midi_file(filepath, resolution=24):
     return midi
 
 
-def get_subdivisions(pmid, resolution):
+def get_subdivisions(pmid, resolution=4, n_beat_bars=4):
     """Parse beats from a PrettyMIDI object and create an array of subdivisions at a given resolution.
 
     :param pmid: PrettyMIDI object
     :param resolution: Resolution of the output array
+    :param n_beat_bars: Number of beats per bar.
     :return: Array of subdivisions
     """
     beats = pmid.get_beats()
 
+    # Assume a single bar
     if len(beats) <= 1:
-        return np.array([0])
-
-    additional_beat = 2 * beats[-1] - beats[-2]
-    beats = np.append(beats, additional_beat)
+        beats = np.arange(0, n_beat_bars + 1)
+    else:
+        additional_beat = 2 * beats[-1] - beats[-2]
+        beats = np.append(beats, additional_beat)
 
     # Upsample beat times to the input resolution using linear interpolation
     subdivisions = []
@@ -143,7 +145,7 @@ def slice_midi(
             A dictionary with all representations for each segment-part pair.
     """
 
-    subdivisions = get_subdivisions(pmid, resolution)
+    subdivisions = get_subdivisions(pmid, resolution, n_beat_bars)
     tracks = get_representations(pmid, subdivisions)
 
     bar_start_ticks = get_bar_start_ticks(pmid, subdivisions)
@@ -255,7 +257,7 @@ def get_pmid_segment(
     :returns:
         pmid_slice : pretty_midi.PrettyMIDI
     """
-    subdivisions = get_subdivisions(pmid, resolution)
+    subdivisions = get_subdivisions(pmid, resolution, n_beat_bars)
     bar_start_ticks = get_bar_start_ticks(pmid, subdivisions)
     seg_iter = get_seg_iter(bar_start_ticks, seg_size, resolution, n_beat_bars)
 

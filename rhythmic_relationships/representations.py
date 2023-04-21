@@ -114,13 +114,23 @@ def get_multitrack_roll(tracks, drums=False):
 def get_representations(pmid, subdivisions):
     """Compute all representations from a PrettyMIDI object.
 
-    :param pmid: PrettyMIDI object
-    :param subdivisions: list of tick times
+    Parameters
+    ----------
+        pmid: PrettyMIDI
+            PrettyMIDI object to compute representations from.
+
+        subdivisions: np.array
+            Array of subdivisions
+
+        resolution: int
+            Number of ticks per beat of the output representations.
+
+        n_beat_bars: int
+            Process only segments with this number of beats per bar.
     :return: dict of representations
     """
 
     # TODO: take a parameter to allow for only a subset of representations to be computed
-    # LEFT OFF: handle the case when len(subdivisions) == 1
 
     n_ticks = len(subdivisions) - 1
 
@@ -212,6 +222,8 @@ def get_representations(pmid, subdivisions):
         hits = hits / 127.0
 
         binary_onset_roll = (onset_roll > 0).astype(np.uint8)
+
+        # TODO: cast each repr to an explicit type so that they don't inherit 'object' type
 
         tracks.append(
             {
