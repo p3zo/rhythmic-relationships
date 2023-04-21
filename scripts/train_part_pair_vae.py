@@ -31,6 +31,8 @@ if __name__ == "__main__":
     else:
         raise ValueError(f"`{config['loss_fn']}` is not a valid loss function")
 
+    model_name = get_model_name(config, paired=False)
+
     train(
         model=model,
         loader=loader,
@@ -38,6 +40,7 @@ if __name__ == "__main__":
         loss_fn=loss_fn,
         config=config,
         device=DEVICE,
+        model_name=model_name,
     )
 
-    save_model(model, config)
+    save_model(model, config, model_name)

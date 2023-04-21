@@ -1,6 +1,7 @@
 import datetime as dt
 import os
 
+import matplotlib.pyplot as plt
 import torch
 from tqdm import tqdm
 
@@ -15,7 +16,16 @@ def compute_loss(recons, x, mu, sigma, loss_fn):
     return reconstruction_loss + kld_loss
 
 
-def train(model, loader, optimizer, loss_fn, config, device, model_name):
+def train(
+    model,
+    loader,
+    optimizer,
+    loss_fn,
+    config,
+    device,
+    model_name,
+    save_checkpoints=False,
+):
     x_dim = config["model"]["x_dim"]
     y_dim = config["model"]["y_dim"]
     conditional = config["model"]["conditional"]
@@ -55,28 +65,29 @@ def train(model, loader, optimizer, loss_fn, config, device, model_name):
             batches.set_description(f"Epoch {epoch + 1}/{num_epochs}")
             batches.set_postfix({"loss": loss.item()})
 
-        # Save a checkpoint at the end of each epoch
-        checkpoints_dir = os.path.join(MODELS_DIR, CHECKPOINTS_DIRNAME)
-        if not os.path.isdir(checkpoints_dir):
-            os.makedirs(checkpoints_dir)
-
-        torch.save(
-            {
-                "epoch": epoch,
-                "model_state_dict": model.state_dict(),
-                "optimizer_state_dict": optimizer.state_dict(),
-                "loss": loss,
-                "config": config,
-            },
-            os.path.join(
-                checkpoints_dir,
-                model_name,
-                f"{epoch}_{dt.datetime.today().strftime('%y%m%d%H%M%S')}",
-            ),
-        )
-
-        import matplotlib.pyplot as plt
-
+        # Save plot of loss during training
         plt.plot(training_losses)
-        os.path.join(MODELS_DIR, f"{model_name}.pt")
-        plt.savefig("training_loss.png")
+        loss_plot_path = os.path.join(MODELS_DIR, model_name, "training_loss.png")
+        plt.savefig(loss_plot_path)
+        print(f"Saved {loss_plot_path}")
+
+        # Save a checkpoint at the end of each epoch
+        if save_checkpoints:
+            checkpoints_dir = os.path.join(MODELS_DIR, CHECKPOINTS_DIRNAME)
+            if not os.path.isdir(checkpoints_dir):
+                os.makedirs(checkpoints_dir)
+
+            torch.save(
+                {
+                    "epoch": epoch,
+                    "model_state_dict": model.state_dict(),
+                    "optimizer_state_dict": optimizer.state_dict(),
+                    "loss": loss,
+                    "config": config,
+                },
+                os.path.join(
+                    checkpoints_dir,
+                    model_name,
+                    f"{epoch}_{dt.datetime.today().strftime('%y%m%d%H%M%S')}",
+                ),
+            )

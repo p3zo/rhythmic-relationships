@@ -11,6 +11,6 @@ model:
 loss_fn: "mse"
 loss_reduction: 'sum'
 clip_gradients: True
-num_epochs: 20
+num_epochs: 5
 batch_size: 256
 lr: 1e-4

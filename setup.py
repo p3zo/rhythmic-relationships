@@ -11,6 +11,7 @@ setup(
         ]
     ),
     install_requires=[
+        "bentoml~=1.0.18",
         "matplotlib~=3.5.1",
         "numpy~=1.24.2",
         "pandas~=2.0.0",

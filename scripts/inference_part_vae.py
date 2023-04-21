@@ -1,42 +1,19 @@
 import os
 
 import numpy as np
-import pandas as pd
 import seaborn as sns
 import torch
-from model_utils import load_model
+from model_utils import get_embeddings, load_model
+from rhythmic_relationships import INFERENCE_DIR
 from rhythmic_relationships.io import write_image_from_roll, write_midi_from_roll
 from rhythmic_relationships.model import VariationalAutoEncoder
-from sklearn.manifold import TSNE
-from utils import save_fig
 
 sns.set_style("white")
 sns.set_context("paper")
 
 
-INFERENCE_DIR = "../output/inference"
-
-model_name = "vergence_lmdc_500_1bar_4res_Guitar_binary onset roll_230415235749"
-
-
-def get_embeddings(X, title="", outdir="."):
-    """Create a 2D embedding space of the data, plot it, and save it to a csv"""
-    reducer = TSNE(n_components=2, init="pca", learning_rate="auto", random_state=42)
-
-    # Make the pair space using t-SNE
-    X_transform = reducer.fit_transform(X)
-
-    emb = pd.DataFrame(X_transform, columns=["x", "y"])
-    sns.relplot(
-        data=emb,
-        x="x",
-        y="y",
-        height=8,
-        aspect=1.25,
-        legend=False,
-    )
-
-    save_fig(os.path.join(outdir, "latent_samples.png"), title=title)
+# model_name = "vergence_lmdc_500_1bar_4res_Guitar_binary onset roll_230415235749"
+model_name = "Apocrita_lmdc_3000_1bar_4res_Guitar_onset_roll_230416150734"
 
 
 if __name__ == "__main__":
@@ -54,7 +31,7 @@ if __name__ == "__main__":
     if not os.path.isdir(outdir):
         os.makedirs(outdir)
 
-    get_embeddings(
+    emb = get_embeddings(
         samples,
         title=f"t-SNE of 64 samples from {model_name}\n{config['dataset']['part']} {config['dataset']['representation']}\n{config['dataset']['dataset_name']}",
         outdir=outdir,
