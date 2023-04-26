@@ -217,6 +217,7 @@ def get_representations(pmid, subdivisions):
 
         # Convert MIDI velocities to real numbers in [0, 1]
         roll = roll / 127.0
+        drum_roll = drum_roll / 127.0
         onset_roll = onset_roll / 127.0
         onset_roll_3_octave = onset_roll_3_octave / 127.0
         hits = hits / 127.0
