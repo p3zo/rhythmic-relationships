@@ -17,6 +17,7 @@ import pandas as pd
 import seaborn as sns
 from rhythmic_relationships import DATASETS_DIR, PLOTS_DIRNAME
 from rhythmic_relationships.data import PartPairDataset
+from rhythmic_relationships.parts import PARTS
 from rhythmic_relationships.io import (
     get_pmid_segment,
     load_midi_file,
@@ -200,6 +201,18 @@ if __name__ == "__main__":
         help="Name of the directory from which to load MIDI data.",
     )
     parser.add_argument(
+        "--p1",
+        type=str,
+        default="Guitar",
+        help="Part 1",
+    )
+    parser.add_argument(
+        "--p2",
+        type=str,
+        default="Bass",
+        help="Part 2",
+    )
+    parser.add_argument(
         "--subset",
         type=int,
         default=None,
@@ -232,10 +245,10 @@ if __name__ == "__main__":
     subset = args.subset
     midi_dir = args.midi_dir
     method = args.method
+    p1 = args.p1
+    p2 = args.p2
 
     # Load the data
-    p1 = "Drums"
-    p2 = "Piano"
     pair_df, _ = PartPairDataset(
         dataset_name, p1, p2, "descriptors", "descriptors"
     ).as_dfs(shuffle=False, subset=subset)
@@ -252,8 +265,14 @@ if __name__ == "__main__":
     fdf = df[[c for c in df.columns if any([i in c for i in feature_names])]]
 
     # Create the output directory
+    part_pair_id = f"{p1}_{p2}" if PARTS.index(p1) < PARTS.index(p2) else f"{p2}_{p1}"
     output_dir = os.path.join(
-        DATASETS_DIR, dataset_name, PLOTS_DIRNAME, "pairspaces", str(len(segment_ids))
+        DATASETS_DIR,
+        dataset_name,
+        PLOTS_DIRNAME,
+        "pairspaces",
+        str(n_pairs),
+        part_pair_id,
     )
     if not os.path.isdir(output_dir):
         os.makedirs(output_dir)
@@ -268,21 +287,21 @@ if __name__ == "__main__":
         outdir=output_dir,
     )
 
-    # Drums space
-    drums_emb = get_embeddings(
-        fdf[[c for c in fdf.columns if "Drums" in c]],
+    # Part 1 space
+    p1_emb = get_embeddings(
+        fdf[[c for c in fdf.columns if p1 in c]],
         filenames,
         segment_ids,
-        title="Drums",
+        title=p1,
         method=method,
         outdir=output_dir,
     )
-    # Piano space
-    piano_emb = get_embeddings(
-        fdf[[c for c in fdf.columns if "Piano" in c]],
+    # Part 2 space
+    p2_emb = get_embeddings(
+        fdf[[c for c in fdf.columns if p2 in c]],
         filenames,
         segment_ids,
-        title="Piano",
+        title=p2,
         method=method,
         outdir=output_dir,
     )
@@ -291,8 +310,8 @@ if __name__ == "__main__":
     emb_emb = get_embeddings(
         pd.concat(
             [
-                drums_emb.drop(["segment_id", "filename"], axis=1),
-                piano_emb.drop(["segment_id", "filename"], axis=1),
+                p1_emb.drop(["segment_id", "filename"], axis=1),
+                p2_emb.drop(["segment_id", "filename"], axis=1),
             ],
             axis=1,
         ),
@@ -310,51 +329,47 @@ if __name__ == "__main__":
     if not os.path.isdir(selection_dir):
         os.makedirs(selection_dir)
 
-    # Given a point in the Piano space, get a corresponding point from the Drums space using Delaunay triangulation
-    p_emb = piano_emb.drop(["segment_id", "filename"], axis=1).values.astype(np.float64)
-    d_emb = drums_emb.drop(["segment_id", "filename"], axis=1).values.astype(np.float64)
+    # Given a point in p2 space, get a corresponding point from p1 space using Delaunay triangulation
+    p_emb = p2_emb.drop(["segment_id", "filename"], axis=1).values.astype(np.float64)
+    d_emb = p1_emb.drop(["segment_id", "filename"], axis=1).values.astype(np.float64)
 
     # Min-max normalize the coordinates to be between 0 and 1
-    piano_coords = (p_emb - p_emb.min()) / (p_emb.max() - p_emb.min())
-    drums_coords = (d_emb - d_emb.min()) / (d_emb.max() - d_emb.min())
+    p2_coords = (p_emb - p_emb.min()) / (p_emb.max() - p_emb.min())
+    p1_coords = (d_emb - d_emb.min()) / (d_emb.max() - d_emb.min())
 
-    piano_tris = get_triangles(piano_coords)
-    drums_tris = get_triangles(drums_coords)
+    p2_tris = get_triangles(p2_coords)
+    p1_tris = get_triangles(p1_coords)
 
-    triangle = find_triangle(input_coord, piano_tris, piano_coords)
+    triangle = find_triangle(input_coord, p2_tris, p2_coords)
     if triangle is None:
         raise ValueError("The coordinate is not in any triangle")
 
-    piano_tri_coords = piano_coords[triangle]
-    drums_tri_coords = drums_coords[triangle]
+    p2_tri_coords = p2_coords[triangle]
+    p1_tri_coords = p1_coords[triangle]
 
     # Compute a point in the second space using a weighted avg of inverse coord-to-vertex ratios in the first
-    a, b, c = get_vertex_weights(input_coord, piano_tri_coords)
-    A, B, C = drums_tri_coords
-    drums_coord = (a * A + b * B + c * C) / (a + b + c)
+    a, b, c = get_vertex_weights(input_coord, p2_tri_coords)
+    A, B, C = p1_tri_coords
+    p1_coord = (a * A + b * B + c * C) / (a + b + c)
 
     fig, ax = plt.subplots(1, 2, figsize=(20, 10), sharey=True, sharex=True)
 
-    ax[0].triplot(
-        piano_coords[:, 0], piano_coords[:, 1], piano_tris, color="gray", lw=0.5
-    )
-    ax[0].plot(piano_coords[:, 0], piano_coords[:, 1], "o", color="black", markersize=1)
+    ax[0].triplot(p2_coords[:, 0], p2_coords[:, 1], p2_tris, color="gray", lw=0.5)
+    ax[0].plot(p2_coords[:, 0], p2_coords[:, 1], "o", color="black", markersize=1)
     ax[0].plot(input_coord[0], input_coord[1], "o", color="red")
     if isinstance(triangle, np.ndarray):
-        ax[0].plot(piano_tri_coords[:, 0], piano_tri_coords[:, 1], "o", color="blue")
-    ax[0].set_title("Piano")
+        ax[0].plot(p2_tri_coords[:, 0], p2_tri_coords[:, 1], "o", color="blue")
+    ax[0].set_title(p2)
 
-    ax[1].triplot(
-        drums_coords[:, 0], drums_coords[:, 1], drums_tris, color="gray", lw=0.5
-    )
-    ax[1].plot(drums_coords[:, 0], drums_coords[:, 1], "o", color="black", markersize=1)
-    ax[1].plot(drums_coord[0], drums_coord[1], "o", color="red")
+    ax[1].triplot(p1_coords[:, 0], p1_coords[:, 1], p1_tris, color="gray", lw=0.5)
+    ax[1].plot(p1_coords[:, 0], p1_coords[:, 1], "o", color="black", markersize=1)
+    ax[1].plot(p1_coord[0], p1_coord[1], "o", color="red")
     if isinstance(triangle, np.ndarray):
-        ax[1].plot(drums_tri_coords[:, 0], drums_tri_coords[:, 1], "o", color="blue")
-    ax[1].set_title("Drums")
+        ax[1].plot(p1_tri_coords[:, 0], p1_tri_coords[:, 1], "o", color="blue")
+    ax[1].set_title(p1)
 
     if len(segment_ids) < 100:
-        for ix, coord in enumerate(piano_tri_coords):
+        for ix, coord in enumerate(p2_tri_coords):
             ax[0].text(
                 coord[0] - 0.01,
                 coord[1] + 0.05,
@@ -364,7 +379,7 @@ if __name__ == "__main__":
                 color="blue",
             )
 
-        for ix, coord in enumerate(drums_tri_coords):
+        for ix, coord in enumerate(p1_tri_coords):
             ax[1].text(
                 coord[0] - 0.01,
                 coord[1] + 0.05,
@@ -382,88 +397,84 @@ if __name__ == "__main__":
     plt.savefig(os.path.join(selection_dir, "triangles.png"))
 
     # Load the MIDI slices & derive hits representations for each part
-    piano_hits_list = []
-    drums_hits_list = []
+    p2_hits_list = []
+    p1_hits_list = []
     for ix in triangle:
-        piano_row = piano_emb.iloc[ix]
-        filename = piano_row["filename"]
-        segment_id = piano_row["segment_id"]
+        p2_row = p2_emb.iloc[ix]
+        filename = p2_row["filename"]
+        segment_id = p2_row["segment_id"]
         print(filename, segment_id)
 
         pmid = load_midi_file(os.path.join(midi_dir, f"{filename}.mid"))
 
         # TODO: get_pmid_segment is broken. Use another slicing method until it is fixed
         # TODO: automatically determine seg_size from dataset_name, or take it as an arg
-        piano_slice = get_pmid_segment(
+        p2_slice = get_pmid_segment(
             pmid,
             segment_num=segment_id,
             resolution=4,
             seg_size=1,
             n_beat_bars=4,
-            parts=["Piano"],
+            parts=[p2],
         )
-        drums_slice = get_pmid_segment(
+        p1_slice = get_pmid_segment(
             pmid,
             segment_num=segment_id,
             resolution=4,
             seg_size=1,
             n_beat_bars=4,
-            parts=["Drums"],
+            parts=[p1],
         )
 
         # Derive hits representations from MIDI
-        piano_subdivisions = get_subdivisions(piano_slice, resolution=4)
-        piano_slice_representations = get_representations(
-            piano_slice, piano_subdivisions
-        )[0]
-        piano_hits = (piano_slice_representations["hits"] > 0).astype(np.int8)
-        piano_hits_list.append(piano_hits)
+        p2_subdivisions = get_subdivisions(p2_slice, resolution=4)
+        p2_slice_representations = get_representations(p2_slice, p2_subdivisions)[0]
+        p2_hits = (p2_slice_representations["hits"] > 0).astype(np.int8)
+        p2_hits_list.append(p2_hits)
 
-        drums_subdivisions = get_subdivisions(drums_slice, resolution=4)
-        drums_slice_representations = get_representations(
-            drums_slice, drums_subdivisions
-        )[0]
-        drums_hits = (drums_slice_representations["hits"] > 0).astype(np.int8)
-        drums_hits_list.append(drums_hits)
+        p1_subdivisions = get_subdivisions(p1_slice, resolution=4)
+        p1_slice_representations = get_representations(p1_slice, p1_subdivisions)[0]
+        p1_hits = (p1_slice_representations["hits"] > 0).astype(np.int8)
+        p1_hits_list.append(p1_hits)
 
         print(f"Loaded MIDI for {filename} segment {segment_id}")
 
         # Write MIDI
         output_filename = filename.replace("/", "_")
-        piano_slice.write(
-            os.path.join(selection_dir, f"{output_filename}_{segment_id}_piano.mid")
+        p2_slice.write(
+            os.path.join(selection_dir, f"{output_filename}_{segment_id}_{p2}.mid")
         )
-        drums_slice.write(
-            os.path.join(selection_dir, f"{output_filename}_{segment_id}_drums.mid")
+        p1_slice.write(
+            os.path.join(selection_dir, f"{output_filename}_{segment_id}_{p1}.mid")
         )
 
         # Write hits as MIDI
         write_midi_from_hits(
-            piano_hits,
+            p2_hits,
             os.path.join(
-                selection_dir, f"{output_filename}_{segment_id}_piano_hits.mid"
+                selection_dir, f"{output_filename}_{segment_id}_{p2}_hits.mid"
             ),
             pitch=60,
         )
         write_midi_from_hits(
-            drums_hits,
+            p1_hits,
             os.path.join(
-                selection_dir, f"{output_filename}_{segment_id}_drums_hits.mid"
+                selection_dir, f"{output_filename}_{segment_id}_{p1}_hits.mid"
             ),
             pitch=36,
         )
 
-    interpolated_piano_hits = interpolate_three_patterns(piano_hits_list, (a, b, c))
-    interpolated_drums_hits = interpolate_three_patterns(drums_hits_list, (a, b, c))
+    interpolated_p2_hits = interpolate_three_patterns(p2_hits_list, (a, b, c))
+    interpolated_p1_hits = interpolate_three_patterns(p1_hits_list, (a, b, c))
 
     write_midi_from_hits(
-        interpolated_piano_hits,
-        os.path.join(selection_dir, "interpolated_piano_hits.mid"),
+        interpolated_p2_hits,
+        os.path.join(selection_dir, f"interpolated_{p2}_hits.mid"),
         pitch=60,
     )
     write_midi_from_hits(
-        interpolated_drums_hits,
-        os.path.join(selection_dir, "interpolated_drums_hits.mid"),
+        interpolated_p1_hits,
+        os.path.join(selection_dir, f"interpolated_{p1}_hits.mid"),
         pitch=36,
     )
     print("Saved interpolated patterns")
