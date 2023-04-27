@@ -8,37 +8,34 @@ class VAE(nn.Module):
 
         self.conditional = conditional
 
-        self.h_dims = h_dims
-        self.z_dim = z_dim
-
-        self.relu = nn.ReLU()
-
-        # TODO: what dim is correct? is that true for all reprs?
-        self.softmax = nn.Softmax(dim=0)
-
         # Encoder
-        self.input_to_hidden = nn.Linear(x_dim + y_dim, h_dims[0])
+        input_to_hidden = nn.Linear(x_dim + y_dim, h_dims[0])
+
+        encoder_layers = [input_to_hidden, nn.ReLU()]
+        for i, j in zip(h_dims, h_dims[1:]):
+            encoder_layers.extend([nn.Linear(i, j), nn.ReLU()])
+
+        self.encoder = nn.Sequential(*encoder_layers)
+
         self.hidden_to_mu = nn.Linear(h_dims[-1], z_dim)
         self.hidden_to_sigma = nn.Linear(h_dims[-1], z_dim)
 
         # Decoder
-        self.z_to_hidden = nn.Linear(z_dim + y_dim, h_dims[-1])
-        self.hidden_to_input = nn.Linear(h_dims[0], x_dim)
+        z_to_hidden = nn.Linear(z_dim + y_dim, h_dims[-1])
+        hidden_to_input = nn.Linear(h_dims[0], x_dim)
 
-        # Hidden layers for both encoder and decoder
+        decoder_layers = [z_to_hidden, nn.ReLU()]
         for i, j in zip(h_dims, h_dims[1:]):
-            setattr(self, f"hidden_{i}_to_hidden_{j}", nn.Linear(i, j))
-            setattr(self, f"hidden_{j}_to_hidden_{i}", nn.Linear(j, i))
+            decoder_layers.extend([nn.Linear(j, i), nn.ReLU()])
+        decoder_layers.append(hidden_to_input)
+
+        self.decoder = nn.Sequential(*decoder_layers)
 
     def encode(self, x, c=None):
         if self.conditional:
             x = torch.cat((x, c), dim=-1)
 
-        h = self.relu(self.input_to_hidden(x))
-
-        for i, j in zip(self.h_dims, self.h_dims[1:]):
-            h_layer = getattr(self, f"hidden_{i}_to_hidden_{j}")
-            h = self.relu(h_layer(h))
+        h = self.encoder(x)
 
         return self.hidden_to_mu(h), self.hidden_to_sigma(h)
 
@@ -46,19 +43,11 @@ class VAE(nn.Module):
         if self.conditional:
             z = torch.cat((z, c), dim=-1)
 
-        h = self.relu(self.z_to_hidden(z))
+        x = self.decoder(z)
 
-        h_dims_rev = list(reversed(self.h_dims))
-        for i, j in zip(h_dims_rev, h_dims_rev[1:]):
-            h_layer = getattr(self, f"hidden_{i}_to_hidden_{j}")
-            h = self.relu(h_layer(h))
-
-        x = self.hidden_to_input(h)
-
-        if activation == "softmax":
-            return self.softmax(x)
-        elif activation == "sigmoid":
+        if activation == "sigmoid":
             return torch.sigmoid(x)
+
         return x
 
     def forward(self, x, c=None):
@@ -66,7 +55,6 @@ class VAE(nn.Module):
 
         epsilon = torch.randn_like(sigma)
         z_reparameterized = mu + sigma * epsilon
-
         x_reconstructed = self.decode(z_reparameterized, c)
 
         return x_reconstructed, mu, sigma
