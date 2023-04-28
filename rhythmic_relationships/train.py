@@ -32,7 +32,12 @@ def train(
     clip_gradients = config["clip_gradients"]
     num_epochs = config["num_epochs"]
 
+    model_dir = os.path.join(MODELS_DIR, model_name)
+    if not os.path.isdir(model_dir):
+        os.makedirs(model_dir)
+
     training_losses = []
+    ud = []  # update:data ratio
 
     for epoch in range(num_epochs):
         batches = tqdm(loader)
@@ -43,17 +48,22 @@ def train(
                 x, y = x.to(device).view(x.shape[0], x_dim), y.to(device).view(
                     y.shape[0], y_dim
                 )
-                x_reconstructed, mu, sigma = model(x, y)
+                x_binary = (x > 0).to(torch.float32)
+                x_recon, mu, sigma = model(x_binary, y)
             else:
                 x = batch
                 x = x.to(device).view(x.shape[0], x_dim)
-                x_reconstructed, mu, sigma = model(x)
+                x_binary = (x > 0).to(torch.float32)
+                x_recon, mu, sigma = model(x_binary)
 
             # Compute loss
-            loss = compute_loss(x_reconstructed, x, mu, sigma, loss_fn)
+            x_recon_binary = (x_recon > 0).to(torch.float32)
+            onset_loss = compute_loss(x_recon_binary, x_binary, mu, sigma, loss_fn)
+            velocity_loss = compute_loss(x_recon, x, mu, sigma, loss_fn)
+            loss = onset_loss + velocity_loss
             training_losses.append(loss.item())
 
-            # Backpropagation
+            # Backprop
             optimizer.zero_grad()
             loss.backward()
 
@@ -63,13 +73,22 @@ def train(
             optimizer.step()
 
             batches.set_description(f"Epoch {epoch + 1}/{num_epochs}")
-            batches.set_postfix({"loss": loss.item()})
+            batches.set_postfix({"loss": f"{loss.item():.4f}"})
+
+            with torch.no_grad():
+                ud.append(
+                    [
+                        ((config["lr"] * p.grad).std() / p.data.std()).log10().item()
+                        for p in model.parameters()
+                    ]
+                )
 
         # Save plot of loss during training
         plt.plot(training_losses)
-        loss_plot_path = os.path.join(MODELS_DIR, model_name, "training_loss.png")
+        loss_plot_path = os.path.join(model_dir, f"training_loss_{epoch}.png")
         plt.savefig(loss_plot_path)
         print(f"Saved {loss_plot_path}")
+        plt.clf()
 
         # Save a checkpoint at the end of each epoch
         if save_checkpoints:
@@ -91,3 +110,5 @@ def train(
                     f"{epoch}_{dt.datetime.today().strftime('%y%m%d%H%M%S')}",
                 ),
             )
+
+    return loss.item()

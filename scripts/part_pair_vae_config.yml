@@ -1,18 +1,19 @@
 dataset:
-  dataset_name: "babyslakh_20_1bar_4res"
-  part_1: "Bass"
-  part_2: "Drums"
-  repr_1: "pattern"
-  repr_2: "pattern"
+  dataset_name: "lmdc_3000_1bar_4res"
+  part_1: "Guitar"
+  part_2: "Bass"
+  repr_1: "onset_roll"
+  repr_2: "onset_roll"
 model:
-  x_dim: 32
-  h_dim: 8
-  z_dim: 2
+  x_dim: 2048
+  h_dims:
+    - 256
+  z_dim: 30
   conditional: True
-  y_dim: 32
-loss_fn: "bce"
+  y_dim: 2048
+loss_fn: "bce-logits"
 loss_reduction: 'sum'
 clip_gradients: True
-num_epochs: 10
+num_epochs: 5
 batch_size: 256
 lr: 1e-4

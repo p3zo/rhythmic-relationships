@@ -1,16 +1,18 @@
 dataset:
   dataset_name: "lmdc_3000_1bar_4res"
-  part: "Guitar"
+  part: "Piano"
   representation: "onset_roll"
 model:
   x_dim: 2048
-  h_dim: 128
-  z_dim: 30
+  h_dims:
+    - 512
+    - 256
+  z_dim: 20
   conditional: False
   y_dim: 0
-loss_fn: "mse"
+loss_fn: "bce-logits"
 loss_reduction: 'sum'
-clip_gradients: True
-num_epochs: 5
-batch_size: 256
-lr: 1e-4
+clip_gradients: False
+num_epochs: 1
+batch_size: 512
+lr: 3e-4
