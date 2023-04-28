@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import torch
-from rhythmic_relationships.model import VariationalAutoEncoder
+from rhythmic_relationships.model import VAE
 from rhythmtoolbox import pianoroll2descriptors
 from segroll_train import H_DIM, Z_DIM
 
@@ -37,7 +37,7 @@ if __name__ == "__main__":
     output_dir = args.output_dir
 
     state_dict = torch.load(model_path, map_location=torch.device(DEVICE))
-    model = VariationalAutoEncoder(INPUT_DIM, H_DIM, Z_DIM).to(DEVICE)
+    model = VAE(INPUT_DIM, H_DIM, Z_DIM).to(DEVICE)
     model.load_state_dict(state_dict=state_dict)
 
     descriptors = []

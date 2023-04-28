@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 from rhythmic_relationships.data import DescriptorDataset, SegrollDataset
 from rhythmic_relationships.io import write_image_from_roll, write_midi_from_roll
-from rhythmic_relationships.model import VariationalAutoEncoder
+from rhythmic_relationships.model import VAE
 from rhythmtoolbox import pianoroll2descriptors
 from torch.utils.data import DataLoader
 
@@ -43,7 +43,7 @@ if __name__ == "__main__":
     # Predict a Bass RSP using the RSP Pair model
     drums_bass_vae_path = os.path.join(dataset_dir, "models", "Drums_Bass_rsp_pair.pt")
     state_dict = torch.load(drums_bass_vae_path, map_location=torch.device(DEVICE))
-    pair_model = VariationalAutoEncoder(
+    pair_model = VAE(
         RSP_INPUT_DIM, RSP_H_DIM, RSP_Z_DIM, conditional=True, n_labels=RSP_N_LABELS
     )
     pair_model.load_state_dict(state_dict=state_dict)
@@ -80,7 +80,7 @@ if __name__ == "__main__":
     # Generate a similar Bass roll
     bass_vae_path = os.path.join(dataset_dir, "models", "Bass_segroll.pt")
     state_dict = torch.load(bass_vae_path, map_location=torch.device(DEVICE))
-    bass_vae = VariationalAutoEncoder(SEGROLL_INPUT_DIM, SEGROLL_H_DIM, SEGROLL_Z_DIM)
+    bass_vae = VAE(SEGROLL_INPUT_DIM, SEGROLL_H_DIM, SEGROLL_Z_DIM)
     bass_vae.load_state_dict(state_dict=state_dict)
     mu, sigma = bass_vae.encode(intermediate_bass_roll_tensor)
     epsilon = torch.randn_like(sigma)

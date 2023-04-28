@@ -1,11 +1,13 @@
 import datetime as dt
+import glob
 import os
 import random
+from collections import defaultdict
 
 from bentoml.pytorch import save_model as save_bento_model
 import torch
 import yaml
-from rhythmic_relationships import MODELS_DIR, INFERENCE_DIR
+from rhythmic_relationships import MODELS_DIR
 
 import pandas as pd
 import seaborn as sns
@@ -26,7 +28,7 @@ def load_config(filepath):
     return config
 
 
-def get_model_name(config, paired=True):
+def get_model_name():
     # a copy of /usr/share/dict/web2 from a macbook air (early 2014)
     with open("words") as words_file:
         words = words_file.read().split()
@@ -34,16 +36,9 @@ def get_model_name(config, paired=True):
     word = random.choice(words)
 
     today = dt.datetime.today()
-    timestamp = today.strftime("%y%m%d%H%M%S")
+    timestamp = today.strftime("%y%m%d%H%M")
 
-    dc = config["dataset"]
-
-    if paired:
-        info_str = f"{dc['dataset_name']}_{dc['part_1']}_{dc['part_2']}_{dc['repr_1']}_{dc['repr_2']}"
-    else:
-        info_str = f"{dc['dataset_name']}_{dc['part']}_{dc['representation']}"
-
-    return f"{word}_{info_str}_{timestamp}"
+    return f"{word}_{timestamp}"
 
 
 def save_model(model, config, model_name, bento=True):
@@ -51,17 +46,17 @@ def save_model(model, config, model_name, bento=True):
     if not os.path.isdir(model_dir):
         os.makedirs(model_dir)
     model_path = os.path.join(model_dir, "model.pt")
+
     torch.save(
         {
             "state_dict": model.state_dict(),
             "config": config,
+            "name": model_name,
+            "n_params": sum(p.nelement() for p in model.parameters()),
         },
         model_path,
     )
     print(f"Saved {model_path}")
-    config_path = os.path.join(MODELS_DIR, model_name, f"config.yaml")
-    with open(config_path, "w") as file:
-        yaml.dump(config, file)
 
     if bento:
         saved_model = save_bento_model(
@@ -107,3 +102,21 @@ def get_embeddings(X, title="", outdir="."):
 
     save_fig(os.path.join(outdir, "latent_samples.png"), title=title)
     return emb
+
+
+def get_model_catalog():
+    model_files = glob.glob(os.path.join(MODELS_DIR, "*/*.pt"))
+    model_files = [fp for fp in model_files if "exclude_from_catalog" not in fp]
+    catalog = defaultdict(dict)
+    for fp in model_files:
+        model_obj = torch.load(fp)
+        if "name" not in model_obj:
+            continue
+
+        catalog_info = {}
+        catalog_info["config"] = model_obj["config"]
+        catalog_info["n_params"] = model_obj["n_params"]
+
+        catalog[model_obj["name"]] = catalog_info
+
+    return catalog
