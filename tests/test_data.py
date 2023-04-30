@@ -7,7 +7,7 @@ from torch.utils.data import DataLoader
 dataset_name = "babyslakh_20_1bar_4res"
 batch_size = 1
 part_1 = "Drums"
-part_2 = "Guitar"
+part_2 = "Bass"
 
 N_DESCRIPTORS = len(DESCRIPTOR_NAMES)
 

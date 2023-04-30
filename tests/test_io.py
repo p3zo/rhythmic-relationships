@@ -1,13 +1,30 @@
 import numpy as np
 
 from rhythmtoolbox import DESCRIPTOR_NAMES
-from rhythmic_relationships.io import get_seg_iter, slice_midi, load_midi_file
+from rhythmic_relationships.io import (
+    get_seg_iter,
+    slice_midi,
+    load_midi_file,
+    roll_contains_mono_melody,
+    write_midi_from_roll,
+)
 from rhythmic_relationships.representations import REPRESENTATIONS
 
 N_DESCRIPTORS = len(DESCRIPTOR_NAMES)
 
+BABYSLAKH_18_FILEPATH = "tests/midi/babyslakh/Track00018.mid"
+BABYSLAKH_18_VOCALS_8_FILEPATH = "tests/midi/bslakh_t18_vocals_8.mid"
+
 BOSKA_3_PIANO_FILEPATH = "tests/midi/boska/3_piano.mid"
 BOSKA_3_DRUMS_FILEPATH = "tests/midi/boska/3_drums.mid"
+
+
+def test_roll_contains_mono_melody():
+    pmid = load_midi_file(BABYSLAKH_18_VOCALS_8_FILEPATH)
+
+    assert roll_contains_mono_melody(
+        pmid.get_piano_roll().T / 127, min_n_pitches=2, max_n_rests=4
+    )
 
 
 def test_get_seg_iter():
@@ -20,7 +37,7 @@ def test_get_seg_iter():
 
 
 def test_slice_midi():
-    pmid = load_midi_file(BOSKA_3_PIANO_FILEPATH)
+    pmid = load_midi_file(BABYSLAKH_18_VOCALS_8_FILEPATH)
     sp_reprs = slice_midi(
         pmid,
         seg_size=1,
@@ -29,9 +46,9 @@ def test_slice_midi():
         min_seg_pitches=1,
         min_seg_beats=1,
     )
-    assert np.array_equal(list(sp_reprs), ["0_Piano"])
+    assert np.array_equal(list(sp_reprs), ["0_Melody"])
 
-    reprs = sp_reprs["0_Piano"][0]
+    reprs = sp_reprs["0_Melody"][0]
     assert reprs.shape[0] == len(REPRESENTATIONS)
     assert reprs[REPRESENTATIONS.index("roll")].shape == (16, 128)
     assert reprs[REPRESENTATIONS.index("chroma")].shape == (16, 12)

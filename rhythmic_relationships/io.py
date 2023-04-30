@@ -81,8 +81,8 @@ def get_bar_start_ticks(pmid, subdivisions):
 def get_seg_iter(bar_start_ticks, seg_size, resolution, n_beat_bars):
     """Get an iterator over the start and end ticks of each segment.
 
-    Currently, only non-overlapping segments are supported.
-    # TODO: allow for overlapping segments
+    Currently, only overlapping segments are supported.
+    # TODO: allow for non-overlapping segments
 
     :parameters:
         bar_start_ticks: np.array
@@ -105,13 +105,48 @@ def get_seg_iter(bar_start_ticks, seg_size, resolution, n_beat_bars):
     return list(zip(bar_start_ticks, bar_start_ticks[seg_size:]))
 
 
+def roll_contains_mono_melody(roll, min_n_pitches, max_n_rests):
+    """Check if a piano roll contains a melody.
+
+    A melody is defined as a monophonic sequence with at least `n_pitches`
+    unique pitches and at most `max_n_rests` consecutive ticks of rests.
+
+    :param roll: Piano roll
+    :param min_n_pitches: Minimum number of unique pitches
+    :param max_n_rests: Maximum number of consecutive ticks of rests.
+        Note that this depends on the resolution of the roll.
+    :return: Boolean
+    """
+    # Check that the roll is monophonic
+    if not np.all(roll.sum(axis=1) <= 1):
+        return False
+
+    # Check that the roll has at least `min_n_pitches` unique pitches
+    if (roll.sum(axis=0) > 0).sum() < min_n_pitches:
+        return False
+
+    # Check that the roll has at most `max_n_rests` consecutive ticks of rests
+    n_rests = 0
+    for i in range(roll.shape[0]):
+        if roll[i].sum() == 0:
+            n_rests += 1
+            if n_rests > max_n_rests:
+                return False
+        else:
+            n_rests = 0
+
+    return True
+
+
 def slice_midi(
     pmid,
-    seg_size=1,
+    seg_size=2,
     resolution=4,
     n_beat_bars=4,
     min_seg_pitches=1,
     min_seg_beats=1,
+    min_melody_pitches=2,
+    max_melody_rests=4,
     representations=REPRESENTATIONS,
 ):
     """Slice a midi file and compute several representations for each segment.
@@ -136,6 +171,12 @@ def slice_midi(
         min_seg_beats: int
             Process only segments with at least this number of beats.
 
+        min_melody_pitches: int
+            For melodic instruments, process only segments with at least this number of pitches.
+
+        max_melody_rests: int
+            For melodic instruments, process only segments with at most this number of consecutive beats of rest.
+
         representations: list
             A list of representations to compute for each segment.
 
@@ -149,7 +190,14 @@ def slice_midi(
     tracks = get_representations(pmid, subdivisions)
 
     bar_start_ticks = get_bar_start_ticks(pmid, subdivisions)
-    seg_iter = get_seg_iter(bar_start_ticks, seg_size, resolution, n_beat_bars)
+    seg_iter = get_seg_iter(
+        bar_start_ticks,
+        seg_size=seg_size,
+        resolution=resolution,
+        n_beat_bars=n_beat_bars,
+    )
+
+    max_melody_rest_ticks = max_melody_rests * resolution
 
     # Initialize output objects
     n_seg_ticks = resolution * n_beat_bars * seg_size
@@ -159,6 +207,8 @@ def slice_midi(
         part = get_part_from_program(track["program"])
         if track["is_drum"]:
             part = "Drums"
+        if not part:
+            continue
 
         # Slice the piano roll into segments of equal length
         for seg_ix, (start, end) in enumerate(seg_iter):
@@ -172,6 +222,11 @@ def slice_midi(
 
             # Skip segments that don't have the target number of beats
             if len(seg_onset_roll) != n_seg_ticks:
+                continue
+
+            if part == "Melody" and not roll_contains_mono_melody(
+                seg_onset_roll, min_melody_pitches, max_melody_rest_ticks
+            ):
                 continue
 
             # Join the representations into a single object array

@@ -1,21 +1,21 @@
 import pytest
-from rhythmic_relationships.parts import get_part_from_program, get_part_pairs
+from rhythmic_relationships.parts import get_instrument_from_program, get_part_pairs
 
 
-def test_get_part_from_program():
-    assert get_part_from_program(0) == "Piano"
-    assert get_part_from_program(6) == "Piano"
-    assert get_part_from_program(8) == "Chromatic Percussion"
-    assert get_part_from_program(10) == "Chromatic Percussion"
-    assert get_part_from_program(127) == "Sound Effect"
+def test_get_instrument_from_program():
+    assert get_instrument_from_program(0) == "Piano"
+    assert get_instrument_from_program(6) == "Piano"
+    assert get_instrument_from_program(8) == "Chromatic Percussion"
+    assert get_instrument_from_program(10) == "Chromatic Percussion"
+    assert get_instrument_from_program(127) == "Sound Effect"
     with pytest.raises(Exception):
-        get_part_from_program(-1)
+        get_instrument_from_program(-1)
 
 
 def test_get_part_pairs():
-    parts = ["Brass", "Piano", "Organ"]
+    parts = ["Melody", "Drums", "Bass"]
     assert get_part_pairs(parts) == [
-        ("Piano", "Brass"),
-        ("Piano", "Organ"),
-        ("Organ", "Brass"),
+        ("Drums", "Melody"),
+        ("Drums", "Bass"),
+        ("Bass", "Melody"),
     ]

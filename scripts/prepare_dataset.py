@@ -1,8 +1,8 @@
 """
-Create a new dataset
+Create a new dataset.
 
 Example usage:
-    python scripts/prepare_dataset.py --path input/babyslakh --prefix babyslakh --seg_size 1
+    python scripts/prepare_dataset.py --path input/babyslakh --prefix babyslakh --representations onset_roll binary_onset_roll descriptors
 """
 import argparse
 import glob
@@ -84,7 +84,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--seg_size",
         type=int,
-        default=1,
+        default=2,
         help="Number of bars per segment.",
     )
     parser.add_argument(
@@ -110,6 +110,18 @@ if __name__ == "__main__":
         type=int,
         default=1,
         help="Process only segments with at least this number of beats.",
+    )
+    parser.add_argument(
+        "--min_melody_pitches",
+        type=int,
+        default=2,
+        help="For melodic instruments, process only segments with at least this number of pitches.",
+    )
+    parser.add_argument(
+        "--max_melody_rests",
+        type=int,
+        default=4,
+        help="For melodic instruments, process only segments with at most this number of consecutive beats of rest.",
     )
     parser.add_argument(
         "--subset",
@@ -138,6 +150,8 @@ if __name__ == "__main__":
     subset = args.subset
     min_seg_pitches = args.min_seg_pitches
     min_seg_beats = args.min_seg_beats
+    min_melody_pitches = args.min_melody_pitches
+    max_melody_rests = args.max_melody_rests
     representations = args.representations
 
     print(f"{representations=}")
@@ -184,6 +198,8 @@ if __name__ == "__main__":
             n_beat_bars=n_beat_bars,
             min_seg_pitches=min_seg_pitches,
             min_seg_beats=min_seg_beats,
+            min_melody_pitches=min_melody_pitches,
+            max_melody_rests=max_melody_rests,
             representations=representations,
         )
 

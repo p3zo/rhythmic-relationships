@@ -17,18 +17,8 @@ See [scripts/README.md](scripts/README.md) for a list of scripts and notebooks.
 
 ### Parts
 
-The "parts" of a piece of music are style-dependent, but can be loosely categorized according to orchestration principles and musical texture. For styles like pop, rock, or jazz, an appropriate split might be percussive, bassline, harmonic, and melodic.
+The "parts" of a piece of music are the strands of melody or harmony that make up the musical texture. The grouping of instruments into parts depends on musical style. For styles like pop, rock, or jazz, an appropriate set of parts might be percussive, bassline, harmonic, and melodic. We adopt the approach of MusicVAE [Roberts et al, 2018] which defines three parts to model multi-stream music: Drums, Bass, and Melody. Because there is no publicly available dataset with these category labels, we use the instrumental categories from the [General MIDI spec (Level 2)](https://en.wikipedia.org/wiki/General_MIDI_Level_2).
 
-Because there is no publicly available dataset with these category labels, we use a list of instrumental categories adapted from the program categories in the [General MIDI spec (Level 2)](https://en.wikipedia.org/wiki/General_MIDI_Level_2):
-
-- Drums
-- Piano
-- Guitar
-- Bass
-- Orchestra Solo
-- Orchestra Ensemble
-- Wind
-- Synth Lead
 
 ### Representations
 
