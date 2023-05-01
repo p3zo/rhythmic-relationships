@@ -5,7 +5,7 @@ from rhythmic_relationships.io import (
     get_seg_iter,
     slice_midi,
     load_midi_file,
-    roll_contains_mono_melody,
+    chroma_contains_mono_melody,
     write_midi_from_roll,
 )
 from rhythmic_relationships.representations import REPRESENTATIONS
@@ -22,7 +22,7 @@ BOSKA_3_DRUMS_FILEPATH = "tests/midi/boska/3_drums.mid"
 def test_roll_contains_mono_melody():
     pmid = load_midi_file(BABYSLAKH_18_VOCALS_8_FILEPATH)
 
-    assert roll_contains_mono_melody(
+    assert chroma_contains_mono_melody(
         pmid.get_piano_roll().T / 127, min_n_pitches=2, max_n_rests=4
     )
 

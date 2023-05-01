@@ -105,30 +105,32 @@ def get_seg_iter(bar_start_ticks, seg_size, resolution, n_beat_bars):
     return list(zip(bar_start_ticks, bar_start_ticks[seg_size:]))
 
 
-def roll_contains_mono_melody(roll, min_n_pitches, max_n_rests):
-    """Check if a piano roll contains a melody.
+def chroma_contains_mono_melody(chroma, min_n_pitches, max_n_rests):
+    """Returns True if a chroma contains a melody.
 
     A melody is defined as a monophonic sequence with at least `n_pitches`
     unique pitches and at most `max_n_rests` consecutive ticks of rests.
 
-    :param roll: Piano roll
+    Note that polyphony consisting of only octave intervals is allowed.
+
+    :param chroma: Chroma array
     :param min_n_pitches: Minimum number of unique pitches
     :param max_n_rests: Maximum number of consecutive ticks of rests.
-        Note that this depends on the resolution of the roll.
+        Note that this depends on the resolution of the chroma.
     :return: Boolean
     """
-    # Check that the roll is monophonic
-    if not np.all(roll.sum(axis=1) <= 1):
+    # Check that the chroma is monophonic
+    if not np.all(chroma.sum(axis=1) <= 1):
         return False
 
-    # Check that the roll has at least `min_n_pitches` unique pitches
-    if (roll.sum(axis=0) > 0).sum() < min_n_pitches:
+    # Check that the chroma has at least `min_n_pitches` unique pitches
+    if (chroma.sum(axis=0) > 0).sum() < min_n_pitches:
         return False
 
-    # Check that the roll has at most `max_n_rests` consecutive ticks of rests
+    # Check that the chroma has at most `max_n_rests` consecutive ticks of rests
     n_rests = 0
-    for i in range(roll.shape[0]):
-        if roll[i].sum() == 0:
+    for i in range(chroma.shape[0]):
+        if chroma[i].sum() == 0:
             n_rests += 1
             if n_rests > max_n_rests:
                 return False
@@ -224,8 +226,8 @@ def slice_midi(
             if len(seg_onset_roll) != n_seg_ticks:
                 continue
 
-            if part == "Melody" and not roll_contains_mono_melody(
-                seg_onset_roll, min_melody_pitches, max_melody_rest_ticks
+            if part == "Melody" and not chroma_contains_mono_melody(
+                seg_chroma, min_melody_pitches, max_melody_rest_ticks
             ):
                 continue
 
@@ -267,8 +269,8 @@ def get_pmid_segment_reprs(pmid, segment_id, parts):
         reprs = seg_part_reprs[f"{segment_id}_{part}"][0]
         # TODO: convert all reprs to pmid
         roll_list.append(reprs[REPRESENTATIONS.index("roll")])
-        or_list.append(reprs[REPRESENTATIONS.index("onset roll")])
-        or3_list.append(reprs[REPRESENTATIONS.index("3-octave onset roll")])
+        or_list.append(reprs[REPRESENTATIONS.index("onset_roll")])
+        or3_list.append(reprs[REPRESENTATIONS.index("onset_roll_3_octave")])
         hits_list.append(reprs[REPRESENTATIONS.index("hits")] * 127)
 
     pmid_roll = get_pretty_midi_from_roll_list(roll_list, parts=parts)
