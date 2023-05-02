@@ -1,6 +1,6 @@
 dataset:
   dataset_name: "lmdc_3000_1bar_4res"
-  part: "Piano"
+  part: "Melody"
   representation: "onset_roll"
 model:
   x_dim: 2048

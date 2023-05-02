@@ -120,3 +120,18 @@ def get_model_catalog():
         catalog[model_obj["name"]] = catalog_info
 
     return catalog
+
+
+def get_loss_fn(config):
+    reduction = config["loss_reduction"]
+
+    if config["loss_fn"] == "bce-logits":
+        return torch.nn.BCEWithLogitsLoss(reduction=reduction)
+    elif config["loss_fn"] == "bce":
+        return torch.nn.BCELoss(reduction=reduction)
+    elif config["loss_fn"] == "cross-entropy":
+        return torch.nn.CrossEntropyLoss(reduction=reduction)
+    elif config["loss_fn"] == "mse":
+        return torch.nn.MSELoss(reduction=reduction)
+    else:
+        raise ValueError(f"`{config['loss_fn']}` is not a valid loss function")
