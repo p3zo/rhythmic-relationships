@@ -112,3 +112,60 @@ def train(
             )
 
     return loss.item()
+
+
+def train_recurrent(
+    model,
+    loader,
+    optimizer,
+    loss_fn,
+    config,
+    device,
+    model_name,
+):
+    # x_dim = config["model"]["x_dim"]
+    y_dim = config["y_dim"]
+    clip_gradients = config["clip_gradients"]
+    num_epochs = config["num_epochs"]
+
+    model_dir = os.path.join(MODELS_DIR, model_name)
+    if not os.path.isdir(model_dir):
+        os.makedirs(model_dir)
+
+    training_losses = []
+
+    for epoch in range(num_epochs):
+        batches = tqdm(loader)
+        for batch in batches:
+            # Forward pass
+            x, y = batch
+            x = x.to(device)
+            # x = x.to(device).view(x.shape[0], x_dim)
+            # y = y.to(device).view(y.shape[0], y_dim)
+            x_recon, mu, sigma = model(x)
+            x_recon = x_recon.view(x.shape[0], x.shape[1], x.shape[2])
+
+            # Compute loss
+            loss = compute_loss(x_recon, x, mu, sigma, loss_fn)
+            training_losses.append(loss.log10().item())
+
+            # Backprop
+            optimizer.zero_grad()
+            loss.backward()
+
+            if clip_gradients:
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 5)
+
+            optimizer.step()
+
+            batches.set_description(f"Epoch {epoch + 1}/{num_epochs}")
+            batches.set_postfix({"loss": f"{loss.log10().item():.4f}"})
+
+        # Save plot of loss during training
+        plt.plot(training_losses)
+        loss_plot_path = os.path.join(model_dir, f"training_loss_{epoch}.png")
+        plt.savefig(loss_plot_path)
+        print(f"Saved {loss_plot_path}")
+        plt.clf()
+
+    return loss.item()

@@ -33,7 +33,7 @@ def get_model_name():
     with open("words") as words_file:
         words = words_file.read().split()
 
-    word = random.choice(words)
+    word = random.choice(words).lower()
 
     today = dt.datetime.today()
     timestamp = today.strftime("%y%m%d%H%M")

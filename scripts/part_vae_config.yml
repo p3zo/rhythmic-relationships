@@ -1,9 +1,9 @@
 dataset:
-  dataset_name: "lmdc_3000_1bar_4res"
+  dataset_name: "lmdc_1000_2bar_4res"
   part: "Melody"
   representation: "onset_roll"
 model:
-  x_dim: 2048
+  x_dim: 4096
   h_dims:
     - 512
     - 256
