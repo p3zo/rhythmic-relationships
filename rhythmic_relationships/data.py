@@ -259,3 +259,81 @@ class PartDataset(Dataset):
             return df.sample(frac=1)
 
         return df
+
+
+class PartDatasetSequential(Dataset):
+    """
+    Loads the same data as a PartDataset, but partitions each segment into a recurrent sequence and returns X, Y pairs.
+
+    Params
+        dataset_name, str
+            Name of a dataset created by `prepare_dataset.py`.
+
+        part, str
+            The part to use. See the list of parts in `parts.py`
+
+        representation, str
+            The representation to use. See the list of representations in `representations.py`
+
+        context_len, int
+            The length of the context window.
+    """
+
+    def __init__(self, dataset_name, part, representation, context_len):
+        if part not in PARTS:
+            raise ValueError(f"Part must be one of: {PARTS}")
+
+        if representation not in REPRESENTATIONS:
+            raise ValueError(f"Representation must be one of: {REPRESENTATIONS}")
+
+        self.part = part
+
+        self.dataset_dir = os.path.join(DATASETS_DIR, dataset_name)
+
+        # Load the list of available representations
+        with open(os.path.join(self.dataset_dir, REPRESENTATIONS_FILENAME), "r") as f:
+            self.representations = f.readline().split(",")
+
+        self.representation = representation
+        self.representation_ix = self.representations.index(representation)
+
+        # Load the segment metadata
+        df = load_dataset_annotations(self.dataset_dir)
+        self.part_df = df[df.part_id == part]
+
+        self.context_len = context_len
+
+    def __len__(self):
+        return len(self.part_df)
+
+    def __getitem__(self, idx):
+        seg = self.part_df.iloc[idx]
+        seg_repr = load_repr(seg, self.representation_ix)
+
+        X, Y = [], []
+        prev_xs = []
+
+        # We pad to maintain sequences of the same length
+        pad_token = 130
+        rest_token = 129
+        context = [pad_token] * self.context_len
+
+        for ix, row in enumerate(seg_repr):
+            nonzero = row.nonzero()
+
+            val = rest_token
+            if len(nonzero[0]) > 0:
+                # Will select the lower note in the case of polyphony
+                val = nonzero[0][0]
+
+            X.append(context)
+            Y.append(val)
+
+            if ix > 0:
+                prev_xs.append(val)
+
+            context = prev_xs[-self.context_len :]
+            while len(context) < self.context_len:
+                context = [pad_token] + context
+
+        return (torch.tensor(X).to(torch.float32), torch.tensor(Y).to(torch.float32))
