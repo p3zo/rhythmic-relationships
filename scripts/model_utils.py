@@ -41,7 +41,7 @@ def get_model_name():
     return f"{word}_{timestamp}"
 
 
-def save_model(model, config, model_name, bento=True):
+def save_model(model, config, model_name, stats, bento=True):
     model_dir = os.path.join(MODELS_DIR, model_name)
     if not os.path.isdir(model_dir):
         os.makedirs(model_dir)
@@ -49,10 +49,10 @@ def save_model(model, config, model_name, bento=True):
 
     torch.save(
         {
-            "state_dict": model.state_dict(),
-            "config": config,
             "name": model_name,
-            "n_params": sum(p.nelement() for p in model.parameters()),
+            "config": config,
+            "stats": stats,
+            "state_dict": model.state_dict(),
         },
         model_path,
     )
@@ -114,10 +114,9 @@ def get_model_catalog():
             continue
 
         catalog_info = {}
-        catalog_info["config"] = model_obj["config"]
-        catalog_info["n_params"] = model_obj["n_params"]
-
         catalog[model_obj["name"]] = catalog_info
+        catalog_info["stats"] = model_obj["stats"]
+        catalog_info["config"] = model_obj["config"]
 
     return catalog
 

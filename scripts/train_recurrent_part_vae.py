@@ -3,8 +3,8 @@ import yaml
 from model_utils import get_model_name, load_config, save_model, get_loss_fn
 from rhythmic_relationships.data import PartDatasetSequential
 from rhythmic_relationships.model import RecurrentVAE
-from rhythmic_relationships.train import train_recurrent
-from torch.utils.data import DataLoader
+from rhythmic_relationships.train import train_recurrent, compute_loss
+from torch.utils.data import DataLoader, random_split
 
 DEVICE = torch.device("mps" if torch.backends.mps.is_built() else "cpu")
 CONFIG_FILEPATH = "recurrent_part_vae_config.yml"
@@ -14,10 +14,16 @@ if __name__ == "__main__":
     config = load_config(CONFIG_FILEPATH)
     print(yaml.dump(config))
 
-    dataset = PartDatasetSequential(**config["dataset"])
-    loader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
+    torch.manual_seed(13)
 
-    config['model']['seq_dim'] = config['dataset']['context_len']
+    dataset = PartDatasetSequential(**config["dataset"])
+    splits = [0.6, 0.3, 0.1]
+    train_data, val_data, test_data = random_split(dataset, splits)
+    print(f"{splits=}: {len(train_data)}, {len(val_data)}, {len(test_data)}")
+
+    train_loader = DataLoader(train_data, batch_size=config["batch_size"], shuffle=True)
+
+    config["model"]["seq_dim"] = config["dataset"]["context_len"]
     model = RecurrentVAE(**config["model"]).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
     loss_fn = get_loss_fn(config)
@@ -25,9 +31,9 @@ if __name__ == "__main__":
     model_name = get_model_name()
     print(f"{model_name=}")
 
-    train_recurrent(
+    train_loss = train_recurrent(
         model=model,
-        loader=loader,
+        loader=train_loader,
         optimizer=optimizer,
         loss_fn=loss_fn,
         config=config,
@@ -35,4 +41,20 @@ if __name__ == "__main__":
         model_name=model_name,
     )
 
-    save_model(model, config, model_name)
+    print("Evaluating validation loss...")
+    val_loader = DataLoader(val_data, batch_size=len(val_data), shuffle=True)
+    x, y = next(iter(val_loader))
+    x = x.to(DEVICE)
+    with torch.no_grad():
+        x_recon, mu, sigma = model(x)
+        x_recon = x_recon.view(x.shape[0], x.shape[1], x.shape[2])
+        val_loss = compute_loss(x_recon, x, mu, sigma, loss_fn).item()
+
+    stats = {
+        "train_loss": train_loss,
+        "val_loss": val_loss,
+        "n_params": sum(p.nelement() for p in model.parameters()),
+    }
+    print(stats)
+
+    save_model(model, config, model_name, stats)
