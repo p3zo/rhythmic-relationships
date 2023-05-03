@@ -61,21 +61,23 @@ class VAE(nn.Module):
 
 
 class RecurrentVAE(nn.Module):
-    def __init__(self, x_dim, h_dim, z_dim, seq_dim):
+    def __init__(self, x_dim, h_dim, z_dim, context_len, y_dim, dropout):
         super().__init__()
 
         self.x_dim = x_dim
         self.h_dim = h_dim
         self.z_dim = z_dim
+        self.context_len = context_len
+        self.y_dim = y_dim
 
         # Encoder
         self.input_to_hidden = nn.RNN(
-            input_size=seq_dim,
+            input_size=context_len,
             hidden_size=h_dim,
             num_layers=2,
             batch_first=True,
             bidirectional=True,
-            dropout=0.1,
+            dropout=dropout,
             nonlinearity="relu",
         )
 
@@ -92,7 +94,7 @@ class RecurrentVAE(nn.Module):
             bidirectional=False,
             nonlinearity="relu",
         )
-        # TODO: should hidden size of the second layer be seq_dim instead of x_dim? That would match encoder input size
+        # TODO: should hidden size of the second layer be context_len instead of x_dim? That would match encoder input size
         self.hidden_to_input = nn.RNN(
             input_size=h_dim,
             hidden_size=x_dim,
@@ -100,6 +102,7 @@ class RecurrentVAE(nn.Module):
             bidirectional=False,
             nonlinearity="relu",
         )
+        # TODO: verify that -1 the correct dim for softmax
         self.softmax = nn.Softmax(dim=-1)
 
     def encode(self, x):
@@ -126,5 +129,5 @@ class RecurrentVAE(nn.Module):
 
     def sample(self, n_samples):
         samples = torch.randn(n_samples, self.z_dim)
-        decoded = self.decode(samples).view((n_samples, 32, self.seq_dim))
+        decoded = self.decode(samples).view((n_samples, self.y_dim, self.context_len))
         return decoded.detach().cpu().numpy()

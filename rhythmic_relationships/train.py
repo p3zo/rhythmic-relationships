@@ -124,7 +124,7 @@ def train_recurrent(
     model_name,
 ):
     # x_dim = config["model"]["x_dim"]
-    y_dim = config["y_dim"]
+    # y_dim = config["model"]["y_dim"]
     clip_gradients = config["clip_gradients"]
     num_epochs = config["num_epochs"]
 

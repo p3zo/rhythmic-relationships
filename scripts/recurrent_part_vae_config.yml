@@ -7,7 +7,8 @@ model:
   x_dim: 512
   h_dim: 256
   z_dim: 128
-y_dim: 32
+  dropout: .1
+  y_dim: 32
 loss_fn: "cross-entropy"
 loss_reduction: 'mean'
 clip_gradients: False
