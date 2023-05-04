@@ -1,5 +1,5 @@
 dataset:
-  dataset_name: "lmdc_1000_2bar_4res"
+  dataset_name: "lmdc_10000_2bar_4res"
   part: "Melody"
   representation: "onset_roll"
   context_len: 16
@@ -7,11 +7,12 @@ model:
   x_dim: 512
   h_dim: 256
   z_dim: 128
-  dropout: .1
+  dropout: .5
   y_dim: 32
 loss_fn: "cross-entropy"
 loss_reduction: 'mean'
 clip_gradients: False
-num_epochs: 10
+num_epochs: 5
 batch_size: 512
 lr: 1e-3
+wandb: True

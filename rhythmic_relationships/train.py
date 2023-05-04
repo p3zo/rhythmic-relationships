@@ -1,11 +1,14 @@
 import datetime as dt
 import os
+import wandb
 
 import matplotlib.pyplot as plt
 import torch
 from tqdm import tqdm
 
 from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
+
+WANDB_PROJECT_NAME = "rhythmic-relationships"
 
 
 def compute_loss(recons, x, mu, sigma, loss_fn):
@@ -36,7 +39,7 @@ def train(
     if not os.path.isdir(model_dir):
         os.makedirs(model_dir)
 
-    training_losses = []
+    train_losses = []
     ud = []  # update:data ratio
 
     for epoch in range(num_epochs):
@@ -61,7 +64,7 @@ def train(
             onset_loss = compute_loss(x_recon_binary, x_binary, mu, sigma, loss_fn)
             velocity_loss = compute_loss(x_recon, x, mu, sigma, loss_fn)
             loss = onset_loss + velocity_loss
-            training_losses.append(loss.item())
+            train_losses.append(loss.item())
 
             # Backprop
             optimizer.zero_grad()
@@ -84,7 +87,7 @@ def train(
                 )
 
         # Save plot of loss during training
-        plt.plot(training_losses)
+        plt.plot(train_losses)
         loss_plot_path = os.path.join(model_dir, f"training_loss_{epoch}.png")
         plt.savefig(loss_plot_path)
         print(f"Saved {loss_plot_path}")
@@ -116,15 +119,14 @@ def train(
 
 def train_recurrent(
     model,
-    loader,
+    train_loader,
+    val_loader,
     optimizer,
     loss_fn,
     config,
     device,
     model_name,
 ):
-    # x_dim = config["model"]["x_dim"]
-    # y_dim = config["model"]["y_dim"]
     clip_gradients = config["clip_gradients"]
     num_epochs = config["num_epochs"]
 
@@ -132,22 +134,31 @@ def train_recurrent(
     if not os.path.isdir(model_dir):
         os.makedirs(model_dir)
 
-    training_losses = []
+    if config["wandb"]:
+        wandb.init(project=WANDB_PROJECT_NAME, config=config, name=model_name)
+
+        if device.type == "mps":
+            # wandb.watch uses an operator that is not currently supported on MPS backends
+            # This env var allows it to fall back to run on the CPU
+            # See https://github.com/pytorch/pytorch/pull/96652
+            os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
+        wandb.watch(model, log_freq=100)
+
+    train_losses = []
+    val_losses = []
 
     for epoch in range(num_epochs):
-        batches = tqdm(loader)
+        batches = tqdm(train_loader)
         for batch in batches:
             # Forward pass
-            x, y = batch
+            x, _ = batch
             x = x.to(device)
-            # x = x.to(device).view(x.shape[0], x_dim)
-            # y = y.to(device).view(y.shape[0], y_dim)
             x_recon, mu, sigma = model(x)
             x_recon = x_recon.view(x.shape[0], x.shape[1], x.shape[2])
 
             # Compute loss
             loss = compute_loss(x_recon, x, mu, sigma, loss_fn)
-            training_losses.append(loss.log10().item())
+            train_losses.append(loss.log10().item())
 
             # Backprop
             optimizer.zero_grad()
@@ -161,11 +172,28 @@ def train_recurrent(
             batches.set_description(f"Epoch {epoch + 1}/{num_epochs}")
             batches.set_postfix({"loss": f"{loss.log10().item():.4f}"})
 
+        vx, _ = next(iter(val_loader))
+        vx = vx.to(device)
+        with torch.no_grad():
+            vx_recon, mu, sigma = model(vx)
+            vx_recon = vx_recon.view(vx.shape[0], vx.shape[1], vx.shape[2])
+            val_loss = compute_loss(vx_recon, vx, mu, sigma, loss_fn)
+
+        val_losses.append(val_loss.log10().item())
+        if config["wandb"]:
+            wandb.log(
+                {
+                    "train_log_loss": loss.log10().item(),
+                    "val_log_loss": val_loss.log10().item(),
+                }
+            )
+
         # Save plot of loss during training
-        plt.plot(training_losses)
-        loss_plot_path = os.path.join(model_dir, f"training_loss_{epoch}.png")
+        plt.plot(train_losses)
+        plt.plot(val_losses)
+        loss_plot_path = os.path.join(model_dir, f"log_loss_{epoch}.png")
         plt.savefig(loss_plot_path)
         print(f"Saved {loss_plot_path}")
         plt.clf()
 
-    return loss.item()
+    return loss.log10().item(), val_loss.log10().item()
