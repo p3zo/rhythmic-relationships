@@ -176,22 +176,23 @@ class Head(nn.Module):
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
+        # input of size (Batch, Time-step, Channels)
+        # output of size (Batch, Time-step, Head size)
         B, T, C = x.shape
 
-        key = self.key(x)  # (B, T, C)
-        query = self.query(x)  # (B, T, C)
+        key = self.key(x)  # (B, T, H)
+        query = self.query(x)  # (B, T, H)
 
-        # Compute attention scores & scale
-        # (B, T, C) @ (B, C, T) -> (B, T, T)
-        attention = torch.matmul(query, key.transpose(-2, -1)) * C**-0.5
+        # Compute attention scores & scale (B, T, H) @ (B, H, T) -> (B, T, T)
+        attention = torch.matmul(query, key.transpose(-2, -1)) * key.shape[-1] ** -0.5
 
-        # Mask out attention for future tokens
+        # Mask out attention for future tokens (B, T, T)
         attention = attention.masked_fill(self.tril[:T, :T] == 0, float("-inf"))
 
-        attention = torch.softmax(attention, dim=-1)
+        attention = torch.softmax(attention, dim=-1)  # (B, T, T)
         attention = self.dropout(attention)
 
-        # Perform the weighted aggregation of the values
+        # Perform the weighted aggregation of the values (B, T, H)
         value = self.value(x)
         out = torch.matmul(attention, value)
 
@@ -214,7 +215,7 @@ class MultiHeadAttention(nn.Module):
                 for _ in range(n_head)
             ]
         )
-        self.proj = nn.Linear(n_embed, n_embed)
+        self.proj = nn.Linear(head_size * n_head, n_embed)
         self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
@@ -282,13 +283,20 @@ class TransformerDecoder(nn.Module):
         )
         self.ln_final = nn.LayerNorm(n_embed)
         self.lm_head = nn.Linear(n_embed, vocab_size)
+        self.apply(self._init_weights)
+
+    def _init_weights(self, module):
+        if isinstance(module, nn.Linear):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
+            if module.bias is not None:
+                torch.nn.init.zeros_(module.bias)
+        elif isinstance(module, nn.Embedding):
+            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, idx):
         tok_emb = self.token_embedding_table(idx)  # B, T, C=N_embed
 
-        pos_emb = self.position_embedding_table(
-            torch.arange(idx.shape[1], device=idx.device)
-        )  # T, C
+        pos_emb = self.position_embedding_table.weight[: idx.shape[1]]  # T, C
 
         x = tok_emb + pos_emb  # (B, T, C)
         x = self.blocks(x)  # (B, T, C)

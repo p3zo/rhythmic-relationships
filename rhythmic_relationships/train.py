@@ -206,8 +206,7 @@ def train_recurrent(
 
 def compute_loss(logits, targets, loss_fn):
     B, T, C = logits.shape
-    logits = logits.view(B * T, C)
-    return loss_fn(logits, targets)
+    return loss_fn(logits.view(B * T, C), targets)
 
 
 def parse_batch(batch, device):
@@ -289,12 +288,28 @@ def train_transformer_decoder(
                 loss = compute_loss(logits, targets, loss_fn)
                 eval_val_losses[k] = loss.item()
 
-            evaluation = {}
-            evaluation["train_loss"] = eval_train_losses.mean().item()
-            evaluation["val_loss"] = eval_val_losses.mean().item()
+            evaluation = {
+                "train_loss": eval_train_losses.mean().item(),
+                "val_loss": eval_val_losses.mean().item(),
+            }
             epoch_evals[epoch] = evaluation
 
+            # Log eval losses locally
             print(f"{epoch=}: {evaluation=}")
+            e_ixs = range(epoch + 1)
+            eval_train_losses = [epoch_evals[i]["train_loss"] for i in e_ixs]
+            eval_val_losses = [epoch_evals[i]["val_loss"] for i in e_ixs]
+            marker = "o" if epoch == 0 else None
+            plt.plot(e_ixs, eval_train_losses, label="train", c="blue", marker=marker)
+            plt.plot(e_ixs, eval_val_losses, label="val", c="orange", marker=marker)
+            eval_loss_plot_path = os.path.join(model_dir, f"eval_loss_{epoch}.png")
+            plt.legend()
+            plt.tight_layout()
+            plt.savefig(eval_loss_plot_path)
+            print(f"Saved {eval_loss_plot_path}")
+            plt.clf()
+
+            # Log eval losses remotely
             if config["wandb"]:
                 wandb.log(
                     {
@@ -302,17 +317,6 @@ def train_transformer_decoder(
                         "val_loss": evaluation["val_loss"],
                     }
                 )
-
-            # Save plot of eval losses
-            eval_train_losses = [[i, evaluation["train_loss"]] for i in range(epoch)]
-            eval_val_losses = [[i, evaluation["val_loss"]] for i in range(epoch)]
-            plt.plot(eval_train_losses, label="train")
-            plt.plot(eval_val_losses, label="val")
-            eval_loss_plot_path = os.path.join(model_dir, f"eval_loss_{epoch}.png")
-            plt.tight_layout()
-            plt.savefig(eval_loss_plot_path)
-            print(f"Saved {eval_loss_plot_path}")
-            plt.clf()
 
             model.train()
 
