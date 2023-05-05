@@ -19,7 +19,9 @@ setup(
         "pretty_midi~=0.2.9",
         "pyyaml~=6.0",
         "torch~=1.13.1",
-        "torchvision~=0.14.1",
         "tqdm~=4.64.1",
+        "scikit-learn~=1.0.2",
+        "seaborn~=0.12.0",
+        "pyyaml~=6.0",
     ],
 )
