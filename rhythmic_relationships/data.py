@@ -290,7 +290,9 @@ class PartDatasetSequential(Dataset):
             The length of the context window.
     """
 
-    def __init__(self, dataset_name, part, representation, context_len):
+    def __init__(
+        self, dataset_name, part, representation, context_len, datasets_dir=None
+    ):
         if part not in PARTS:
             raise ValueError(f"Part must be one of: {PARTS}")
 
@@ -299,7 +301,7 @@ class PartDatasetSequential(Dataset):
 
         self.part = part
 
-        self.dataset_dir = os.path.join(DATASETS_DIR, dataset_name)
+        self.dataset_dir = os.path.join(datasets_dir or DATASETS_DIR, dataset_name)
 
         # Load the list of available representations
         with open(os.path.join(self.dataset_dir, REPRESENTATIONS_FILENAME), "r") as f:
