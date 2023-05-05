@@ -16,6 +16,10 @@ from rhythmic_relationships.representations import REPRESENTATIONS
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
+# Special tokens for dataset vocabulary
+PAD_TOKEN = 130
+REST_TOKEN = 129
+
 
 def load_dataset_annotations(dataset_dir):
     """Load the top-level annotations file for a given dataset"""
@@ -261,6 +265,13 @@ class PartDataset(Dataset):
         return df
 
 
+def tokenize_roll(roll):
+    # Will select the higher note in the case of polyphony
+    tokenized = roll.argmax(axis=1)
+
+    return tokenized
+
+
 class PartDatasetSequential(Dataset):
     """
     Loads the same data as a PartDataset, but partitions each segment into a recurrent sequence and returns X, Y pairs.
@@ -310,30 +321,33 @@ class PartDatasetSequential(Dataset):
         seg = self.part_df.iloc[idx]
         seg_repr = load_repr(seg, self.representation_ix)
 
+        tokenized = tokenize_roll(seg_repr)
+
         X, Y = [], []
-        prev_xs = []
 
-        # We pad to maintain sequences of the same length
-        pad_token = 130
-        rest_token = 129
-        context = [pad_token] * self.context_len
+        for t in range(len(seg_repr) - 1):
+            from_ix = 0
+            y_from_ix = from_ix
+            to_ix = t
 
-        for ix, row in enumerate(seg_repr):
-            nonzero = row.nonzero()
+            if t == self.context_len:
+                y_from_ix = from_ix + 1
+            if t > self.context_len:
+                from_ix = t - self.context_len
+                y_from_ix = from_ix + 1
 
-            val = rest_token
-            if len(nonzero[0]) > 0:
-                # Will select the lower note in the case of polyphony
-                val = nonzero[0][0]
+            context = tokenized[from_ix:to_ix].tolist()
+            target = tokenized[y_from_ix : to_ix + 1].tolist()
+
+            if len(context) < self.context_len:
+                c_pad_len = self.context_len - len(context)
+                context = [PAD_TOKEN] * c_pad_len + context
+
+            if len(target) < self.context_len:
+                t_pad_len = self.context_len - len(target)
+                target = [PAD_TOKEN] * t_pad_len + target
 
             X.append(context)
-            Y.append(val)
+            Y.append(target)
 
-            if ix > 0:
-                prev_xs.append(val)
-
-            context = prev_xs[-self.context_len :]
-            while len(context) < self.context_len:
-                context = [pad_token] + context
-
-        return (torch.tensor(X).to(torch.float32), torch.tensor(Y).to(torch.float32))
+        return torch.tensor(X), torch.tensor(Y)
