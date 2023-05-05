@@ -50,6 +50,7 @@ def save_model(model, config, model_name, stats, bento=True):
     torch.save(
         {
             "name": model_name,
+            "model_class": model.__class__.__name__,
             "config": config,
             "stats": stats,
             "state_dict": model.state_dict(),
@@ -78,9 +79,10 @@ def load_model(model_name, model_class):
     model_path = os.path.join(MODELS_DIR, model_name, f"model.pt")
     model_obj = torch.load(model_path)
     config = model_obj["config"]
+    stats = model_obj["stats"]
     model = model_class(**config["model"])
     model.load_state_dict(state_dict=model_obj["state_dict"])
-    return model, config
+    return model, config, stats
 
 
 def get_embeddings(X, title="", outdir="."):
@@ -114,11 +116,12 @@ def get_model_catalog():
             continue
 
         catalog_info = {}
+        catalog_info["model_class"] = model_obj.get("model_class")
+        catalog_info["stats"] = model_obj.get("stats")
+        catalog_info["config"] = model_obj.get("config")
         catalog[model_obj["name"]] = catalog_info
-        catalog_info["stats"] = model_obj["stats"]
-        catalog_info["config"] = model_obj["config"]
 
-    return catalog
+    return pd.DataFrame.from_dict(catalog, orient="index")
 
 
 def get_loss_fn(config):
