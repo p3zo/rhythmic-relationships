@@ -3,7 +3,7 @@ import yaml
 from model_utils import get_model_name, load_config, save_model, get_loss_fn
 from rhythmic_relationships.data import PartDataset
 from rhythmic_relationships.model import VAE
-from rhythmic_relationships.train import train, compute_loss
+from rhythmic_relationships.train import train, compute_recon_loss
 from torch.utils.data import DataLoader, random_split
 
 DEVICE = torch.device("mps" if torch.backends.mps.is_built() else "cpu")
@@ -46,7 +46,7 @@ if __name__ == "__main__":
     x = x.to(DEVICE).view(x.shape[0], config["model"]["x_dim"])
     with torch.no_grad():
         x_recon, mu, sigma = model(x)
-        val_loss = compute_loss(x_recon, x, mu, sigma, loss_fn).item()
+        val_loss = compute_recon_loss(x_recon, x, mu, sigma, loss_fn).item()
 
     stats = {
         "train_loss": train_loss,

@@ -13,7 +13,7 @@ from rhythmic_relationships.io import write_midi_from_roll
 WANDB_PROJECT_NAME = "rhythmic-relationships"
 
 
-def compute_loss(recons, x, mu, sigma, loss_fn):
+def compute_recon_loss(recons, x, mu, sigma, loss_fn):
     reconstruction_loss = loss_fn(recons, x)
     kld_loss = torch.mean(
         -0.5 * torch.sum(1 + sigma - mu**2 - sigma.exp(), dim=1), dim=0
@@ -61,10 +61,12 @@ def train(
                 x_binary = (x > 0).to(torch.float32)
                 x_recon, mu, sigma = model(x_binary)
 
-            # Compute loss
+            # Compute reconstruction loss
             x_recon_binary = (x_recon > 0).to(torch.float32)
-            onset_loss = compute_loss(x_recon_binary, x_binary, mu, sigma, loss_fn)
-            velocity_loss = compute_loss(x_recon, x, mu, sigma, loss_fn)
+            onset_loss = compute_recon_loss(
+                x_recon_binary, x_binary, mu, sigma, loss_fn
+            )
+            velocity_loss = compute_recon_loss(x_recon, x, mu, sigma, loss_fn)
             loss = onset_loss + velocity_loss
             train_losses.append(loss.item())
 
@@ -160,7 +162,7 @@ def train_recurrent(
             x_recon = x_recon.view(x.shape[0], x.shape[1])
 
             # Compute loss
-            loss = compute_loss(x_recon, x, mu, sigma, loss_fn)
+            loss = compute_recon_loss(x_recon, x, mu, sigma, loss_fn)
             train_losses.append(loss.log10().item())
 
             # Backprop
@@ -180,7 +182,7 @@ def train_recurrent(
         with torch.no_grad():
             vx_recon, mu, sigma = model(vx)
             vx_recon = vx_recon.view(vx.shape[0], vx.shape[1], vx.shape[2])
-            val_loss = compute_loss(vx_recon, vx, mu, sigma, loss_fn)
+            val_loss = compute_recon_loss(vx_recon, vx, mu, sigma, loss_fn)
 
         val_losses.append(val_loss.log10().item())
         if config["wandb"]:
@@ -202,6 +204,19 @@ def train_recurrent(
     return loss.log10().item(), val_loss.log10().item()
 
 
+def compute_loss(logits, targets, loss_fn):
+    B, T, C = logits.shape
+    logits = logits.view(B * T, C)
+    return loss_fn(logits, targets)
+
+
+def parse_batch(batch, device):
+    xb, yb = batch
+    x = xb.to(device).view(xb.shape[0] * xb.shape[1], xb.shape[2])
+    targets = yb.to(device).view(yb.shape[0] * yb.shape[1] * yb.shape[2])
+    return x, targets
+
+
 def train_transformer_decoder(
     model,
     train_loader,
@@ -212,6 +227,7 @@ def train_transformer_decoder(
     device,
     model_name,
 ):
+
     clip_gradients = config["clip_gradients"]
     num_epochs = config["num_epochs"]
     eval_iters = config["eval_iters"]
@@ -231,30 +247,24 @@ def train_transformer_decoder(
         # wandb.watch(model, log_freq=100)
 
     train_losses = []
+    epoch_evals = {}
 
     for epoch in range(num_epochs):
         batches = tqdm(train_loader)
         for batch in batches:
             # Forward pass
-            xb, yb = batch
-            x = xb.to(device).view(xb.shape[0] * xb.shape[1], xb.shape[2])
-            targets = yb.to(device).view(yb.shape[0] * yb.shape[1] * yb.shape[2])
-
+            x, targets = parse_batch(batch, device)
             logits = model(x)
 
-            B, T, C = logits.shape
-            logits = logits.view(B * T, C)
-
-            loss = loss_fn(logits, targets)
+            # Compute loss
+            loss = compute_loss(logits, targets, loss_fn)
             train_losses.append(loss.item())
 
             # Backprop
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
-
             if clip_gradients:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 5)
-
             optimizer.step()
 
             batches.set_description(f"Epoch {epoch + 1}/{num_epochs}")
@@ -265,37 +275,24 @@ def train_transformer_decoder(
         with torch.no_grad():
             model.eval()
 
+            eval_train_losses = torch.zeros(eval_iters)
+            for k in tqdm(range(eval_iters)):
+                x, targets = parse_batch(next(iter(train_loader)), device)
+                logits = model(x)
+                loss = compute_loss(logits, targets, loss_fn)
+                eval_train_losses[k] = loss.item()
+
+            eval_val_losses = torch.zeros(eval_iters)
+            for k in tqdm(range(eval_iters)):
+                x, targets = parse_batch(next(iter(val_loader)), device)
+                logits = model(x)
+                loss = compute_loss(logits, targets, loss_fn)
+                eval_val_losses[k] = loss.item()
+
             evaluation = {}
-
-            losses = torch.zeros(eval_iters)
-            for k in tqdm(range(eval_iters)):
-                xb, yb = next(iter(train_loader))
-                x = xb.to(device).view(xb.shape[0] * xb.shape[1], xb.shape[2])
-                targets = yb.to(device).view(yb.shape[0] * yb.shape[1] * yb.shape[2])
-                logits = model(x)
-
-                B, T, C = logits.shape
-                logits = logits.view(B * T, C)
-
-                loss = loss_fn(logits, targets)
-                losses[k] = loss.item()
-
-            evaluation["train_loss"] = losses.mean().item()
-
-            losses = torch.zeros(eval_iters)
-            for k in tqdm(range(eval_iters)):
-                xb, yb = next(iter(val_loader))
-                x = xb.to(device).view(xb.shape[0] * xb.shape[1], xb.shape[2])
-                targets = yb.to(device).view(yb.shape[0] * yb.shape[1] * yb.shape[2])
-                logits = model(x)
-
-                B, T, C = logits.shape
-                logits = logits.view(B * T, C)
-
-                loss = loss_fn(logits, targets)
-                losses[k] = loss.item()
-
-            evaluation["val_loss"] = losses.mean().item()
+            evaluation["train_loss"] = eval_train_losses.mean().item()
+            evaluation["val_loss"] = eval_val_losses.mean().item()
+            epoch_evals[epoch] = evaluation
 
             print(f"{epoch=}: {evaluation=}")
             if config["wandb"]:
@@ -306,12 +303,24 @@ def train_transformer_decoder(
                     }
                 )
 
+            # Save plot of eval losses
+            eval_train_losses = [[i, evaluation["train_loss"]] for i in range(epoch)]
+            eval_val_losses = [[i, evaluation["val_loss"]] for i in range(epoch)]
+            plt.plot(eval_train_losses, label="train")
+            plt.plot(eval_val_losses, label="val")
+            eval_loss_plot_path = os.path.join(model_dir, f"eval_loss_{epoch}.png")
+            plt.tight_layout()
+            plt.savefig(eval_loss_plot_path)
+            print(f"Saved {eval_loss_plot_path}")
+            plt.clf()
+
             model.train()
 
         # Save plot of loss during training
         # TODO: also plot val loss as we get it
         plt.plot(train_losses)
         loss_plot_path = os.path.join(model_dir, f"loss_{epoch}.png")
+        plt.tight_layout()
         plt.savefig(loss_plot_path)
         print(f"Saved {loss_plot_path}")
         plt.clf()
