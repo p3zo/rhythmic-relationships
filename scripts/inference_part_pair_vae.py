@@ -13,7 +13,6 @@ from rhythmic_relationships.io import (
 )
 from torch.utils.data import DataLoader
 
-
 # model_name = (
 #     "surgerize_lmd_clean_2_bar_24_res_5000_Bass_Drums_pattern_pattern_230222090629"
 # )

@@ -4,10 +4,10 @@ import os
 
 import pandas as pd
 import seaborn as sns
-from utils import save_fig
 from rhythmic_relationships import DATASETS_DIR, PLOTS_DIRNAME
 from rhythmic_relationships.data import PartDataset
 from sklearn.manifold import MDS, TSNE
+from utils import save_fig
 
 sns.set_style("white")
 sns.set_context("paper")

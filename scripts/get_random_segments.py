@@ -8,7 +8,6 @@ from rhythmic_relationships import DATASETS_DIR
 from rhythmic_relationships.data import load_dataset_annotations
 from rhythmic_relationships.io import get_pmid_segment_reprs, load_midi_file
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(

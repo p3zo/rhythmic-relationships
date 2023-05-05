@@ -5,10 +5,10 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import seaborn as sns
-from utils import save_fig
 from rhythmic_relationships import DATASETS_DIR, PLOTS_DIRNAME
 from rhythmic_relationships.data import PartPairDataset
 from rhythmic_relationships.parts import get_part_pairs
+from utils import save_fig
 
 sns.set_style("white")
 sns.set_context("paper")

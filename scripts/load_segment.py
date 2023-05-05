@@ -15,7 +15,6 @@ from rhythmic_relationships.io import (
 )
 from rhythmic_relationships.parts import PARTS
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(

@@ -17,13 +17,13 @@ import pandas as pd
 import seaborn as sns
 from rhythmic_relationships import DATASETS_DIR, PLOTS_DIRNAME
 from rhythmic_relationships.data import PartPairDataset
-from rhythmic_relationships.parts import PARTS
 from rhythmic_relationships.io import (
     get_pmid_segment,
+    get_subdivisions,
     load_midi_file,
     write_midi_from_hits,
-    get_subdivisions,
 )
+from rhythmic_relationships.parts import PARTS
 from rhythmic_relationships.representations import get_representations
 from scipy.spatial import Delaunay
 from sklearn.manifold import MDS, TSNE

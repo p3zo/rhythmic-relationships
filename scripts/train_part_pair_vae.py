@@ -1,6 +1,6 @@
 import torch
 import yaml
-from model_utils import get_model_name, load_config, save_model, get_loss_fn
+from model_utils import get_loss_fn, get_model_name, load_config, save_model
 from rhythmic_relationships.data import PartPairDataset
 from rhythmic_relationships.model import VAE
 from rhythmic_relationships.train import train

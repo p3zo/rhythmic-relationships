@@ -17,16 +17,16 @@ import numpy as np
 import pandas as pd
 from rhythmic_relationships import (
     ANNOTATIONS_FILENAME,
-    REPRESENTATIONS_FILENAME,
     DATASETS_DIR,
     PAIR_LOOKUPS_DIRNAME,
     PLOTS_DIRNAME,
     REPRESENTATIONS_DIRNAME,
+    REPRESENTATIONS_FILENAME,
     logger,
 )
-from rhythmic_relationships.representations import REPRESENTATIONS
 from rhythmic_relationships.io import load_midi_file, slice_midi
 from rhythmic_relationships.parts import PARTS, get_part_pairs
+from rhythmic_relationships.representations import REPRESENTATIONS
 from tqdm import tqdm
 
 

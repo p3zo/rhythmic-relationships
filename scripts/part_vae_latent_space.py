@@ -92,7 +92,7 @@ if __name__ == "__main__":
                 if threshed.max() == 0:
                     # To preserve ordering of output MIDI, write a single, inaudible note at the start of each bar
                     for i in range(0, n_ticks, 16):
-                        threshed[i][0] = .1
+                        threshed[i][0] = 0.1
 
                 write_midi_from_roll(
                     threshed,

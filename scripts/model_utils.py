@@ -4,18 +4,11 @@ import os
 import random
 from collections import defaultdict
 
-from bentoml.pytorch import save_model as save_bento_model
+import pandas as pd
 import torch
 import yaml
+from bentoml.pytorch import save_model as save_bento_model
 from rhythmic_relationships import MODELS_DIR
-
-import pandas as pd
-import seaborn as sns
-from sklearn.manifold import TSNE
-from utils import save_fig
-
-sns.set_style("white")
-sns.set_context("paper")
 
 
 def load_config(filepath):
@@ -76,34 +69,13 @@ def save_model(model, config, model_name, stats, bento=True):
 
 
 def load_model(model_name, model_class):
-    model_path = os.path.join(MODELS_DIR, model_name, f"model.pt")
+    model_path = os.path.join(MODELS_DIR, model_name, "model.pt")
     model_obj = torch.load(model_path)
     config = model_obj["config"]
     stats = model_obj["stats"]
     model = model_class(**config["model"])
     model.load_state_dict(state_dict=model_obj["state_dict"])
     return model, config, stats
-
-
-def get_embeddings(X, title="", outdir="."):
-    """Create a 2D embedding space of the data, plot it, and save it to a csv"""
-    reducer = TSNE(n_components=2, init="pca", learning_rate="auto", random_state=42)
-
-    # Make the pair space using t-SNE
-    X_transform = reducer.fit_transform(X)
-
-    emb = pd.DataFrame(X_transform, columns=["x", "y"])
-    sns.relplot(
-        data=emb,
-        x="x",
-        y="y",
-        height=8,
-        aspect=1.25,
-        legend=False,
-    )
-
-    save_fig(os.path.join(outdir, "latent_samples.png"), title=title)
-    return emb
 
 
 def get_model_catalog():

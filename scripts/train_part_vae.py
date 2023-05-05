@@ -1,9 +1,9 @@
 import torch
 import yaml
-from model_utils import get_model_name, load_config, save_model, get_loss_fn
+from model_utils import get_loss_fn, get_model_name, load_config, save_model
 from rhythmic_relationships.data import PartDataset
 from rhythmic_relationships.model import VAE
-from rhythmic_relationships.train import train, compute_recon_loss
+from rhythmic_relationships.train import compute_recon_loss, train
 from torch.utils.data import DataLoader, random_split
 
 DEVICE = torch.device("mps" if torch.backends.mps.is_built() else "cpu")
