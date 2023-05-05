@@ -128,6 +128,9 @@ class RecurrentVAE(nn.Module):
         return x_reconstructed, mu, sigma
 
 
+"""All classes below this line were implemented following https://www.youtube.com/watch?v=kCc8FmEb1nY"""
+
+
 class BigramDecoder(nn.Module):
     def __init__(self, vocab_size):
         super().__init__()
@@ -161,14 +164,16 @@ class BigramDecoder(nn.Module):
 
 
 class Head(nn.Module):
-    """One head of self-attention, implemented following https://www.youtube.com/watch?v=kCc8FmEb1nY"""
+    """One head of self-attention"""
 
-    def __init__(self, n_embed, head_size, context_len):
+    def __init__(self, n_embed, head_size, context_len, dropout):
         super().__init__()
         self.key = nn.Linear(n_embed, head_size, bias=False)
         self.query = nn.Linear(n_embed, head_size, bias=False)
         self.value = nn.Linear(n_embed, head_size, bias=False)
         self.register_buffer("tril", torch.tril(torch.ones(context_len, context_len)))
+
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         B, T, C = x.shape
@@ -183,8 +188,8 @@ class Head(nn.Module):
         # Mask out attention for future tokens
         attention = attention.masked_fill(self.tril[:T, :T] == 0, float("-inf"))
 
-        # Normalize
         attention = torch.softmax(attention, dim=-1)
+        attention = self.dropout(attention)
 
         # Perform the weighted aggregation of the values
         value = self.value(x)
@@ -196,26 +201,37 @@ class Head(nn.Module):
 class MultiHeadAttention(nn.Module):
     """Multiple heads of self-attention in parallel"""
 
-    def __init__(self, num_heads, n_embed, head_size, context_len):
+    def __init__(self, n_head, n_embed, head_size, context_len, dropout):
         super().__init__()
         self.heads = nn.ModuleList(
-            [Head(n_embed, head_size, context_len) for _ in range(num_heads)]
+            [
+                Head(
+                    n_embed=n_embed,
+                    head_size=head_size,
+                    context_len=context_len,
+                    dropout=dropout,
+                )
+                for _ in range(n_head)
+            ]
         )
         self.proj = nn.Linear(n_embed, n_embed)
+        self.dropout = nn.Dropout(dropout)
 
     def forward(self, x):
         out = torch.cat([h(x) for h in self.heads], dim=-1)
-        return self.proj(out)
+        out = self.dropout(self.proj(out))
+        return out
 
 
 class FeedForward(nn.Module):
-    def __init__(self, n_embed):
+    def __init__(self, n_embed, dropout):
         super().__init__()
         self.net = nn.Sequential(
             nn.Linear(n_embed, n_embed * 4),
             nn.ReLU(),
             # projection layer going back into the residual pathway
             nn.Linear(n_embed * 4, n_embed),
+            nn.Dropout(dropout),
         )
 
     def forward(self, x):
@@ -225,11 +241,17 @@ class FeedForward(nn.Module):
 class Block(nn.Module):
     """Transformer block: communication followed by computation"""
 
-    def __init__(self, n_embed, context_len, n_head):
+    def __init__(self, n_embed, context_len, n_head, dropout):
         super().__init__()
         head_size = n_embed // n_head
-        self.sa_heads = MultiHeadAttention(n_head, n_embed, head_size, context_len)
-        self.ffwd = FeedForward(n_embed)
+        self.sa_heads = MultiHeadAttention(
+            n_head=n_head,
+            n_embed=n_embed,
+            head_size=head_size,
+            context_len=context_len,
+            dropout=dropout,
+        )
+        self.ffwd = FeedForward(n_embed, dropout)
         self.ln1 = nn.LayerNorm(n_embed)
         self.ln2 = nn.LayerNorm(n_embed)
 
@@ -240,47 +262,37 @@ class Block(nn.Module):
 
 
 class TransformerDecoder(nn.Module):
-    def __init__(self, vocab_size, n_embed, context_len):
+    def __init__(self, vocab_size, n_embed, context_len, n_head, n_layer, dropout):
         super().__init__()
 
         self.context_len = context_len
-        n_head = 4
 
         self.token_embedding_table = nn.Embedding(vocab_size, n_embed)
         self.position_embedding_table = nn.Embedding(context_len, n_embed)
         self.blocks = nn.Sequential(
-            Block(
-                n_embed=n_embed,
-                context_len=context_len,
-                n_head=n_head,
-            ),
-            Block(
-                n_embed=n_embed,
-                context_len=context_len,
-                n_head=n_head,
-            ),
-            Block(
-                n_embed=n_embed,
-                context_len=context_len,
-                n_head=n_head,
-            ),
-            nn.LayerNorm(n_embed),
+            *[
+                Block(
+                    n_embed=n_embed,
+                    context_len=context_len,
+                    n_head=n_head,
+                    dropout=dropout,
+                )
+                for _ in range(n_layer)
+            ]
         )
+        self.ln_final = nn.LayerNorm(n_embed)
         self.lm_head = nn.Linear(n_embed, vocab_size)
 
     def forward(self, idx):
-        B, T = idx.shape
+        tok_emb = self.token_embedding_table(idx)  # B, T, C=N_embed
 
-        # B, T, C=N_embed
-        tok_emb = self.token_embedding_table(idx)
+        pos_emb = self.position_embedding_table(
+            torch.arange(idx.shape[1], device=idx.device)
+        )  # T, C
 
-        # T, C
-        pos_emb = self.position_embedding_table(torch.arange(T, device=idx.device))
-
-        # x holds both the token embeddings and the positions at which they occur
         x = tok_emb + pos_emb  # (B, T, C)
         x = self.blocks(x)  # (B, T, C)
-
+        x = self.ln_final(x)  # (B, T, C)
         logits = self.lm_head(x)  # B, T, vocab_size
 
         return logits
