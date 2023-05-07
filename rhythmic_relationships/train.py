@@ -240,9 +240,9 @@ def train_transformer_decoder(
         wandb.init(project=WANDB_PROJECT_NAME, config=config, name=model_name)
 
     train_losses = []
-    epoch_evals = {}
+    epoch_evals = []
 
-    for epoch in range(num_epochs):
+    for epoch in range(1, num_epochs + 1):
         batches = tqdm(train_loader)
         for batch in batches:
             # Forward pass
@@ -260,9 +260,8 @@ def train_transformer_decoder(
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 5)
             optimizer.step()
 
-            batches.set_description(f"Epoch {epoch + 1}/{num_epochs}")
+            batches.set_description(f"Epoch {epoch}/{num_epochs}")
             batches.set_postfix({"loss": f"{loss.item():.4f}"})
-            break
 
         # Evaluate after each epoch
         print("Evaluating...")
@@ -276,7 +275,6 @@ def train_transformer_decoder(
             n_ticks = config["sequence_len"]
             n_seqs = config["n_eval_seqs"]
             print(f"Generating {n_seqs} {n_ticks}-tick sequences")
-            # TODO: add tqdm
             for _ in range(n_seqs):
                 idx = torch.zeros((1, 1), dtype=torch.long, device=device)
                 seq = model.generate(idx, max_new_tokens=n_ticks - 1)[0]
@@ -292,11 +290,11 @@ def train_transformer_decoder(
                 )
                 descriptors.append(descs)
 
-            desc_df = pd.DataFrame(descs)
+            desc_df = pd.DataFrame(descriptors)
 
             # TODO: Compare the distribution of descriptors against the training data
             # Save the descriptor means
-            epoch_eval["sequence_eval"] = desc_df.mean().to_dict()
+            epoch_eval["generation_descriptor_means"] = desc_df.mean().to_dict()
 
             # Save one generated sequence as MIDI
             write_midi_from_roll(
@@ -328,7 +326,7 @@ def train_transformer_decoder(
                     "val_loss": eval_val_losses.mean().item(),
                 }
             )
-            epoch_evals[epoch] = epoch_eval
+            epoch_evals.append(epoch_eval)
 
             # Log eval losses locally
             print(f"{epoch=}: {epoch_eval=}")
