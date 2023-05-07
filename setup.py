@@ -1,5 +1,7 @@
 from setuptools import find_packages, setup
 
+experimental_requires = ["scikit-learn~=1.0.2", "seaborn~=0.12.0"]
+
 setup(
     name="rhythmic-relationships",
     author="p3zo",
@@ -21,8 +23,9 @@ setup(
         "torch~=1.13.1",
         "torchvision~=0.14.1",
         "tqdm~=4.64.1",
-        "scikit-learn~=1.0.2",
-        "seaborn~=0.12.0",
         "wandb~=0.15.1"
     ],
+    extras_require={
+        "exp": experimental_requires,
+    },
 )
