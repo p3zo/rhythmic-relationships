@@ -15,11 +15,11 @@ if __name__ == "__main__":
     config = load_config(CONFIG_FILEPATH)
     print(yaml.dump(config))
 
-    torch.manual_seed(13)
+    torch.manual_seed(config['seed'])
 
     dataset = PartDatasetSequential(**config["dataset"])
-    splits = [0.6, 0.3, 0.1]
-    train_data, val_data, test_data = random_split(dataset, splits)
+    splits = config["splits"]
+    train_data, val_data, test_data = random_split(dataset, list(splits.values()))
     print(f"{splits=}: {len(train_data)}, {len(val_data)}, {len(test_data)}")
 
     train_loader = DataLoader(train_data, batch_size=config["batch_size"], shuffle=True)
