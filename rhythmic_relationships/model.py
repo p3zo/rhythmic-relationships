@@ -131,38 +131,6 @@ class RecurrentVAE(nn.Module):
 """All classes below this line were implemented following https://www.youtube.com/watch?v=kCc8FmEb1nY"""
 
 
-class BigramDecoder(nn.Module):
-    def __init__(self, vocab_size):
-        super().__init__()
-
-        self.token_embedding_table = nn.Embedding(vocab_size, vocab_size)
-
-    def forward(self, idx):
-        # idx is (Batch, Time)
-        # logits will be (Batch, Time, Channel)
-        logits = self.token_embedding_table(idx)
-        return logits
-
-    def generate(self, idx, max_new_tokens):
-        # idx is (B, T) array of indices in the current context
-        for _ in range(max_new_tokens):
-            logits = self(idx)
-
-            # focus only on the last time step
-            logits = logits[:, -1, :]  # becomes (B, C)
-
-            # apply softmax to get probabilities
-            probs = torch.nn.functional.softmax(logits, dim=-1)  # (B, C)
-
-            # sample from the distribution
-            idx_next = torch.multinomial(probs, num_samples=1)  # (B, 1)
-
-            # append sampled index to the running sequence
-            idx = torch.cat((idx, idx_next), dim=1)  # (B, T+1)
-
-        return idx
-
-
 class Head(nn.Module):
     """One head of self-attention"""
 

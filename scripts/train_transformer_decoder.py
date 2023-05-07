@@ -28,7 +28,6 @@ if __name__ == "__main__":
 
     config["model"]["context_len"] = config["dataset"]["context_len"]
     model = TransformerDecoder(**config["model"]).to(DEVICE)
-    # model = BigramDecoder(vocab_size=vocab_size).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
     loss_fn = get_loss_fn(config)
 
