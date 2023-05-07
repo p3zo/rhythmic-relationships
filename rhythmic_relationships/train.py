@@ -3,12 +3,13 @@ import os
 import wandb
 
 import matplotlib.pyplot as plt
-import numpy as np
+import pandas as pd
 import torch
 from tqdm import tqdm
+from rhythmtoolbox import pianoroll2descriptors
 
 from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
-from rhythmic_relationships.io import write_midi_from_roll
+from rhythmic_relationships.io import write_midi_from_roll, get_roll_from_sequence
 
 WANDB_PROJECT_NAME = "rhythmic-relationships"
 
@@ -226,10 +227,10 @@ def train_transformer_decoder(
     device,
     model_name,
 ):
-
     clip_gradients = config["clip_gradients"]
     num_epochs = config["num_epochs"]
-    eval_iters = config["eval_iters"]
+    n_eval_iters = config["n_eval_iters"]
+    part = config["dataset"]["part"]
 
     model_dir = os.path.join(MODELS_DIR, model_name)
     if not os.path.isdir(model_dir):
@@ -237,13 +238,6 @@ def train_transformer_decoder(
 
     if config["wandb"]:
         wandb.init(project=WANDB_PROJECT_NAME, config=config, name=model_name)
-
-        # if device.type == "mps":
-        #     # wandb.watch uses an operator that is not currently supported on MPS backends
-        #     # This env var allows it to fall back to run on the CPU
-        #     # See https://github.com/pytorch/pytorch/pull/96652
-        #     os.environ["PYTORCH_ENABLE_MPS_FALLBACK"] = "1"
-        # wandb.watch(model, log_freq=100)
 
     train_losses = []
     epoch_evals = {}
@@ -268,34 +262,76 @@ def train_transformer_decoder(
 
             batches.set_description(f"Epoch {epoch + 1}/{num_epochs}")
             batches.set_postfix({"loss": f"{loss.item():.4f}"})
+            break
 
         # Evaluate after each epoch
-        print(f"\nEvaluating for {eval_iters} iters")
+        print("Evaluating...")
         with torch.no_grad():
             model.eval()
 
-            eval_train_losses = torch.zeros(eval_iters)
-            for k in tqdm(range(eval_iters)):
+            epoch_eval = {}
+
+            # Use the model to generate new sequences
+            rolls = []
+            n_ticks = config["sequence_len"]
+            n_seqs = config["n_eval_seqs"]
+            print(f"Generating {n_seqs} {n_ticks}-tick sequences")
+            # TODO: add tqdm
+            for _ in range(n_seqs):
+                idx = torch.zeros((1, 1), dtype=torch.long, device=device)
+                seq = model.generate(idx, max_new_tokens=n_ticks - 1)[0]
+                rolls.append(get_roll_from_sequence(seq))
+
+            # Compute sequence descriptors
+            descriptors = []
+            for roll in rolls:
+                descs = pianoroll2descriptors(
+                    roll,
+                    config["resolution"],
+                    drums=part == "Drums",
+                )
+                descriptors.append(descs)
+
+            desc_df = pd.DataFrame(descs)
+
+            # TODO: Compare the distribution of descriptors against the training data
+            # Save the descriptor means
+            epoch_eval["sequence_eval"] = desc_df.mean().to_dict()
+
+            # Save one generated sequence as MIDI
+            write_midi_from_roll(
+                rolls[0],
+                outpath=os.path.join(model_dir, f"generated_{epoch}.mid"),
+                part=part,
+                binary=True,
+                onset_roll=True,
+            )
+
+            print(f"Running for {n_eval_iters} iters")
+            eval_train_losses = torch.zeros(n_eval_iters)
+            for k in tqdm(range(n_eval_iters)):
                 x, targets = parse_batch(next(iter(train_loader)), device)
                 logits = model(x)
                 loss = compute_loss(logits, targets, loss_fn)
                 eval_train_losses[k] = loss.item()
 
-            eval_val_losses = torch.zeros(eval_iters)
-            for k in tqdm(range(eval_iters)):
+            eval_val_losses = torch.zeros(n_eval_iters)
+            for k in tqdm(range(n_eval_iters)):
                 x, targets = parse_batch(next(iter(val_loader)), device)
                 logits = model(x)
                 loss = compute_loss(logits, targets, loss_fn)
                 eval_val_losses[k] = loss.item()
 
-            evaluation = {
-                "train_loss": eval_train_losses.mean().item(),
-                "val_loss": eval_val_losses.mean().item(),
-            }
-            epoch_evals[epoch] = evaluation
+            epoch_eval.update(
+                {
+                    "train_loss": eval_train_losses.mean().item(),
+                    "val_loss": eval_val_losses.mean().item(),
+                }
+            )
+            epoch_evals[epoch] = epoch_eval
 
             # Log eval losses locally
-            print(f"{epoch=}: {evaluation=}")
+            print(f"{epoch=}: {epoch_eval=}")
             e_ixs = range(epoch + 1)
             eval_train_losses = [epoch_evals[i]["train_loss"] for i in e_ixs]
             eval_val_losses = [epoch_evals[i]["val_loss"] for i in e_ixs]
@@ -304,6 +340,7 @@ def train_transformer_decoder(
             plt.plot(e_ixs, eval_val_losses, label="val", c="orange", marker=marker)
             eval_loss_plot_path = os.path.join(model_dir, f"eval_loss_{epoch}.png")
             plt.legend()
+            plt.title(f"{model_name}")
             plt.tight_layout()
             plt.savefig(eval_loss_plot_path)
             print(f"Saved {eval_loss_plot_path}")
@@ -313,15 +350,14 @@ def train_transformer_decoder(
             if config["wandb"]:
                 wandb.log(
                     {
-                        "train_loss": evaluation["train_loss"],
-                        "val_loss": evaluation["val_loss"],
+                        "train_loss": epoch_eval["train_loss"],
+                        "val_loss": epoch_eval["val_loss"],
                     }
                 )
 
             model.train()
 
         # Save plot of loss during training
-        # TODO: also plot val loss as we get it
         plt.plot(train_losses)
         loss_plot_path = os.path.join(model_dir, f"loss_{epoch}.png")
         plt.tight_layout()
@@ -329,22 +365,4 @@ def train_transformer_decoder(
         print(f"Saved {loss_plot_path}")
         plt.clf()
 
-        # Use the model to generate some sequences
-        gen_path = os.path.join(model_dir, f"generated_{epoch}.mid")
-        n_ticks = 32
-        idx = torch.zeros((1, 1), dtype=torch.long, device=device)
-        gen = model.generate(idx, max_new_tokens=n_ticks - 1)
-
-        # Convert the generated sequence to midi and save it
-        roll = np.zeros((n_ticks, 128), np.uint8)
-        for tick, pitch in enumerate(gen[0]):
-            # TODO: remove these conditionals once the vocab is set
-            if pitch == 0 or pitch > 127:
-                continue
-            roll[tick, pitch] = 1
-
-        write_midi_from_roll(
-            roll, gen_path, part=config["dataset"]["part"], binary=True, onset_roll=True
-        )
-
-    return evaluation
+    return epoch_evals

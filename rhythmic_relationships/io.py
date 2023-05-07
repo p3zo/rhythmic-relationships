@@ -6,15 +6,12 @@ import pretty_midi as pm
 from PIL import Image
 from rhythmic_relationships import logger
 from rhythmic_relationships.parts import (
+    PARTS,
     get_part_from_program,
     get_program_from_part,
-    PARTS,
 )
-from rhythmic_relationships.representations import (
-    get_representations,
-    get_descriptors_from_roll,
-    REPRESENTATIONS,
-)
+from rhythmic_relationships.representations import REPRESENTATIONS, get_representations
+from rhythmtoolbox import pianoroll2descriptors
 
 # TODO: fix catch_warnings block in load_midi_file and remove this
 warnings.filterwarnings("ignore", category=RuntimeWarning)
@@ -231,14 +228,25 @@ def slice_midi(
             ):
                 continue
 
-            # Join the representations into a single object array
+            # Pack the representations into a single object array
             seg_reprs = []
+
             for representation in representations:
+
                 if representation == "descriptors":
-                    seg_reprs.append(
-                        get_descriptors_from_roll(seg_onset_roll, resolution)
+                    descs = np.array(
+                        list(
+                            pianoroll2descriptors(
+                                seg_onset_roll,
+                                resolution=resolution,
+                                drums=part == "Drums",
+                            ).values()
+                        ),
+                        dtype=np.float32,
                     )
+                    seg_reprs.append(descs)
                     continue
+
                 if representation not in track:
                     raise ValueError(
                         f"Invalid representation `{representation}`. Must be one of {REPRESENTATIONS}"
@@ -678,3 +686,14 @@ def write_midi_from_pattern(pattern, outpath, resolution=24, pitch=36, part=""):
     track.instruments.append(instrument)
     track.write(outpath)
     logger.debug(f"Saved {outpath}")
+
+
+def get_roll_from_sequence(seq):
+    """Convert a monophonic sequence of pitches to a piano roll."""
+    roll = np.zeros((len(seq), 128), np.uint8)
+    for tick, pitch in enumerate(seq):
+        # TODO: remove these conditionals once the vocab is set
+        if pitch == 0 or pitch > 127:
+            continue
+        roll[tick, pitch] = 1
+    return roll

@@ -2,18 +2,21 @@ dataset:
   dataset_name: "lmdc_10000_2bar_4res"
   part: "Melody"
   representation: "onset_roll"
-  context_len: 16
+  context_len: 31
 model:
   vocab_size: 130
   n_embed: 144
-  n_head: 4
-  n_layer: 4
+  n_head: 3
+  n_layer: 3
   dropout: 0.3
+sequence_len: 32
+resolution: 4
 loss_fn: "cross-entropy"
 loss_reduction: 'mean'
 clip_gradients: False
-num_epochs: 15
-batch_size: 256
+num_epochs: 20
+batch_size: 128
 lr: 3e-4
-wandb: True
-eval_iters: 30
+wandb: False
+n_eval_iters: 25
+n_eval_seqs: 30

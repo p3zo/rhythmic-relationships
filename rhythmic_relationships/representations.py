@@ -1,7 +1,5 @@
 import numpy as np
 
-from rhythmtoolbox import pianoroll2descriptors
-
 REPRESENTATIONS = [
     "roll",
     "onset_roll",
@@ -254,10 +252,3 @@ def resize_roll_to_n_beats(roll, n_beats, resolution):
     elif len(roll) > n_ticks:
         roll = roll[:n_ticks]
     return roll
-
-
-def get_descriptors_from_roll(roll, resolution):
-    return np.array(
-        list(pianoroll2descriptors(roll, resolution=resolution).values()),
-        dtype=np.float32,
-    )

@@ -10,6 +10,8 @@ DEVICE = torch.device("mps" if torch.backends.mps.is_built() else "cpu")
 CONFIG_FILEPATH = "transformer_decoder_config.yml"
 
 if __name__ == "__main__":
+    print(f"{DEVICE=}")
+
     config = load_config(CONFIG_FILEPATH)
     print(yaml.dump(config))
 
@@ -31,7 +33,7 @@ if __name__ == "__main__":
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
     loss_fn = get_loss_fn(config)
 
-    evaluation = train_transformer_decoder(
+    epoch_evals = train_transformer_decoder(
         model=model,
         train_loader=train_loader,
         val_loader=val_loader,
@@ -42,9 +44,9 @@ if __name__ == "__main__":
         model_name=model_name,
     )
 
+    # Save the stats for the last epoch
     stats = {
-        "train_loss": evaluation["train_loss"],
-        "val_loss": evaluation["val_loss"],
+        "epoch_evals": epoch_evals,
         "n_params": sum(p.nelement() for p in model.parameters()),
     }
     print(stats)
