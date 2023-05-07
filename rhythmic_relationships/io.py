@@ -52,8 +52,13 @@ def get_subdivisions(pmid, resolution=4, n_beat_bars=4):
     if len(beats) <= 1:
         beats = np.arange(0, n_beat_bars + 1)
     else:
-        additional_beat = 2 * beats[-1] - beats[-2]
-        beats = np.append(beats, additional_beat)
+        beat_sep = beats[-1] - beats[-2]
+        added_beat = beats[-1] + beat_sep
+        added_beats = np.array(added_beat)
+        # pmid.beats truncates if the latter part of a bar is all rests; assume a complete bar
+        if added_beat % 1 != 0:
+            added_beats = np.append(added_beats, added_beat + beat_sep)
+        beats = np.append(beats, added_beats)
 
     # Upsample beat times to the input resolution using linear interpolation
     subdivisions = []

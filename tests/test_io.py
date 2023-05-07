@@ -6,7 +6,6 @@ from rhythmic_relationships.io import (
     slice_midi,
     load_midi_file,
     chroma_contains_mono_melody,
-    write_midi_from_roll,
 )
 from rhythmic_relationships.representations import REPRESENTATIONS
 
