@@ -3,10 +3,16 @@
 ## Environment
 
 - Install [PyTorch](https://pytorch.org/get-started/locally/) according to your OS and GPU.
-- Install this repo and [rhythmtoolbox](https://github.com/danielgomezmarin/rhythmtoolbox) from source:
+- Install this repo. Remove the `[experimental]` suffix if aren't planning to do any development.
+
+```bash
+pip install -e .[experimental]
+```
+
+- Install [rhythmtoolbox](https://github.com/danielgomezmarin/rhythmtoolbox) from source.
 
 ```
-pip install git+https://github.com/p3zo/rhythmic-relationships git+https://github.com/danielgomezmarin/rhythmtoolbox
+pip install git+https://github.com/danielgomezmarin/rhythmtoolbox
 ```
 
 ## Scripts
@@ -18,7 +24,6 @@ See [scripts/README.md](scripts/README.md) for a list of scripts and notebooks.
 ### Parts
 
 The "parts" of a piece of music are the strands of melody or harmony that make up the musical texture. The grouping of instruments into parts depends on musical style. For styles like pop, rock, or jazz, an appropriate set of parts might be percussive, bassline, harmonic, and melodic. We adopt the approach of MusicVAE [Roberts et al, 2018] which defines three parts to model multi-stream music: Drums, Bass, and Melody. Because there is no publicly available dataset with these category labels, we use the instrumental categories from the [General MIDI spec (Level 2)](https://en.wikipedia.org/wiki/General_MIDI_Level_2).
-
 
 ### Representations
 

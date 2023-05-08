@@ -51,4 +51,4 @@ if __name__ == "__main__":
     }
     print(stats)
 
-    save_model(model, config, model_name, stats)
+    save_model(model, config, model_name, stats, bento=config["bento"])

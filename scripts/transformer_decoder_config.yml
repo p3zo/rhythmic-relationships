@@ -18,8 +18,9 @@ num_epochs: 30
 batch_size: 256
 lr: 1e-3
 wandb: True
+bento: False
 n_eval_iters: 20
-n_eval_seqs: 20
+n_eval_seqs: 100
 splits:
   train: 0.8
   val: 0.1

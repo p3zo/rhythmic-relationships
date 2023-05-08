@@ -1,9 +1,9 @@
+import sys
 import warnings
 from collections import defaultdict
 
 import numpy as np
 import pretty_midi as pm
-from PIL import Image
 from rhythmic_relationships import logger
 from rhythmic_relationships.parts import (
     PARTS,
@@ -614,6 +614,8 @@ def write_image_from_roll(roll, outpath, im_size=None, binary=False):
         v_padded = np.hstack((arr, pad_bot))
         arr = np.vstack((v_padded, pad_right))
 
+    if "PIL" not in sys.modules:
+        from PIL import Image
     # "L" mode is greyscale and requires an 8-bit pixel range of 0-255
     im = Image.fromarray(arr.T.astype(np.uint8), mode="L")
 
@@ -646,6 +648,8 @@ def get_image_from_vector(hits):
     arr = np.array(list(map(lambda x: 255 if x else x, hits)))
     arr = arr.reshape((1, arr.shape[0]))
 
+    if "PIL" not in sys.modules:
+        from PIL import Image
     # "L" mode is greyscale and requires an 8-bit pixel range of 0-255
     return Image.fromarray(arr.astype(np.uint8), mode="L")
 

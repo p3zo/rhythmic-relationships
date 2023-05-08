@@ -7,7 +7,6 @@ from collections import defaultdict
 import pandas as pd
 import torch
 import yaml
-from bentoml.pytorch import save_model as save_bento_model
 from rhythmic_relationships import MODELS_DIR
 
 
@@ -53,6 +52,8 @@ def save_model(model, config, model_name, stats, bento=True):
     print(f"Saved {model_path}")
 
     if bento:
+        from bentoml.pytorch import save_model as save_bento_model
+
         saved_model = save_bento_model(
             model_name,
             model,
