@@ -15,7 +15,7 @@ if __name__ == "__main__":
     config = load_config(CONFIG_FILEPATH)
     print(yaml.dump(config))
 
-    torch.manual_seed(config['seed'])
+    torch.manual_seed(config["seed"])
 
     dataset = PartDatasetSequential(**config["dataset"])
     splits = config["splits"]
