@@ -234,6 +234,9 @@ class TransformerDecoder(nn.Module):
     def __init__(self, vocab_size, n_embed, context_len, n_head, n_layer, dropout):
         super().__init__()
 
+        # TODO: Why do we add 1 to vocab_size? This is not necessary on `mps` but throws an error on `cpu` and `cuda`.
+        vocab_size = vocab_size + 1
+
         self.context_len = context_len
 
         self.token_embedding_table = nn.Embedding(vocab_size, n_embed)
