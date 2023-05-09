@@ -14,6 +14,25 @@ from rhythmic_relationships.io import write_midi_from_roll, get_roll_from_sequen
 WANDB_PROJECT_NAME = "rhythmic-relationships"
 
 
+def save_checkpoint(model_dir, epoch, model, optimizer, loss, config):
+    checkpoints_dir = os.path.join(model_dir, CHECKPOINTS_DIRNAME)
+    if not os.path.isdir(checkpoints_dir):
+        os.makedirs(checkpoints_dir)
+
+    checkpoint_path = os.path.join(checkpoints_dir, str(epoch))
+    torch.save(
+        {
+            "epoch": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "loss": loss,
+            "config": config,
+        },
+        checkpoint_path,
+    )
+    print(f"Saved checkpoint to {checkpoint_path}")
+
+
 def compute_recon_loss(recons, x, mu, sigma, loss_fn):
     reconstruction_loss = loss_fn(recons, x)
     kld_loss = torch.mean(
@@ -99,24 +118,14 @@ def train(
         plt.clf()
 
         # Save a checkpoint at the end of each epoch
-        if save_checkpoints:
-            checkpoints_dir = os.path.join(MODELS_DIR, CHECKPOINTS_DIRNAME)
-            if not os.path.isdir(checkpoints_dir):
-                os.makedirs(checkpoints_dir)
-
-            torch.save(
-                {
-                    "epoch": epoch,
-                    "model_state_dict": model.state_dict(),
-                    "optimizer_state_dict": optimizer.state_dict(),
-                    "loss": loss,
-                    "config": config,
-                },
-                os.path.join(
-                    checkpoints_dir,
-                    model_name,
-                    f"{epoch}_{dt.datetime.today().strftime('%y%m%d%H%M%S')}",
-                ),
+        if config["save_checkpoints"]:
+            save_checkpoint(
+                model_dir=model_dir,
+                epoch=epoch,
+                model=model,
+                optimizer=optimizer,
+                loss=loss,
+                config=config,
             )
 
     return loss.item()
@@ -375,5 +384,15 @@ def train_transformer_decoder(
         plt.savefig(loss_plot_path)
         print(f"Saved {loss_plot_path}")
         plt.clf()
+
+        if config["save_checkpoints"]:
+            save_checkpoint(
+                model_dir=model_dir,
+                epoch=epoch,
+                model=model,
+                optimizer=optimizer,
+                loss=loss,
+                config=config,
+            )
 
     return epoch_evals

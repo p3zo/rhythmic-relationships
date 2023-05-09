@@ -16,3 +16,4 @@ clip_gradients: False
 num_epochs: 1
 batch_size: 512
 lr: 3e-4
+save_checkpoints: False

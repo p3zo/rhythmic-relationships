@@ -26,3 +26,4 @@ splits:
   val: 0.1
   test: 0.1
 seed: 13
+save_checkpoints: True
