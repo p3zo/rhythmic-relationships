@@ -8,8 +8,15 @@ from rhythmic_relationships.model import TransformerDecoder
 from rhythmic_relationships.train import train_transformer_decoder
 from torch.utils.data import DataLoader, random_split
 
-DEVICE = torch.device("mps" if torch.backends.mps.is_built() else "cpu")
 CONFIG_FILEPATH = "transformer_decoder_config.yml"
+
+DEVICE = torch.device(
+    "mps"
+    if torch.backends.mps.is_built()
+    else torch.device("cuda:0")
+    if torch.cuda.device_count() > 0
+    else torch.device("cpu")
+)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
