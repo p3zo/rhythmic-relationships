@@ -217,6 +217,78 @@ def parse_batch(batch, device):
     return x, targets
 
 
+def evaluate_transformer_decoder(
+    model, config, train_loader, val_loader, loss_fn, device
+):
+    with torch.no_grad():
+        model.eval()
+
+        eval = {}
+
+        n_eval_iters = config["n_eval_iters"]
+        n_ticks = config["sequence_len"]
+        n_seqs = config["n_eval_seqs"]
+
+        # Use the model to generate new sequences
+        rolls = []
+        descriptors = []
+        print(f"Generating {n_seqs} {n_ticks}-tick sequences...")
+        for _ in range(n_seqs):
+            idx = torch.zeros((1, 1), dtype=torch.long, device=device)
+            seq = model.generate(idx, max_new_tokens=n_ticks - 1)[0]
+            roll = get_roll_from_sequence(seq)
+            rolls.append(roll)
+
+            # Compute sequence descriptors
+            descs = pianoroll2descriptors(
+                roll,
+                config["resolution"],
+                drums=config["dataset"]["part"] == "Drums",
+            )
+            descriptors.append(descs)
+
+        # Save the descriptors along with a few samples
+        eval["generated_descriptors"] = pd.DataFrame(descriptors).to_dict()
+        eval["generated_samples"] = rolls[:10]
+
+        print(f"Evaluating train loss for {n_eval_iters} iters")
+        eval_train_losses = torch.zeros(n_eval_iters)
+        for k in range(n_eval_iters):
+            x, targets = parse_batch(next(iter(train_loader)), device)
+            logits = model(x)
+            loss = compute_loss(logits, targets, loss_fn)
+            eval_train_losses[k] = loss.item()
+
+        print(f"Evaluating val loss for {n_eval_iters} iters")
+        eval_val_losses = torch.zeros(n_eval_iters)
+        for k in range(n_eval_iters):
+            x, targets = parse_batch(next(iter(val_loader)), device)
+            logits = model(x)
+            loss = compute_loss(logits, targets, loss_fn)
+            eval_val_losses[k] = loss.item()
+
+        eval.update(
+            {
+                "train_loss": eval_train_losses.mean().item(),
+                "val_loss": eval_val_losses.mean().item(),
+            }
+        )
+
+        # Log eval losses
+        print(f'{eval["train_loss"]=}, {eval["val_loss"]=}')
+        if config["wandb"]:
+            wandb.log(
+                {
+                    "train_loss": eval["train_loss"],
+                    "val_loss": eval["val_loss"],
+                }
+            )
+
+        model.train()
+
+    return eval
+
+
 def train_transformer_decoder(
     model,
     train_loader,
@@ -229,8 +301,6 @@ def train_transformer_decoder(
 ):
     clip_gradients = config["clip_gradients"]
     num_epochs = config["num_epochs"]
-    n_eval_iters = config["n_eval_iters"]
-    part = config["dataset"]["part"]
 
     model_dir = os.path.join(MODELS_DIR, model_name)
     if not os.path.isdir(model_dir):
@@ -264,96 +334,39 @@ def train_transformer_decoder(
             batches.set_postfix({"loss": f"{loss.item():.4f}"})
 
         # Evaluate after each epoch
-        print("Evaluating...")
-        with torch.no_grad():
-            model.eval()
+        epoch_eval = evaluate_transformer_decoder(
+            model=model,
+            config=config,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            loss_fn=loss_fn,
+            device=device,
+        )
+        epoch_evals.append(epoch_eval)
 
-            epoch_eval = {}
+        # Log eval losses locally
+        e_ixs = range(epoch)
+        eval_train_losses = [epoch_evals[i]["train_loss"] for i in e_ixs]
+        eval_val_losses = [epoch_evals[i]["val_loss"] for i in e_ixs]
+        marker = "o" if epoch == 1 else None
+        plt.plot(e_ixs, eval_train_losses, label="train", c="blue", marker=marker)
+        plt.plot(e_ixs, eval_val_losses, label="val", c="orange", marker=marker)
+        eval_loss_plot_path = os.path.join(model_dir, f"eval_loss_{epoch}.png")
+        plt.legend()
+        plt.title(f"{model_name}")
+        plt.tight_layout()
+        plt.savefig(eval_loss_plot_path)
+        print(f"Saved {eval_loss_plot_path}")
+        plt.clf()
 
-            # Use the model to generate new sequences
-            rolls = []
-            n_ticks = config["sequence_len"]
-            n_seqs = config["n_eval_seqs"]
-            print(f"Generating {n_seqs} {n_ticks}-tick sequences")
-            for _ in range(n_seqs):
-                idx = torch.zeros((1, 1), dtype=torch.long, device=device)
-                seq = model.generate(idx, max_new_tokens=n_ticks - 1)[0]
-                rolls.append(get_roll_from_sequence(seq))
-
-            # Compute sequence descriptors
-            descriptors = []
-            for roll in rolls:
-                descs = pianoroll2descriptors(
-                    roll,
-                    config["resolution"],
-                    drums=part == "Drums",
-                )
-                descriptors.append(descs)
-
-            desc_df = pd.DataFrame(descriptors)
-
-            # TODO: Compare the distribution of descriptors against the training data
-            # Save the descriptor means
-            epoch_eval["generation_descriptor_means"] = desc_df.mean().to_dict()
-
-            # Save one generated sequence as MIDI
-            write_midi_from_roll(
-                rolls[0],
-                outpath=os.path.join(model_dir, f"generated_{epoch}.mid"),
-                part=part,
-                binary=True,
-                onset_roll=True,
-            )
-
-            print(f"Running for {n_eval_iters} iters")
-            eval_train_losses = torch.zeros(n_eval_iters)
-            for k in tqdm(range(n_eval_iters)):
-                x, targets = parse_batch(next(iter(train_loader)), device)
-                logits = model(x)
-                loss = compute_loss(logits, targets, loss_fn)
-                eval_train_losses[k] = loss.item()
-
-            eval_val_losses = torch.zeros(n_eval_iters)
-            for k in tqdm(range(n_eval_iters)):
-                x, targets = parse_batch(next(iter(val_loader)), device)
-                logits = model(x)
-                loss = compute_loss(logits, targets, loss_fn)
-                eval_val_losses[k] = loss.item()
-
-            epoch_eval.update(
-                {
-                    "train_loss": eval_train_losses.mean().item(),
-                    "val_loss": eval_val_losses.mean().item(),
-                }
-            )
-            epoch_evals.append(epoch_eval)
-
-            # Log eval losses locally
-            print(f"{epoch=}: {epoch_eval=}")
-            e_ixs = range(epoch + 1)
-            eval_train_losses = [epoch_evals[i]["train_loss"] for i in e_ixs]
-            eval_val_losses = [epoch_evals[i]["val_loss"] for i in e_ixs]
-            marker = "o" if epoch == 0 else None
-            plt.plot(e_ixs, eval_train_losses, label="train", c="blue", marker=marker)
-            plt.plot(e_ixs, eval_val_losses, label="val", c="orange", marker=marker)
-            eval_loss_plot_path = os.path.join(model_dir, f"eval_loss_{epoch}.png")
-            plt.legend()
-            plt.title(f"{model_name}")
-            plt.tight_layout()
-            plt.savefig(eval_loss_plot_path)
-            print(f"Saved {eval_loss_plot_path}")
-            plt.clf()
-
-            # Log eval losses remotely
-            if config["wandb"]:
-                wandb.log(
-                    {
-                        "train_loss": epoch_eval["train_loss"],
-                        "val_loss": epoch_eval["val_loss"],
-                    }
-                )
-
-            model.train()
+        # Save one generated sequence as MIDI
+        write_midi_from_roll(
+            epoch_eval["generated_samples"][0],
+            outpath=os.path.join(model_dir, f"generated_{epoch}.mid"),
+            part=config["dataset"]["part"],
+            binary=True,
+            onset_roll=True,
+        )
 
         # Save plot of loss during training
         plt.plot(train_losses)

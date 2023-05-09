@@ -69,6 +69,5 @@ if __name__ == "__main__":
         "epoch_evals": epoch_evals,
         "n_params": sum(p.nelement() for p in model.parameters()),
     }
-    print(stats)
 
     save_model(model, config, model_name, stats, bento=config["bento"])
