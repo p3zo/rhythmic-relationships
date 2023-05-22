@@ -107,10 +107,10 @@ def get_seg_iter(bar_start_ticks, seg_size, resolution, n_beat_bars):
     return list(zip(bar_start_ticks, bar_start_ticks[seg_size:]))
 
 
-def chroma_contains_mono_melody(chroma, min_n_pitches, max_n_rests):
-    """Returns True if a chroma contains a melody.
+def onset_chroma_is_monpohonic(chroma, min_n_pitches, max_n_rests):
+    """Check if a chroma is a monophonic sequence.
 
-    A melody is defined as a monophonic sequence with at least `n_pitches`
+    Additionally check if the sequence contains at least `n_pitches`
     unique pitches and at most `max_n_rests` consecutive ticks of rests.
 
     Note that polyphony consisting of only octave intervals is allowed.
@@ -216,10 +216,10 @@ def slice_midi(
 
         # Slice the piano roll into segments of equal length
         for seg_ix, (start, end) in enumerate(seg_iter):
-            seg_chroma = track["chroma"][start:end]
+            seg_onset_chroma = track["onset_chroma"][start:end]
 
             # Skip segments with little activity
-            if not roll_has_activity(seg_chroma, min_seg_pitches, min_seg_beats):
+            if not roll_has_activity(seg_onset_chroma, min_seg_pitches, min_seg_beats):
                 continue
 
             seg_onset_roll = track["onset_roll"][start:end]
@@ -228,8 +228,8 @@ def slice_midi(
             if len(seg_onset_roll) != n_seg_ticks:
                 continue
 
-            if part == "Melody" and not chroma_contains_mono_melody(
-                seg_chroma, min_melody_pitches, max_melody_rest_ticks
+            if part != "Drums" and not onset_chroma_is_monpohonic(
+                seg_onset_chroma, min_melody_pitches, max_melody_rest_ticks
             ):
                 continue
 

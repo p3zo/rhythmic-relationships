@@ -7,6 +7,7 @@ REPRESENTATIONS = [
     "binary_onset_roll",
     "drum_roll",
     "chroma",
+    "onset_chroma",
     "pattern",
     "hits",
     "descriptors",
@@ -142,6 +143,7 @@ def get_representations(pmid, subdivisions):
         onset_roll_3_octave = np.zeros((n_ticks, 36), np.uint8)
         drum_roll = np.zeros((n_ticks, 9))
         chroma = np.zeros((n_ticks, 12), np.uint8)
+        onset_chroma = np.zeros((n_ticks, 12), np.uint8)
         pattern = np.zeros(n_ticks, np.uint8)
         hits = np.zeros(n_ticks, np.uint8)
 
@@ -166,6 +168,7 @@ def get_representations(pmid, subdivisions):
 
         three_octave_pitches = get_three_octave_pitches(pitches)
         onset_roll_3_octave[onsets, three_octave_pitches] = velocities
+        onset_chroma[onsets, [p % 12 for p in pitches]] = 1
 
         if instrument.is_drum:
             roll[onsets, pitches] = velocities
@@ -235,6 +238,7 @@ def get_representations(pmid, subdivisions):
                 "onset_roll_3_octave": onset_roll_3_octave,
                 "drum_roll": drum_roll,
                 "chroma": chroma,
+                "onset_chroma": onset_chroma,
                 "pattern": pattern,
                 "hits": hits,
             }
