@@ -1,4 +1,3 @@
-import datetime as dt
 import os
 import wandb
 
@@ -9,9 +8,14 @@ from tqdm import tqdm
 from rhythmtoolbox import pianoroll2descriptors
 
 from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
+from rhythmic_relationships.data import PAD_TOKEN, REST_TOKEN
 from rhythmic_relationships.io import write_midi_from_roll, get_roll_from_sequence
 
 WANDB_PROJECT_NAME = "rhythmic-relationships"
+
+# fmt: off
+TEST_SEQ = [34, REST_TOKEN, 36, REST_TOKEN, 36, REST_TOKEN, 36, REST_TOKEN, 34, REST_TOKEN, 36, REST_TOKEN, 39, REST_TOKEN, 43, REST_TOKEN, 39, REST_TOKEN, 41, REST_TOKEN, 41, REST_TOKEN, 41, REST_TOKEN, 39, REST_TOKEN, 41, REST_TOKEN, 44, REST_TOKEN, REST_TOKEN, REST_TOKEN]
+# fmt: on
 
 
 def save_checkpoint(model_dir, epoch, model, optimizer, loss, config):
@@ -49,7 +53,6 @@ def train(
     config,
     device,
     model_name,
-    save_checkpoints=False,
 ):
     x_dim = config["model"]["x_dim"]
     y_dim = config["model"]["y_dim"]
@@ -214,25 +217,30 @@ def train_recurrent(
     return loss.log10().item(), val_loss.log10().item()
 
 
-def compute_loss(logits, targets, loss_fn):
+def compute_loss(logits, y, loss_fn):
     B, T, C = logits.shape
-    return loss_fn(logits.view(B * T, C), targets)
+    return loss_fn(logits.reshape(B * T, C), y.reshape(y.shape[0] * y.shape[1]))
 
 
-def parse_batch(batch, device):
+def parse_sequential_batch(batch, device):
     xb, yb = batch
     x = xb.to(device).view(xb.shape[0] * xb.shape[1], xb.shape[2])
-    targets = yb.to(device).view(yb.shape[0] * yb.shape[1] * yb.shape[2])
-    return x, targets
+    y = yb.to(device).view(yb.shape[0] * yb.shape[1], yb.shape[2])
+    return x, y
 
 
 def evaluate_transformer_decoder(
-    model, config, train_loader, val_loader, loss_fn, device
+    model,
+    config,
+    train_loader,
+    val_loader,
+    loss_fn,
+    device,
 ):
     with torch.no_grad():
         model.eval()
 
-        eval = {}
+        evaluation = {}
 
         n_eval_iters = config["n_eval_iters"]
         n_ticks = config["sequence_len"]
@@ -243,7 +251,7 @@ def evaluate_transformer_decoder(
         descriptors = []
         print(f"Generating {n_seqs} {n_ticks}-tick sequences...")
         for _ in range(n_seqs):
-            idx = torch.zeros((1, 1), dtype=torch.long, device=device)
+            idx = torch.full((1, 1), PAD_TOKEN, dtype=torch.long, device=device)
             seq = model.generate(idx, max_new_tokens=n_ticks - 1)[0]
             roll = get_roll_from_sequence(seq)
             rolls.append(roll)
@@ -257,26 +265,26 @@ def evaluate_transformer_decoder(
             descriptors.append(descs)
 
         # Save the descriptors along with a few samples
-        eval["generated_descriptors"] = pd.DataFrame(descriptors).to_dict()
-        eval["generated_samples"] = rolls[:10]
+        evaluation["generated_descriptors"] = pd.DataFrame(descriptors).to_dict()
+        evaluation["generated_samples"] = rolls[:10]
 
         print(f"Evaluating train loss for {n_eval_iters} iters")
         eval_train_losses = torch.zeros(n_eval_iters)
         for k in range(n_eval_iters):
-            x, targets = parse_batch(next(iter(train_loader)), device)
+            x, y = parse_sequential_batch(next(iter(train_loader)), device)
             logits = model(x)
-            loss = compute_loss(logits, targets, loss_fn)
+            loss = compute_loss(logits, y, loss_fn)
             eval_train_losses[k] = loss.item()
 
         print(f"Evaluating val loss for {n_eval_iters} iters")
         eval_val_losses = torch.zeros(n_eval_iters)
         for k in range(n_eval_iters):
-            x, targets = parse_batch(next(iter(val_loader)), device)
+            x, y = parse_sequential_batch(next(iter(val_loader)), device)
             logits = model(x)
-            loss = compute_loss(logits, targets, loss_fn)
+            loss = compute_loss(logits, y, loss_fn)
             eval_val_losses[k] = loss.item()
 
-        eval.update(
+        evaluation.update(
             {
                 "train_loss": eval_train_losses.mean().item(),
                 "val_loss": eval_val_losses.mean().item(),
@@ -284,18 +292,18 @@ def evaluate_transformer_decoder(
         )
 
         # Log eval losses
-        print(f'{eval["train_loss"]=}, {eval["val_loss"]=}')
+        print(f'{evaluation["train_loss"]=}, {evaluation["val_loss"]=}')
         if config["wandb"]:
             wandb.log(
                 {
-                    "train_loss": eval["train_loss"],
-                    "val_loss": eval["val_loss"],
+                    "train_loss": evaluation["train_loss"],
+                    "val_loss": evaluation["val_loss"],
                 }
             )
 
         model.train()
 
-    return eval
+    return evaluation
 
 
 def train_transformer_decoder(
@@ -308,7 +316,6 @@ def train_transformer_decoder(
     device,
     model_name,
 ):
-    clip_gradients = config["clip_gradients"]
     num_epochs = config["num_epochs"]
 
     model_dir = os.path.join(MODELS_DIR, model_name)
@@ -325,18 +332,16 @@ def train_transformer_decoder(
         batches = tqdm(train_loader)
         for batch in batches:
             # Forward pass
-            x, targets = parse_batch(batch, device)
+            x, y = parse_sequential_batch(batch, device)
             logits = model(x)
 
             # Compute loss
-            loss = compute_loss(logits, targets, loss_fn)
+            loss = compute_loss(logits, y, loss_fn)
             train_losses.append(loss.item())
 
             # Backprop
             optimizer.zero_grad(set_to_none=True)
             loss.backward()
-            if clip_gradients:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 5)
             optimizer.step()
 
             batches.set_description(f"Epoch {epoch}/{num_epochs}")
@@ -377,7 +382,184 @@ def train_transformer_decoder(
             onset_roll=True,
         )
 
-        # Save plot of loss during training
+        # Save loss plot after each epoch
+        plt.plot(train_losses)
+        loss_plot_path = os.path.join(model_dir, f"loss_{epoch}.png")
+        plt.tight_layout()
+        plt.savefig(loss_plot_path)
+        print(f"Saved {loss_plot_path}")
+        plt.clf()
+
+        if config["save_checkpoints"]:
+            save_checkpoint(
+                model_dir=model_dir,
+                epoch=epoch,
+                model=model,
+                optimizer=optimizer,
+                loss=loss,
+                config=config,
+            )
+
+    return epoch_evals
+
+
+def evaluate_transformer_encdec(
+    model,
+    config,
+    train_loader,
+    val_loader,
+    loss_fn,
+    device,
+):
+    with torch.no_grad():
+        model.eval()
+
+        evaluation = {}
+
+        n_eval_iters = config["n_eval_iters"]
+
+        print(f"Evaluating train loss for {n_eval_iters} iters")
+        eval_train_losses = torch.zeros(n_eval_iters)
+        for k in range(n_eval_iters):
+            src, tgt = parse_sequential_batch(next(iter(train_loader)), device)
+            logits = model(src, tgt)
+            loss = compute_loss(logits, tgt, loss_fn)
+            eval_train_losses[k] = loss.item()
+
+        print(f"Evaluating val loss for {n_eval_iters} iters")
+        eval_val_losses = torch.zeros(n_eval_iters)
+        for k in range(n_eval_iters):
+            src, tgt = parse_sequential_batch(next(iter(val_loader)), device)
+            logits = model(src, tgt)
+            loss = compute_loss(logits, tgt, loss_fn)
+            eval_val_losses[k] = loss.item()
+
+        evaluation.update(
+            {
+                "train_loss": eval_train_losses.mean().item(),
+                "val_loss": eval_val_losses.mean().item(),
+            }
+        )
+
+        # Log eval losses
+        print(f'{evaluation["train_loss"]=}, {evaluation["val_loss"]=}')
+        if config["wandb"]:
+            wandb.log(
+                {
+                    "train_loss": evaluation["train_loss"],
+                    "val_loss": evaluation["val_loss"],
+                }
+            )
+
+        # Generate sequences and compute their descriptors
+        n_ticks = config["sequence_len"]
+        n_seqs = config["n_eval_seqs"]
+        rolls = []
+        descriptors = []
+        print(f"Generating {n_seqs} {n_ticks}-tick sequences...")
+        for _ in range(n_seqs):
+            # Generate a new sequence starting with a padding token (idy) given a full sequence (idx)
+            # TODO: pull the x seq from the dataset, and also keep the original y to compare
+            idx = torch.tensor([TEST_SEQ], dtype=torch.long, device=device)
+            idy = torch.full((1, 1), PAD_TOKEN, dtype=torch.long, device=device)
+            seq = model.generate(idx, idy, max_new_tokens=n_ticks)[0]
+
+            roll = get_roll_from_sequence(seq)
+            rolls.append(roll)
+
+            # Compute sequence descriptors
+            descs = pianoroll2descriptors(
+                roll,
+                config["resolution"],
+                drums=config["data"]["part_2"] == "Drums",
+            )
+            descriptors.append(descs)
+
+        # Save the descriptors along with a few samples
+        evaluation["generated_descriptors"] = pd.DataFrame(descriptors).to_dict()
+        evaluation["generated_samples"] = rolls[:10]
+
+        model.train()
+
+    return evaluation
+
+
+def train_transformer_encoder_decoder(
+    model,
+    train_loader,
+    val_loader,
+    optimizer,
+    loss_fn,
+    config,
+    device,
+    model_name,
+):
+    num_epochs = config["num_epochs"]
+
+    model_dir = os.path.join(MODELS_DIR, model_name)
+    if not os.path.isdir(model_dir):
+        os.makedirs(model_dir)
+
+    if config["wandb"]:
+        wandb.init(project=WANDB_PROJECT_NAME, config=config, name=model_name)
+
+    train_losses = []
+    epoch_evals = []
+
+    for epoch in range(1, num_epochs + 1):
+        batches = tqdm(train_loader)
+        for batch in batches:
+            # Forward pass
+            src, tgt = parse_sequential_batch(batch, device)
+
+            logits = model(src, tgt)
+
+            # Compute loss
+            loss = compute_loss(logits, tgt, loss_fn)
+            train_losses.append(loss.item())
+
+            # Backprop
+            optimizer.zero_grad(set_to_none=True)
+            loss.backward()
+            optimizer.step()
+
+            batches.set_description(f"Epoch {epoch}/{num_epochs}")
+            batches.set_postfix({"loss": f"{loss.item():.4f}"})
+
+            # Save loss plot after each batch
+            plt.plot(train_losses)
+            loss_plot_path = os.path.join(model_dir, f"loss_{epoch}.png")
+            plt.tight_layout()
+            plt.savefig(loss_plot_path)
+            plt.clf()
+
+        # Evaluate after each epoch
+        epoch_eval = evaluate_transformer_encdec(
+            model=model,
+            config=config,
+            train_loader=train_loader,
+            val_loader=val_loader,
+            loss_fn=loss_fn,
+            device=device,
+        )
+        epoch_evals.append(epoch_eval)
+
+        # Log eval losses locally
+        e_ixs = range(epoch)
+        eval_train_losses = [epoch_evals[i]["train_loss"] for i in e_ixs]
+        eval_val_losses = [epoch_evals[i]["val_loss"] for i in e_ixs]
+        marker = "o" if epoch == 1 else None
+        plt.plot(e_ixs, eval_train_losses, label="train", c="blue", marker=marker)
+        plt.plot(e_ixs, eval_val_losses, label="val", c="orange", marker=marker)
+        eval_loss_plot_path = os.path.join(model_dir, f"eval_loss_{epoch}.png")
+        plt.legend()
+        plt.title(f"{model_name}")
+        plt.tight_layout()
+        plt.savefig(eval_loss_plot_path)
+        print(f"Saved {eval_loss_plot_path}")
+        plt.clf()
+
+        # Save loss plot after each epoch
         plt.plot(train_losses)
         loss_plot_path = os.path.join(model_dir, f"loss_{epoch}.png")
         plt.tight_layout()
