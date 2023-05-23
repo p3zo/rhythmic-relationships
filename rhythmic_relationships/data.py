@@ -13,6 +13,7 @@ from rhythmic_relationships import (
 )
 from rhythmic_relationships.parts import PARTS, get_part_pairs
 from rhythmic_relationships.representations import REPRESENTATIONS
+from rhythmic_relationships.vocab import tokenize_roll
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
@@ -43,6 +44,73 @@ def get_seg_fname(filepath, dataset_dir):
     return os.path.splitext(
         filepath.split(os.path.join(dataset_dir, REPRESENTATIONS_DIRNAME))[1]
     )[0].strip("/")
+
+
+def get_sequences(tokenized, context_len):
+    """Partitions a tokenized segment into a recurrent sequence and returns X, Y pairs."""
+    X, Y = [], []
+
+    for t in range(len(tokenized)):
+        from_ix = 0
+        y_from_ix = from_ix
+        to_ix = t
+
+        if t == context_len:
+            y_from_ix = from_ix + 1
+        if t > context_len:
+            from_ix = t - context_len
+            y_from_ix = from_ix + 1
+
+        context = tokenized[from_ix:to_ix].tolist()
+        target = tokenized[y_from_ix : to_ix + 1].tolist()
+
+        if len(context) < context_len:
+            c_pad_len = context_len - len(context)
+            context = [PAD_TOKEN] * c_pad_len + context
+
+        if len(target) < context_len:
+            t_pad_len = context_len - len(target)
+            target = [PAD_TOKEN] * t_pad_len + target
+
+        X.append(context)
+        Y.append(target)
+
+    return X, Y
+
+
+def get_pair_sequences(
+    p1_tokenized, p2_tokenized, context_len, pad_context=True, pad_target=True
+):
+    """Partitions a pair of tokenized segments into recurrent sequences and returns X, Y pairs.
+
+    Optionally pad context/target to create pairs that are always the same length.
+    """
+    X, Y = [], []
+
+    for t in range(len(p1_tokenized)):
+        from_ix = 0
+        to_ix = t + 1
+
+        if t >= context_len:
+            from_ix = to_ix - context_len
+
+        context = p1_tokenized[from_ix:to_ix]
+        target = p2_tokenized[from_ix:to_ix]
+
+        # Pad context
+        if pad_context and len(context) < context_len:
+            c_pad_len = context_len - len(context)
+            context = [PAD_TOKEN] * c_pad_len + context
+
+        # Pad target
+        if pad_target and len(target) < context_len:
+            t_pad_len = context_len - len(target)
+            target = [PAD_TOKEN] * t_pad_len + target
+
+        X.append(context)
+        Y.append(target)
+
+    return X, Y
 
 
 class PartPairDataset(Dataset):
@@ -272,79 +340,6 @@ class PartDataset(Dataset):
         return df
 
 
-def tokenize_roll(roll):
-    # Will select the higher note in the case of polyphony
-    tokenized = roll.argmax(axis=1)
-    return tokenized
-
-
-def get_sequences(tokenized, context_len):
-    """Partitions a tokenized segment into a recurrent sequence and returns X, Y pairs."""
-    X, Y = [], []
-
-    for t in range(len(tokenized)):
-        from_ix = 0
-        y_from_ix = from_ix
-        to_ix = t
-
-        if t == context_len:
-            y_from_ix = from_ix + 1
-        if t > context_len:
-            from_ix = t - context_len
-            y_from_ix = from_ix + 1
-
-        context = tokenized[from_ix:to_ix].tolist()
-        target = tokenized[y_from_ix : to_ix + 1].tolist()
-
-        if len(context) < context_len:
-            c_pad_len = context_len - len(context)
-            context = [PAD_TOKEN] * c_pad_len + context
-
-        if len(target) < context_len:
-            t_pad_len = context_len - len(target)
-            target = [PAD_TOKEN] * t_pad_len + target
-
-        X.append(context)
-        Y.append(target)
-
-    return X, Y
-
-
-def get_pair_sequences(
-    p1_tokenized, p2_tokenized, context_len, pad_context=True, pad_target=True
-):
-    """Partitions a pair of tokenized segments into recurrent sequences and returns X, Y pairs.
-
-    Optionally pad context/target to create pairs that are always the same length.
-    """
-    X, Y = [], []
-
-    for t in range(len(p1_tokenized)):
-        from_ix = 0
-        to_ix = t + 1
-
-        if t >= context_len:
-            from_ix = to_ix - context_len
-
-        context = p1_tokenized[from_ix:to_ix].tolist()
-        target = p2_tokenized[from_ix:to_ix].tolist()
-
-        # Pad context
-        if pad_context and len(context) < context_len:
-            c_pad_len = context_len - len(context)
-            context = [PAD_TOKEN] * c_pad_len + context
-
-        # Pad target
-        if pad_target and len(target) < context_len:
-            t_pad_len = context_len - len(target)
-            target = [PAD_TOKEN] * t_pad_len + target
-
-        X.append(context)
-        Y.append(target)
-
-    return X, Y
-
-
 class PartDatasetSequential(Dataset):
     """
     Loads the same data as a PartDataset, but partitions each segment into a recurrent sequence and returns X, Y pairs.
@@ -399,7 +394,7 @@ class PartDatasetSequential(Dataset):
         seg = self.part_df.iloc[idx]
         seg_repr = load_repr(seg, self.representation_ix)
 
-        tokenized = tokenize_roll(seg_repr)
+        tokenized = tokenize_roll(seg_repr, self.part)
 
         X, Y = get_sequences(tokenized, self.context_len)
 
@@ -469,8 +464,8 @@ class PartPairDatasetSequential(Dataset):
         p1_seg_repr = load_repr(p1_seg, self.repr_1_ix)
         p2_seg_repr = load_repr(p2_seg, self.repr_2_ix)
 
-        p1_tokenized = tokenize_roll(p1_seg_repr)
-        p2_tokenized = tokenize_roll(p2_seg_repr)
+        p1_tokenized = tokenize_roll(p1_seg_repr, self.part_1)
+        p2_tokenized = tokenize_roll(p2_seg_repr, self.part_2)
 
         X, Y = get_pair_sequences(p1_tokenized, p2_tokenized, self.context_len)
 
