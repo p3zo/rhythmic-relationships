@@ -128,11 +128,10 @@ class RecurrentVAE(nn.Module):
         return x_reconstructed, mu, sigma
 
 
-"""All classes below this line were implemented following https://www.youtube.com/watch?v=kCc8FmEb1nY"""
-
-
 class Head(nn.Module):
-    """One head of self-attention"""
+    """One head of self-attention
+    This class was implemented following https://www.youtube.com/watch?v=kCc8FmEb1nY
+    """
 
     def __init__(self, n_embed, head_size, context_len, dropout):
         super().__init__()
@@ -168,7 +167,9 @@ class Head(nn.Module):
 
 
 class MultiHeadAttention(nn.Module):
-    """Multiple heads of self-attention in parallel"""
+    """Multiple heads of self-attention in parallel
+    This class was implemented following https://www.youtube.com/watch?v=kCc8FmEb1nY
+    """
 
     def __init__(self, n_head, n_embed, head_size, context_len, dropout):
         super().__init__()
@@ -193,6 +194,8 @@ class MultiHeadAttention(nn.Module):
 
 
 class FeedForward(nn.Module):
+    """This class was implemented following https://www.youtube.com/watch?v=kCc8FmEb1nY"""
+
     def __init__(self, n_embed, dropout):
         super().__init__()
         self.net = nn.Sequential(
@@ -208,7 +211,9 @@ class FeedForward(nn.Module):
 
 
 class Block(nn.Module):
-    """Transformer block: communication followed by computation"""
+    """Transformer block: communication followed by computation
+    This class was implemented following https://www.youtube.com/watch?v=kCc8FmEb1nY
+    """
 
     def __init__(self, n_embed, context_len, n_head, dropout):
         super().__init__()
@@ -231,10 +236,12 @@ class Block(nn.Module):
 
 
 class TransformerDecoder(nn.Module):
+    """This class was implemented following https://www.youtube.com/watch?v=kCc8FmEb1nY"""
+
     def __init__(self, vocab_size, n_embed, context_len, n_head, n_layer, dropout):
         super().__init__()
 
-        # TODO: Why do we add 1 to vocab_size? This is not necessary on `mps` but throws an error on `cpu` and `cuda`.
+        # TODO: Why do we need to add 1 to vocab_size? It's not necessary on `mps` but throws an error on `cpu` and `cuda`
         vocab_size = vocab_size + 1
 
         self.context_len = context_len
@@ -298,3 +305,165 @@ class TransformerDecoder(nn.Module):
             idx = torch.cat((idx, idx_next), dim=1)  # (B, T+1)
 
         return idx
+
+
+class TransformerDecoderNew(nn.Module):
+    def __init__(self, n_layer, n_head, d_model, d_ff, dropout):
+        super().__init__()
+
+        layer = nn.TransformerDecoderLayer(
+            d_model=d_model,
+            nhead=n_head,
+            dim_feedforward=d_ff,
+            dropout=dropout,
+            batch_first=True,
+        )
+        ln = nn.LayerNorm(d_model)
+        self.decoder = nn.TransformerDecoder(
+            decoder_layer=layer, num_layers=n_layer, norm=ln
+        )
+
+    def forward(self, x, y):
+        return self.decoder(x, y)
+
+
+class TransformerEncoder(nn.Module):
+    def __init__(self, n_layer, n_head, d_model, d_ff, dropout):
+        super().__init__()
+
+        layer = nn.TransformerEncoderLayer(
+            d_model=d_model,
+            nhead=n_head,
+            dim_feedforward=d_ff,
+            dropout=dropout,
+            batch_first=True,
+        )
+        ln = nn.LayerNorm(d_model)
+        self.encoder = nn.TransformerEncoder(
+            encoder_layer=layer, num_layers=n_layer, norm=ln
+        )
+
+    def forward(self, x):
+        return self.encoder(x)
+
+
+class TransformerEncoderDecoder(nn.Module):
+    def __init__(
+        self, context_len, vocab_size, n_embed, encoder_params, decoder_params
+    ):
+        super().__init__()
+
+        self.token_embedding = nn.Embedding(vocab_size, n_embed)
+
+        self.encoder = TransformerEncoder(d_model=vocab_size, **encoder_params)
+        self.decoder = TransformerDecoderNew(d_model=vocab_size, **decoder_params)
+
+        self.pos_emb = nn.Embedding(context_len, n_embed)
+
+    def forward(self, idx, idy):
+        # B, T, C=N_embed
+        enc_tok_emb = self.token_embedding(idx)
+        dec_tok_emb = self.token_embedding(idy)
+
+        # T, C
+        enc_pos_emb = self.pos_emb.weight[: idx.shape[1]]
+        dec_pos_emb = self.pos_emb.weight[: idy.shape[1]]
+
+        # B, T, C
+        x = enc_tok_emb + enc_pos_emb
+        y = dec_tok_emb + dec_pos_emb
+
+        x = self.encoder(x)
+
+        # B, T, vocab_size
+        logits = self.decoder(x, y)
+
+        return logits
+
+
+class TransformerEncoderDecoderNew(nn.Module):
+    def __init__(
+        self,
+        context_len,
+        vocab_size,
+        n_embed,
+        n_layer,
+        n_head,
+        d_ff,
+        dropout,
+    ):
+        super().__init__()
+
+        self.context_len = context_len
+
+        self.token_embedding = nn.Embedding(
+            num_embeddings=vocab_size,
+            embedding_dim=n_embed,
+        )
+
+        self.position_embedding = nn.Embedding(
+            num_embeddings=context_len, embedding_dim=n_embed
+        )
+
+        self.transformer = nn.Transformer(
+            d_model=n_embed,
+            nhead=n_head,
+            num_encoder_layers=n_layer,
+            num_decoder_layers=n_layer,
+            dim_feedforward=d_ff,
+            dropout=dropout,
+        )
+
+        self.register_buffer("tril", torch.tril(torch.ones(context_len, context_len)))
+
+    def forward(self, idx, idy):
+        # B, T, C=N_embed
+        enc_tok_emb = self.token_embedding(idx)
+        dec_tok_emb = self.token_embedding(idy)
+
+        # T, C
+        enc_pos_emb = self.position_embedding.weight[: idx.shape[1]]
+        dec_pos_emb = self.position_embedding.weight[: idy.shape[1]]
+
+        # B, T, C
+        x = enc_tok_emb + enc_pos_emb
+        y = dec_tok_emb + dec_pos_emb
+
+        tgt_mask = self.transformer.generate_square_subsequent_mask(y.shape[1]).to(
+            y.device
+        )
+
+        # T, B, C
+        x = x.permute(1, 0, 2)
+        y = y.permute(1, 0, 2)
+
+        output = self.transformer(x, y, tgt_mask=tgt_mask)
+        return output.permute(1, 0, 2)
+
+    def generate(self, idx, idy, max_new_tokens=32):
+        # idx is a (B, T) array of indices in the current context
+        with torch.no_grad():
+            self.eval()
+            for _ in range(max_new_tokens):
+                # Crop idx to the last context_len tokens
+                idx_cond = idx[:, -self.context_len :]
+                idy_cond = idy[:, -self.context_len :]
+
+                # Get the predictions
+                logits = self(idx_cond, idy_cond)
+
+                # focus only on the last time step
+                logits = logits[:, -1, :]  # becomes (B, C)
+
+                # apply softmax to get probabilities
+                probs = torch.nn.functional.softmax(logits, dim=-1)  # (B, C)
+
+                # sample from the distribution
+                idy_next = torch.multinomial(probs, num_samples=1)  # (B, 1)
+
+                # append sampled index to the running sequence
+                idy = torch.cat((idy, idy_next), dim=1)  # (B, T+1)
+
+            self.train()
+
+        return idy
