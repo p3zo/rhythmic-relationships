@@ -279,8 +279,8 @@ def get_pmid_segment_reprs(pmid, segment_id, parts):
     or3_list = []
     hits_list = []
     for part in parts:
+        # TODO: reprs is sometimes None because of the filters in slice_midi. Refactor this function
         reprs = seg_part_reprs[f"{segment_id}_{part}"][0]
-        # TODO: convert all reprs to pmid
         roll_list.append(reprs[REPRESENTATIONS.index("roll")])
         or_list.append(reprs[REPRESENTATIONS.index("onset_roll")])
         or3_list.append(reprs[REPRESENTATIONS.index("onset_roll_3_octave")])
@@ -512,6 +512,7 @@ def get_pretty_midi_from_roll_list(
         A PrettyMidi object with one instrument per piano roll.
     """
     pmid = pm.PrettyMIDI()
+
     for ix, roll in enumerate(roll_list):
         program = 0
         part = ""

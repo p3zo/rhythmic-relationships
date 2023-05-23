@@ -23,12 +23,6 @@ if __name__ == "__main__":
         help="Name of the directory from which to load MIDI data.",
     )
     parser.add_argument(
-        "--filename",
-        type=str,
-        default="Cocciante/Cervo a primavera",
-        help="The name of the MIDI file to load from.",
-    )
-    parser.add_argument(
         "--n_samples",
         type=int,
         default=5,
@@ -37,7 +31,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--n_parts_min",
         type=int,
-        default=2,
+        default=3,
         help="The minimum number of parts to include in a segment.",
     )
     parser.add_argument(
@@ -50,7 +44,6 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     dataset_name = args.dataset
-    filename = args.filename
     midi_dir = args.midi_dir
     n_samples = args.n_samples
     n_parts_min = args.n_parts_min
@@ -73,6 +66,7 @@ if __name__ == "__main__":
         pmid = load_midi_file(os.path.join(midi_dir, f"{track_name}.mid"))
 
         parts = seg_df.part_id.values.tolist()
+
         (
             pmid_roll,
             pmid_onset_roll,

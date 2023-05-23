@@ -5,7 +5,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 import seaborn as sns
-from model_utils import get_model_catalog, load_model
+from model_utils import load_model
 from tqdm import tqdm
 from rhythmtoolbox import pianoroll2descriptors
 
@@ -16,7 +16,8 @@ from rhythmic_relationships.io import get_roll_from_sequence, write_midi_from_ro
 
 DEVICE = torch.device("mps" if torch.backends.mps.is_built() else "cpu")
 
-model_name = "pedantocracy_2305062342"
+# model_name = "pedantocracy_2305062342"
+model_name = "defease_2305091520"
 
 # Load model
 model, config, stats = load_model(model_name, TransformerDecoder)
@@ -115,21 +116,29 @@ plt.savefig(os.path.join(plots_dir, "all-comparison.png"))
 plt.clf()
 
 
+
+
 # Plot descriptor means from post-epoch evaluations, with dataset means for reference
-desc_means = [i["generation_descriptor_means"] for i in stats["epoch_evals"]]
-epoch_means_df = pd.DataFrame(desc_means)
-epoch_means_df = epoch_means_df.dropna(how="all", axis=1).drop("stepDensity", axis=1)
-epochs = range(len(epoch_means_df))
-for col in epoch_means_df:
-    plt.plot(epochs, epoch_means_df[col].values, label=col)
-    d = dataset_df[col].describe()
-    low, mid, high = d["mean"] - d["std"], d["mean"], d["mean"] + d["std"]
-    plt.axhline(y=mid, color="black", lw=0.5, ls="--")
-    plt.axhline(y=low, color="black", lw=0.25, ls="--")
-    plt.axhline(y=high, color="black", lw=0.25, ls="--")
-    plt.yticks([low, mid, high], ["mean - std", "dataset mean", "mean + std"])
-    plt.title(col)
-    plt.xlabel("epoch")
-    plt.tight_layout()
-    plt.savefig(os.path.join(plots_dir, f"epoch_means_{col}.png"))
-    plt.clf()
+epoch_descs = [i["generated_descriptors"] for i in stats["epoch_evals"]]
+epoch_df = pd.concat(
+    [
+        pd.DataFrame(i["generated_descriptors"], index=[ix] * 3)
+        for ix, i in enumerate(stats["epoch_evals"])
+    ]
+)
+epoch_df = epoch_df.dropna(how="all", axis=1).drop("stepDensity", axis=1)
+epochs = range(epoch_df.index.max())
+# # TODO: rework this
+# for col in epoch_df:
+#     plt.plot(epochs, epoch_df[col].values, label=col)
+#     d = dataset_df[col].describe()
+#     low, mid, high = d["mean"] - d["std"], d["mean"], d["mean"] + d["std"]
+#     plt.axhline(y=mid, color="black", lw=0.5, ls="--")
+#     plt.axhline(y=low, color="black", lw=0.25, ls="--")
+#     plt.axhline(y=high, color="black", lw=0.25, ls="--")
+#     plt.yticks([low, mid, high], ["mean - std", "dataset mean", "mean + std"])
+#     plt.title(col)
+#     plt.xlabel("epoch")
+#     plt.tight_layout()
+#     plt.savefig(os.path.join(plots_dir, f"epoch_means_{col}.png"))
+#     plt.clf()

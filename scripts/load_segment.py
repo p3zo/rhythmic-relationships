@@ -2,10 +2,10 @@
 import argparse
 import os
 
-from rhythmic_relationships import DATASETS_DIR, REPRESENTATIONS_DIRNAME
+from rhythmic_relationships import DATASETS_DIR
 from rhythmic_relationships.data import (
     load_dataset_annotations,
-    split_filepath_on_dirname,
+    get_seg_fname,
 )
 from rhythmic_relationships.io import (
     get_pmid_segment,
@@ -32,13 +32,13 @@ if __name__ == "__main__":
     parser.add_argument(
         "--filename",
         type=str,
-        default="Cocciante/Cervo a primavera",
+        default="Ron/Sono uguale a te",
         help="The name of the MIDI file to load from.",
     )
     parser.add_argument(
         "--segment_id",
         type=int,
-        default=130,
+        default=107,
         help="The ID of the segment to load.",
     )
     parser.add_argument(
@@ -68,9 +68,7 @@ if __name__ == "__main__":
     # Load dataset annotations
     df = load_dataset_annotations(os.path.join(DATASETS_DIR, dataset_name))
     df["filename"] = df["filepath"].apply(
-        lambda x: split_filepath_on_dirname(
-            x, os.path.join(DATASETS_DIR, dataset_name, REPRESENTATIONS_DIRNAME)
-        )
+        lambda x: get_seg_fname(x, os.path.join(DATASETS_DIR, dataset_name))
     )
 
     seg_df = df.loc[(df.filename == filename) & (df.segment_id == seg_id)]
