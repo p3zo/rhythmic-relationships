@@ -39,8 +39,10 @@ def load_repr(segment, repr_ix):
     return reprs[repr_ix]
 
 
-def split_filepath_on_dirname(filepath, dirname):
-    return os.path.splitext(filepath.split(dirname)[1])[0].strip("/")
+def get_seg_fname(filepath, dataset_dir):
+    return os.path.splitext(
+        filepath.split(os.path.join(dataset_dir, REPRESENTATIONS_DIRNAME))[1]
+    )[0].strip("/")
 
 
 class PartPairDataset(Dataset):
@@ -144,9 +146,7 @@ class PartPairDataset(Dataset):
 
             # Only necessary to keep metadata for one part because they are the same
             segment_ids.append(row.segment_id)
-            filename = split_filepath_on_dirname(
-                row.filepath, os.path.join(self.dataset_dir, REPRESENTATIONS_DIRNAME)
-            )
+            filename = get_seg_fname(row.filepath, self.dataset_dir)
             filenames.append(filename)
 
         print(f"Loading {self.part_2} segments {self.repr_2}")
@@ -219,13 +219,22 @@ class PartDataset(Dataset):
         df = load_dataset_annotations(self.dataset_dir)
         self.part_df = df[df.part_id == part]
 
+        self.loaded_segment_ids = []
+
     def __len__(self):
         return len(self.part_df)
 
     def __getitem__(self, idx):
         seg = self.part_df.iloc[idx]
         seg_repr = load_repr(seg, self.representation_ix)
-        return torch.from_numpy(seg_repr).to(torch.float32)
+
+        seg_id = (
+            get_seg_fname(seg["filepath"], self.dataset_dir) + f'_{seg["segment_id"]}'
+        )
+        self.loaded_segment_ids.append(seg_id)
+
+        # TODO: remove the astype once the dataset is created w explicit casts
+        return torch.from_numpy(seg_repr.astype(np.float32)).to(torch.float32)
 
     def as_df(self, shuffle=False, subset=None):
         """Returns the entire dataset in a dataframe. Useful for analysis."""
@@ -246,9 +255,7 @@ class PartDataset(Dataset):
             reprs.append(load_repr(row, self.representation_ix))
             segment_ids.append(row.segment_id)
 
-            filename = split_filepath_on_dirname(
-                row.filepath, os.path.join(self.dataset_dir, REPRESENTATIONS_DIRNAME)
-            )
+            filename = get_seg_fname(row.filepath, self.dataset_dir)
             filenames.append(filename)
 
         df = pd.DataFrame(reprs)
