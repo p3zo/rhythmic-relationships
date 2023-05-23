@@ -412,7 +412,9 @@ class TransformerEncoderDecoderNew(nn.Module):
             num_decoder_layers=n_layer,
             dim_feedforward=d_ff,
             dropout=dropout,
+            batch_first=True,
         )
+        self.output_layer = nn.Linear(n_embed, vocab_size)
 
         self.register_buffer("tril", torch.tril(torch.ones(context_len, context_len)))
 
@@ -433,12 +435,9 @@ class TransformerEncoderDecoderNew(nn.Module):
             y.device
         )
 
-        # T, B, C
-        x = x.permute(1, 0, 2)
-        y = y.permute(1, 0, 2)
+        out = self.transformer(x, y, tgt_mask=tgt_mask)
 
-        output = self.transformer(x, y, tgt_mask=tgt_mask)
-        return output.permute(1, 0, 2)
+        return self.output_layer(out)
 
     def generate(self, idx, idy, max_new_tokens=32):
         # idx is a (B, T) array of indices in the current context
