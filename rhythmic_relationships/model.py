@@ -385,7 +385,8 @@ class TransformerEncoderDecoderNew(nn.Module):
     def __init__(
         self,
         context_len,
-        vocab_size,
+        src_vocab_size,
+        tgt_vocab_size,
         n_embed,
         n_layer,
         n_head,
@@ -396,13 +397,18 @@ class TransformerEncoderDecoderNew(nn.Module):
 
         self.context_len = context_len
 
-        self.token_embedding = nn.Embedding(
-            num_embeddings=vocab_size,
+        self.src_token_embedding = nn.Embedding(
+            num_embeddings=src_vocab_size,
+            embedding_dim=n_embed,
+        )
+        self.tgt_token_embedding = nn.Embedding(
+            num_embeddings=tgt_vocab_size,
             embedding_dim=n_embed,
         )
 
         self.position_embedding = nn.Embedding(
-            num_embeddings=context_len, embedding_dim=n_embed
+            num_embeddings=context_len,
+            embedding_dim=n_embed,
         )
 
         self.transformer = nn.Transformer(
@@ -414,14 +420,14 @@ class TransformerEncoderDecoderNew(nn.Module):
             dropout=dropout,
             batch_first=True,
         )
-        self.output_layer = nn.Linear(n_embed, vocab_size)
+        self.output_layer = nn.Linear(n_embed, tgt_vocab_size)
 
         self.register_buffer("tril", torch.tril(torch.ones(context_len, context_len)))
 
     def forward(self, idx, idy):
         # B, T, C=N_embed
-        enc_tok_emb = self.token_embedding(idx)
-        dec_tok_emb = self.token_embedding(idy)
+        enc_tok_emb = self.src_token_embedding(idx)
+        dec_tok_emb = self.tgt_token_embedding(idy)
 
         # T, C
         enc_pos_emb = self.position_embedding.weight[: idx.shape[1]]
@@ -439,30 +445,32 @@ class TransformerEncoderDecoderNew(nn.Module):
 
         return self.output_layer(out)
 
+    @torch.no_grad()
     def generate(self, idx, idy, max_new_tokens=32):
-        # idx is a (B, T) array of indices in the current context
-        with torch.no_grad():
-            self.eval()
-            for _ in range(max_new_tokens):
-                # Crop idx to the last context_len tokens
-                idx_cond = idx[:, -self.context_len :]
-                idy_cond = idy[:, -self.context_len :]
+        # idx is (B, T)
 
-                # Get the predictions
-                logits = self(idx_cond, idy_cond)
+        self.eval()
 
-                # focus only on the last time step
-                logits = logits[:, -1, :]  # becomes (B, C)
+        for _ in range(max_new_tokens):
+            # Crop idx to the last context_len tokens
+            idx_cond = idx[:, -self.context_len :]
+            idy_cond = idy[:, -self.context_len :]
 
-                # apply softmax to get probabilities
-                probs = torch.nn.functional.softmax(logits, dim=-1)  # (B, C)
+            # Get the predictions
+            logits = self(idx_cond, idy_cond)
 
-                # sample from the distribution
-                idy_next = torch.multinomial(probs, num_samples=1)  # (B, 1)
+            # focus only on the last time step
+            logits = logits[:, -1, :]  # becomes (B, C)
 
-                # append sampled index to the running sequence
-                idy = torch.cat((idy, idy_next), dim=1)  # (B, T+1)
+            # apply softmax to get probabilities
+            probs = torch.nn.functional.softmax(logits, dim=-1)  # (B, C)
 
-            self.train()
+            # sample from the distribution
+            idy_next = torch.multinomial(probs, num_samples=1)  # (B, 1)
+
+            # append sampled index to the running sequence
+            idy = torch.cat((idy, idy_next), dim=1)  # (B, T+1)
+
+        self.train()
 
         return idy

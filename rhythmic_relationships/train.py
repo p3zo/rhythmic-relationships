@@ -8,14 +8,10 @@ from tqdm import tqdm
 from rhythmtoolbox import pianoroll2descriptors
 
 from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
-from rhythmic_relationships.data import PAD_TOKEN, REST_TOKEN
 from rhythmic_relationships.io import write_midi_from_roll, get_roll_from_sequence
+from rhythmic_relationships.vocab import PAD_TOKEN, TEST_SEQ
 
 WANDB_PROJECT_NAME = "rhythmic-relationships"
-
-# fmt: off
-TEST_SEQ = [34, REST_TOKEN, 36, REST_TOKEN, 36, REST_TOKEN, 36, REST_TOKEN, 34, REST_TOKEN, 36, REST_TOKEN, 39, REST_TOKEN, 43, REST_TOKEN, 39, REST_TOKEN, 41, REST_TOKEN, 41, REST_TOKEN, 41, REST_TOKEN, 39, REST_TOKEN, 41, REST_TOKEN, 44, REST_TOKEN, REST_TOKEN, REST_TOKEN]
-# fmt: on
 
 
 def save_checkpoint(model_dir, epoch, model, optimizer, loss, config):

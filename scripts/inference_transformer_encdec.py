@@ -9,16 +9,12 @@ from rhythmtoolbox import pianoroll2descriptors
 
 from model_utils import load_model
 from rhythmic_relationships import MODELS_DIR
-from rhythmic_relationships.data import (
-    PAD_TOKEN,
-    REST_TOKEN,
-    PartDataset,
-    PartPairDataset,
-)
+from rhythmic_relationships.data import PartDataset, PartPairDataset
 from rhythmic_relationships.io import get_roll_from_sequence, write_midi_from_roll
 from rhythmic_relationships.model import TransformerEncoderDecoderNew
+from rhythmic_relationships.vocab import PAD_TOKEN, TEST_SEQ
 
-MODEL_NAME = "hunyak_2305222146"
+MODEL_NAME = "restrictionist_2305230056"
 
 DEVICE = torch.device(
     "mps"
@@ -27,14 +23,6 @@ DEVICE = torch.device(
     if torch.cuda.device_count() > 0
     else torch.device("cpu")
 )
-
-# fmt: off
-TEST_SEQ = [34, REST_TOKEN, 36, REST_TOKEN, 36, REST_TOKEN, 36, REST_TOKEN, 34, REST_TOKEN, 36, REST_TOKEN, 39, REST_TOKEN, 43, REST_TOKEN, 39, REST_TOKEN, 41, REST_TOKEN, 41, REST_TOKEN, 41, REST_TOKEN, 39, REST_TOKEN, 41, REST_TOKEN, 44, REST_TOKEN, REST_TOKEN, REST_TOKEN]
-# fmt: on
-
-# TODO: make a list of good segments with the given parts
-TEST_SEGMENT_IDS = []
-TEST_SEQS = []
 
 
 if __name__ == "__main__":
@@ -48,8 +36,8 @@ if __name__ == "__main__":
     n_ticks = config["sequence_len"]
 
     write_generations = True
+    gen_dir = os.path.join(MODELS_DIR, MODEL_NAME, "inference")
     if write_generations:
-        gen_dir = os.path.join(MODELS_DIR, MODEL_NAME, "inference")
         if not os.path.isdir(gen_dir):
             os.makedirs(gen_dir)
 

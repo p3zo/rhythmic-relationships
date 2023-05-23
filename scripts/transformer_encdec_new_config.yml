@@ -1,17 +1,16 @@
 data:
   dataset_name: "lmdc_500_2bar_4res"
-  part_1: "Melody"
+  part_1: "Drums"
   part_2: "Bass"
-  repr_1: "onset_roll"
+  repr_1: "drum_roll"
   repr_2: "onset_roll"
   context_len: 32
 
 model:
-  vocab_size: 131
-  n_embed: 96
-  n_layer: 3
+  n_embed: 64
+  n_layer: 2
   n_head: 2
-  d_ff: 1024
+  d_ff: 512
   dropout: 0.2
 
 sequence_len: 32
@@ -19,8 +18,8 @@ resolution: 4
 loss_fn: "cross-entropy"
 loss_reduction: 'mean'
 clip_gradients: False
-num_epochs: 5
-batch_size: 32
+num_epochs: 3
+batch_size: 48
 lr: 1e-3
 n_eval_iters: 20
 n_eval_seqs: 20

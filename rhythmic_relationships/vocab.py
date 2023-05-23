@@ -2,6 +2,17 @@ import itertools
 import numpy as np
 from rhythmic_relationships.parts import PARTS
 
+# Special tokens
+PAD_TOKEN = 130
+REST_TOKEN = 129
+
+# fmt: off
+TEST_SEQ = [34, REST_TOKEN, 36, REST_TOKEN, 36, REST_TOKEN, 36, REST_TOKEN, 34, REST_TOKEN, 36, REST_TOKEN, 39, REST_TOKEN, 43, REST_TOKEN, 39, REST_TOKEN, 41, REST_TOKEN, 41, REST_TOKEN, 41, REST_TOKEN, 39, REST_TOKEN, 41, REST_TOKEN, 44, REST_TOKEN, REST_TOKEN, REST_TOKEN]
+# fmt: on
+
+# TODO: make a list of good segments with the given parts
+TEST_SEGMENT_IDS = []
+TEST_SEQS = []
 
 def get_vocab(part):
     if part == "Drums":

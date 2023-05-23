@@ -13,13 +13,9 @@ from rhythmic_relationships import (
 )
 from rhythmic_relationships.parts import PARTS, get_part_pairs
 from rhythmic_relationships.representations import REPRESENTATIONS
-from rhythmic_relationships.vocab import tokenize_roll
+from rhythmic_relationships.vocab import tokenize_roll, PAD_TOKEN
 from torch.utils.data import Dataset
 from tqdm import tqdm
-
-# Special tokens for dataset vocabulary
-PAD_TOKEN = 130
-REST_TOKEN = 129
 
 
 def load_dataset_annotations(dataset_dir):
