@@ -105,7 +105,8 @@ def get_loss_fn(config):
     elif config["loss_fn"] == "bce":
         return torch.nn.BCELoss(reduction=reduction)
     elif config["loss_fn"] == "cross-entropy":
-        return torch.nn.CrossEntropyLoss(reduction=reduction)
+        # TODO: get ignore_index programatically based on part
+        return torch.nn.CrossEntropyLoss(reduction=reduction, ignore_index=1)
     elif config["loss_fn"] == "mse":
         return torch.nn.MSELoss(reduction=reduction)
     else:
