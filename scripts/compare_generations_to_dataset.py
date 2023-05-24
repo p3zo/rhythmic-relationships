@@ -12,7 +12,8 @@ from rhythmtoolbox import pianoroll2descriptors
 from rhythmic_relationships import MODELS_DIR
 from rhythmic_relationships.data import PAD_TOKEN, PartDataset
 from rhythmic_relationships.model import TransformerDecoder
-from rhythmic_relationships.io import get_roll_from_sequence, write_midi_from_roll
+from rhythmic_relationships.io import write_midi_from_roll
+from rhythmic_relationships.vocab import get_roll_from_sequence
 
 DEVICE = torch.device("mps" if torch.backends.mps.is_built() else "cpu")
 
@@ -27,8 +28,8 @@ part = config["dataset"]["part"]
 
 # Use the model to generate new sequences
 write_generations = False
+gen_dir = os.path.join(MODELS_DIR, model_name, "inference")
 if write_generations:
-    gen_dir = os.path.join(MODELS_DIR, model_name, "inference")
     if not os.path.isdir(gen_dir):
         os.makedirs(gen_dir)
 
@@ -41,7 +42,7 @@ print(f"Generating {n_seqs} sequences")
 for _ in tqdm(range(n_seqs)):
     idx = torch.full((1, 1), PAD_TOKEN, dtype=torch.long, device=DEVICE)
     seq = model.generate(idx, max_new_tokens=config["sequence_len"])[0][1:]
-    roll = get_roll_from_sequence(seq)
+    roll = get_roll_from_sequence(seq, part=part)
 
     generated_rolls.append(roll)
 
@@ -114,8 +115,6 @@ plt.legend(
 plt.tight_layout()
 plt.savefig(os.path.join(plots_dir, "all-comparison.png"))
 plt.clf()
-
-
 
 
 # Plot descriptor means from post-epoch evaluations, with dataset means for reference

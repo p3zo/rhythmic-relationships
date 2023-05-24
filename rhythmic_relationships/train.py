@@ -8,10 +8,19 @@ from tqdm import tqdm
 from rhythmtoolbox import pianoroll2descriptors
 
 from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
-from rhythmic_relationships.io import write_midi_from_roll, get_roll_from_sequence
-from rhythmic_relationships.vocab import PAD_TOKEN, TEST_SEQ
+from rhythmic_relationships.io import write_midi_from_roll
+from rhythmic_relationships.vocab import PAD_TOKEN, get_roll_from_sequence
 
 WANDB_PROJECT_NAME = "rhythmic-relationships"
+
+
+# TODO: make a list of good segments for manual eval with each part
+TEST_SEGMENT_IDS = []
+# fmt: off
+TEST_SEQS = {
+    'Melody': [34, 0, 36, 0, 36, 0, 36, 0, 34, 0, 36, 0, 39, 0, 43, 0, 39, 0, 41, 0, 41, 0, 41, 0, 39, 0, 41, 0, 44, 0, 0, 0]
+}
+# fmt: on
 
 
 def save_checkpoint(model_dir, epoch, model, optimizer, loss, config):
@@ -215,7 +224,7 @@ def train_recurrent(
 
 def compute_loss(logits, y, loss_fn):
     B, T, C = logits.shape
-    return loss_fn(logits.reshape(B * T, C), y.reshape(y.shape[0] * y.shape[1]))
+    return loss_fn(logits.view(B * T, C), y.view(y.shape[0] * y.shape[1]))
 
 
 def parse_sequential_batch(batch, device):
@@ -238,6 +247,7 @@ def evaluate_transformer_decoder(
 
         evaluation = {}
 
+        part = config["dataset"]["part"]
         n_eval_iters = config["n_eval_iters"]
         n_ticks = config["sequence_len"]
         n_seqs = config["n_eval_seqs"]
@@ -249,14 +259,14 @@ def evaluate_transformer_decoder(
         for _ in range(n_seqs):
             idx = torch.full((1, 1), PAD_TOKEN, dtype=torch.long, device=device)
             seq = model.generate(idx, max_new_tokens=n_ticks - 1)[0]
-            roll = get_roll_from_sequence(seq)
+            roll = get_roll_from_sequence(seq, part)
             rolls.append(roll)
 
             # Compute sequence descriptors
             descs = pianoroll2descriptors(
                 roll,
                 config["resolution"],
-                drums=config["dataset"]["part"] == "Drums",
+                drums=part == "Drums",
             )
             descriptors.append(descs)
 
@@ -412,6 +422,7 @@ def evaluate_transformer_encdec(
 
         evaluation = {}
 
+        tgt_part = config["data"]["part_2"]
         n_eval_iters = config["n_eval_iters"]
 
         print(f"Evaluating train loss for {n_eval_iters} iters")
@@ -456,18 +467,18 @@ def evaluate_transformer_encdec(
         for _ in range(n_seqs):
             # Generate a new sequence starting with a padding token (idy) given a full sequence (idx)
             # TODO: pull the x seq from the dataset, and also keep the original y to compare
-            idx = torch.tensor([TEST_SEQ], dtype=torch.long, device=device)
+            idx = torch.tensor([TEST_SEQS["Melody"]], dtype=torch.long, device=device)
             idy = torch.full((1, 1), PAD_TOKEN, dtype=torch.long, device=device)
             seq = model.generate(idx, idy, max_new_tokens=n_ticks)[0]
 
-            roll = get_roll_from_sequence(seq)
+            roll = get_roll_from_sequence(seq, tgt_part)
             rolls.append(roll)
 
             # Compute sequence descriptors
             descs = pianoroll2descriptors(
                 roll,
                 config["resolution"],
-                drums=config["data"]["part_2"] == "Drums",
+                drums=tgt_part == "Drums",
             )
             descriptors.append(descs)
 

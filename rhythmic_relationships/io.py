@@ -696,14 +696,3 @@ def write_midi_from_pattern(pattern, outpath, resolution=24, pitch=36, part=""):
     track.instruments.append(instrument)
     track.write(outpath)
     logger.debug(f"Saved {outpath}")
-
-
-def get_roll_from_sequence(seq):
-    """Convert a monophonic sequence of pitches to a piano roll."""
-    roll = np.zeros((len(seq), 128), np.uint8)
-    for tick, pitch in enumerate(seq):
-        # TODO: remove these conditionals once the vocab is set
-        if pitch == 0 or pitch > 127:
-            continue
-        roll[tick, pitch] = 1
-    return roll

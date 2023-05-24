@@ -1,14 +1,13 @@
-import numpy as np
 import pytest
 import torch
 from rhythmtoolbox import DESCRIPTOR_NAMES
 from rhythmic_relationships.data import (
-    PAD_TOKEN,
     PartDataset,
     PartPairDataset,
     get_pair_sequences,
 )
 from torch.utils.data import DataLoader
+from rhythmic_relationships.vocab import PAD_TOKEN
 
 DATASET_NAME = "babyslakh_20_1bar_4res"
 batch_size = 1
@@ -19,8 +18,8 @@ N_DESCRIPTORS = len(DESCRIPTOR_NAMES)
 
 
 def test_get_pair_sequences():
-    p1 = np.array([1, 3, 4])
-    p2 = np.array([1, 2, 2])
+    p1 = [1, 3, 4]
+    p2 = [1, 2, 2]
     context_len = 3
     X, Y = get_pair_sequences(p1, p2, context_len)
     assert X == [[PAD_TOKEN, PAD_TOKEN, 1], [PAD_TOKEN, 1, 3], [1, 3, 4]]

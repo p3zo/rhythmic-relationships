@@ -83,6 +83,8 @@ def get_pair_sequences(
     """
     X, Y = [], []
 
+    assert isinstance(p1_tokenized, list) and isinstance(p2_tokenized, list)
+
     for t in range(len(p1_tokenized)):
         from_ix = 0
         to_ix = t + 1

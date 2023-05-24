@@ -2,17 +2,9 @@ import itertools
 import numpy as np
 from rhythmic_relationships.parts import PARTS
 
-# Special tokens
-PAD_TOKEN = 130
-REST_TOKEN = 129
+# TODO: this should be derived from a vocabulary
+PAD_TOKEN = 1
 
-# fmt: off
-TEST_SEQ = [34, REST_TOKEN, 36, REST_TOKEN, 36, REST_TOKEN, 36, REST_TOKEN, 34, REST_TOKEN, 36, REST_TOKEN, 39, REST_TOKEN, 43, REST_TOKEN, 39, REST_TOKEN, 41, REST_TOKEN, 41, REST_TOKEN, 41, REST_TOKEN, 39, REST_TOKEN, 41, REST_TOKEN, 44, REST_TOKEN, REST_TOKEN, REST_TOKEN]
-# fmt: on
-
-# TODO: make a list of good segments with the given parts
-TEST_SEGMENT_IDS = []
-TEST_SEQS = []
 
 def get_vocab(part):
     if part == "Drums":
@@ -24,7 +16,6 @@ def get_vocab(part):
         ttoi = {v: k for k, v in itot.items()}
         return itot, ttoi
 
-    # Create a mapping from token to integer, including first the rest and pad tokens as 0 and 1
     # Standard 88-key piano range
     pitch_min = 21
     pitch_max = 108
@@ -33,6 +24,7 @@ def get_vocab(part):
     pitches = list(range(pitch_min, pitch_max + 1))
     velocity_bins = list(range(n_velocity_bins))
 
+    # Create a mapping from token to integer, including first the rest and pad tokens as 0 and 1
     itot = {0: "rest", 1: "pad"}
     itot.update(
         {
@@ -95,3 +87,31 @@ def tokenize_roll(roll, part):
         tokens.append((p, v))
 
     return encode(tokens)
+
+
+def get_roll_from_sequence(seq, part):
+    """Convert a monophonic sequence of pitches to a piano roll."""
+    _, decode = get_vocab_encoder_decoder(part)
+
+    roll = np.zeros((len(seq), 128), np.uint8)
+
+    if part == "Drums":
+        raise ValueError("Not yet implemented")
+
+    decoded = decode(seq)
+
+    velocity_bins = np.array([0.25, 0.5, 0.75, 1])
+    velocity_bin_vals = (velocity_bins * 127).astype(int)
+
+    for tick, token in enumerate(decoded):
+        if isinstance(token, str):
+            continue
+
+        elif isinstance(token, tuple):
+            pitch, velocity_bin = token
+            roll[tick, pitch] = velocity_bin_vals[velocity_bin]
+
+        else:
+            raise ValueError("Invalid token type")
+
+    return roll
