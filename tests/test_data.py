@@ -4,9 +4,7 @@ from rhythmtoolbox import DESCRIPTOR_NAMES
 from rhythmic_relationships.data import (
     PartDataset,
     PartPairDataset,
-    get_pair_sequences,
     get_roll_from_sequence,
-    PAD_IX,
 )
 from torch.utils.data import DataLoader
 from rhythmic_relationships.vocab import get_vocab_encoder_decoder
@@ -21,15 +19,6 @@ N_DESCRIPTORS = len(DESCRIPTOR_NAMES)
 
 def get_expected_velocity_from_bin(vel_bin, n_bins):
     return int((vel_bin + 1) * (127 / n_bins))
-
-
-def test_get_pair_sequences():
-    p1 = [1, 3, 4]
-    p2 = [1, 2, 2]
-    context_len = 3
-    X, Y = get_pair_sequences(p1, p2, context_len)
-    assert X == [[PAD_IX, PAD_IX, 1], [PAD_IX, 1, 3], [1, 3, 4]]
-    assert Y == [[PAD_IX, PAD_IX, 1], [PAD_IX, 1, 2], [1, 2, 2]]
 
 
 def test_get_roll_from_sequence():
@@ -56,9 +45,10 @@ def test_get_roll_from_sequence():
 
     drum_seq = [1, 10, 100]
     roll = get_roll_from_sequence(drum_seq, part="Drums")
-    assert roll.shape == (2, 128)
-    assert roll[0].nonzero()[0].tolist() == [47]
-    assert roll[1].nonzero()[0].tolist() == [42, 43, 50]
+    assert roll.shape == (3, 128)
+    assert roll[0].sum() == 0
+    assert roll[1].nonzero()[0].tolist() == [47, 51]
+    assert roll[2].nonzero()[0].tolist() == [42, 43, 50, 51]
 
 
 def test_PartDataset():

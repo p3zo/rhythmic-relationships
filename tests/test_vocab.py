@@ -8,12 +8,12 @@ def test_get_vocab_encoder_decoder():
 
     tokens = ["start", "rest", (60, 3), (72, 1), "rest"]
 
-    assert encode(tokens) == [1, 2, 162, 208, 2]
+    assert encode(tokens) == [0, 1, 161, 207, 1]
 
     itot_expected = [
-        ([1, 2, 159, 210, 2], ["start", "rest", (60, 0), (72, 3), "rest"]),
+        ([0, 1, 158, 209, 1], ["start", "rest", (60, 0), (72, 3), "rest"]),
         (
-            [2, 3, 4, 350, 351, 352, 353, 354],
+            [1, 2, 3, 349, 350, 351, 352, 353],
             [
                 "rest",
                 (21, 0),
@@ -37,7 +37,7 @@ def test_get_vocab_encoder_decoder():
         assert encode(v) == k
 
     # Failure cases
-    fail_lists = [[0], [355], [-1]]
+    fail_lists = [[354], [-1]]
     for lst in fail_lists:
         with pytest.raises(Exception):
             decode(lst)
@@ -45,10 +45,10 @@ def test_get_vocab_encoder_decoder():
     encode, decode = get_vocab_encoder_decoder("Drums")
 
     tokens = ["start", "111101000", "111111111"]
-    assert encode(tokens) == [1, 490, 513]
+    assert encode(tokens) == [0, 489, 512]
 
     # Failure cases
-    fail_lists = [[0], [514], [-1]]
+    fail_lists = [[514], [-1]]
     for lst in fail_lists:
         with pytest.raises(Exception):
             decode(lst)
