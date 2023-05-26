@@ -5,7 +5,7 @@ import seaborn as sns
 import torch
 from model_utils import get_embeddings, load_model
 from rhythmic_relationships import INFERENCE_DIR
-from rhythmic_relationships.data import PAD_TOKEN
+from rhythmic_relationships.data import PAD_IX
 from rhythmic_relationships.io import write_midi_from_roll
 from rhythmic_relationships.model import RecurrentVAE
 
@@ -24,7 +24,7 @@ if __name__ == "__main__":
     decoded = model.decode(samples).view((n_samples, model.y_dim, model.context_len))
     decoded = decoded.detach().cpu().numpy()
 
-    x = torch.full_like(torch.from_numpy(samples), PAD_TOKEN)
+    x = torch.full_like(torch.from_numpy(samples), PAD_IX)
     x_recon, mu, sigma = model(x)
     x_recon = x_recon.view(x.shape[0], x.shape[1], x.shape[2])
 

@@ -4,88 +4,122 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import torch
 import seaborn as sns
+from torch.utils.data import DataLoader
 from tqdm import tqdm
 from rhythmtoolbox import pianoroll2descriptors
 
 from model_utils import load_model
 from rhythmic_relationships import MODELS_DIR
-from rhythmic_relationships.data import PartDataset, PartPairDataset
+from rhythmic_relationships.data import (
+    PartDataset,
+    PartPairDataset,
+    get_roll_from_sequence,
+    tokenize_roll,
+)
 from rhythmic_relationships.io import write_midi_from_roll
 from rhythmic_relationships.model import TransformerEncoderDecoderNew
-from rhythmic_relationships.train import TEST_SEQS
-from rhythmic_relationships.vocab import PAD_TOKEN, get_roll_from_sequence
+from rhythmic_relationships.vocab import get_vocab_encoder_decoder
 
-TEST_SEQ = TEST_SEQS["Melody"]
 
-MODEL_NAME = "enviousness_2305231920"
+MODEL_NAME = "witherweight_2305252155"
 
-DEVICE = torch.device(
-    "mps"
-    if torch.backends.mps.is_built()
-    else torch.device("cuda:0")
-    if torch.cuda.device_count() > 0
-    else torch.device("cpu")
-)
+DEVICE = torch.device("cpu")
+# DEVICE = torch.device(
+#     "mps"
+#     if torch.backends.mps.is_built()
+#     else torch.device("cuda:0")
+#     if torch.cuda.device_count() > 0
+#     else torch.device("cpu")
+# )
 
 
 if __name__ == "__main__":
     model, config, stats = load_model(MODEL_NAME, TransformerEncoderDecoderNew)
     model = model.to(DEVICE)
-    n_seqs = 50
 
+    n_seqs = 50
     part_1 = config["data"]["part_1"]
     part_2 = config["data"]["part_2"]
-
     n_ticks = config["sequence_len"]
+    write_midi = True
 
-    write_generations = True
     gen_dir = os.path.join(MODELS_DIR, MODEL_NAME, "inference")
-    if write_generations:
+    if write_midi:
         if not os.path.isdir(gen_dir):
             os.makedirs(gen_dir)
 
+    # Generate new sequences using part_1s from the dataset and just a start token for part_2
+    print(f"Generating {n_seqs} sequences")
     generated_rolls = []
     generated_descs = []
-    print(f"Generating {n_seqs} sequences")
-    for ix in tqdm(range(n_seqs)):
-        # Generate a new sequence starting with a padding token (idy) given a full sequence (idx)
-        # TODO: pull the x seq from the dataset, and also keep the original y to compare
-        idx = torch.tensor([TEST_SEQ], dtype=torch.long, device=DEVICE)
-        idy = torch.full((1, 1), PAD_TOKEN, dtype=torch.long, device=DEVICE)
-        with torch.no_grad():
-            model.eval()
-            seq = model.generate(idx, idy, max_new_tokens=n_ticks - 1)[0]
+    n_generated = 0
+    all_zeros = 0
 
-        seq_arr = seq.detach().cpu().numpy()
-        tgt_roll = get_roll_from_sequence(seq_arr, part=part_2)
-        generated_rolls.append(tgt_roll)
+    del config["data"]["context_len"]
+    dataset = PartPairDataset(**config["data"])
+    loader = DataLoader(dataset, batch_size=n_seqs, shuffle=True)
+
+    encode, _ = get_vocab_encoder_decoder(config["data"]["part_2"])
+    start_ix = encode(["start"])[0]
+    idy = torch.full((n_seqs, 1), start_ix, dtype=torch.long, device=DEVICE)
+
+    src_rolls, tgt_rolls = next(iter(loader))
+    srcs = torch.LongTensor(
+        [tokenize_roll(i.numpy(), config["data"]["part_1"]) for i in src_rolls]
+    ).to(DEVICE)
+    tgts = torch.LongTensor(
+        [tokenize_roll(i.numpy(), config["data"]["part_2"]) for i in tgt_rolls]
+    ).to(DEVICE)
+
+    seqs = (
+        model.generate(srcs, idy, max_new_tokens=config["sequence_len"]).cpu().numpy()
+    )
+    srcs = srcs.cpu().numpy()
+    tgts = tgts.cpu().numpy()
+
+    for ix, seq in enumerate(seqs):
+        gen_roll = get_roll_from_sequence(seq, part=config["data"]["part_2"])
+        generated_rolls.append(gen_roll)
 
         # Compute sequence descriptors
         descs = pianoroll2descriptors(
-            tgt_roll,
+            gen_roll,
             config["resolution"],
-            drums=part_2 == "Drums",
+            drums=config["data"]["part_2"] == "Drums",
         )
         generated_descs.append(descs)
 
-        if write_generations:
+        n_generated += 1
+        if gen_roll.max() == 0:
+            all_zeros += 1
+            continue
+
+        if write_midi:
             write_midi_from_roll(
-                tgt_roll,
-                outpath=os.path.join(gen_dir, f"{ix}.mid"),
+                gen_roll,
+                outpath=os.path.join(gen_dir, f"{ix}_gen.mid"),
                 part=part_2,
-                binary=True,
+                binary=False,
                 onset_roll=True,
             )
 
-            # Also write the src sequence
-            # src_roll = get_roll_from_sequence(TEST_SEQ, part=part_1)
-            # write_midi_from_roll(
-            #     src_roll,
-            #     outpath=os.path.join(gen_dir, f"src.mid"),
-            #     part=part_1,
-            #     binary=True,
-            #     onset_roll=True,
-            # )
+            write_midi_from_roll(
+                src_rolls[ix].numpy(),
+                outpath=os.path.join(gen_dir, f"{ix}_src.mid"),
+                part=part_1,
+                binary=False,
+                onset_roll=True,
+            )
+
+            write_midi_from_roll(
+                tgt_rolls[ix].numpy(),
+                outpath=os.path.join(gen_dir, f"{ix}_tgt.mid"),
+                part=part_2,
+                binary=False,
+                onset_roll=True,
+            )
+
+    print(f"{n_generated=}, {all_zeros=} ({100*round(all_zeros/n_generated, 2)}%)")
 
     gen_df = pd.DataFrame(generated_descs).dropna(how="all", axis=1)
     if "stepDensity" in gen_df.columns:

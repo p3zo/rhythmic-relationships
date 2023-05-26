@@ -10,10 +10,9 @@ from tqdm import tqdm
 from rhythmtoolbox import pianoroll2descriptors
 
 from rhythmic_relationships import MODELS_DIR
-from rhythmic_relationships.data import PAD_TOKEN, PartDataset
+from rhythmic_relationships.data import PartDataset, get_roll_from_sequence
 from rhythmic_relationships.model import TransformerDecoder
 from rhythmic_relationships.io import write_midi_from_roll
-from rhythmic_relationships.vocab import get_roll_from_sequence
 
 DEVICE = torch.device("mps" if torch.backends.mps.is_built() else "cpu")
 
@@ -40,7 +39,9 @@ generated_rolls = []
 generated_descs = []
 print(f"Generating {n_seqs} sequences")
 for _ in tqdm(range(n_seqs)):
-    idx = torch.full((1, 1), PAD_TOKEN, dtype=torch.long, device=DEVICE)
+    # TODO: programatically get start_token_ix
+    start_token_ix = 1
+    idx = torch.full((1, 1), start_token_ix, dtype=torch.long, device=DEVICE)
     seq = model.generate(idx, max_new_tokens=config["sequence_len"])[0][1:]
     roll = get_roll_from_sequence(seq, part=part)
 
