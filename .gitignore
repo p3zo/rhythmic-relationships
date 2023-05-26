@@ -10,4 +10,3 @@ __pycache__
 temp
 .coverage
 wandb
-interactive

@@ -12,6 +12,7 @@ from rhythmic_relationships.vocab import get_vocab_sizes
 
 CONFIG_FILEPATH = "transformer_encdec_new_config.yml"
 
+# DEVICE = torch.device("cpu")
 DEVICE = torch.device(
     "mps"
     if torch.backends.mps.is_built()

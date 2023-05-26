@@ -1,0 +1,17 @@
+#N canvas 271 175 1122 806 12;
+#X obj 111 136 bng 19 250 50 0 empty empty empty 0 -10 0 12 #fcfcfc #000000 #000000;
+#X msg 185 135 stop;
+#X obj 200 250 midiout;
+#X obj 50 239 print;
+#X obj 310 234 bng 19 250 50 0 empty empty empty 0 -10 0 12 #fcfcfc #000000 #000000;
+#X msg 328 44 \; pd dsp \$1;
+#X obj 328 27 tgl 15 0 empty empty empty 17 7 0 10 #fcfcfc #000000 #000000 0 1;
+#X obj 125 331 polysynth;
+#X obj 109 180 cyclone/seq ../output/midi/Ancora\ in\ piedi_11.mid;
+#X connect 0 0 8 0;
+#X connect 1 0 8 0;
+#X connect 6 0 5 0;
+#X connect 8 0 2 0;
+#X connect 8 0 3 0;
+#X connect 8 0 7 0;
+#X connect 8 1 4 0;

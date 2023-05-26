@@ -5,7 +5,6 @@ import pandas as pd
 import torch
 import seaborn as sns
 from torch.utils.data import DataLoader
-from tqdm import tqdm
 from rhythmtoolbox import pianoroll2descriptors
 
 from model_utils import load_model
@@ -21,7 +20,7 @@ from rhythmic_relationships.model import TransformerEncoderDecoderNew
 from rhythmic_relationships.vocab import get_vocab_encoder_decoder
 
 
-MODEL_NAME = "witherweight_2305252155"
+MODEL_NAME = "noncannibalistic_2305260103"
 
 DEVICE = torch.device("cpu")
 # DEVICE = torch.device(
@@ -79,6 +78,12 @@ if __name__ == "__main__":
 
     for ix, seq in enumerate(seqs):
         gen_roll = get_roll_from_sequence(seq, part=config["data"]["part_2"])
+
+        n_generated += 1
+        if gen_roll.max() == 0:
+            all_zeros += 1
+            continue
+
         generated_rolls.append(gen_roll)
 
         # Compute sequence descriptors
@@ -88,11 +93,6 @@ if __name__ == "__main__":
             drums=config["data"]["part_2"] == "Drums",
         )
         generated_descs.append(descs)
-
-        n_generated += 1
-        if gen_roll.max() == 0:
-            all_zeros += 1
-            continue
 
         if write_midi:
             write_midi_from_roll(
