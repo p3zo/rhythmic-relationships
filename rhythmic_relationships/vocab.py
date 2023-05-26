@@ -2,17 +2,17 @@ import itertools
 import numpy as np
 from rhythmic_relationships.parts import PARTS
 
-# TODO: this should be derived from a vocabulary
-PAD_TOKEN = 1
-
-
 def get_vocab(part):
+    # Create a mapping from token to integer, including first any special tokens
+    itot = {1: "start"}
+
     if part == "Drums":
         patterns = [
             "".join([str(j) for j in i])
             for i in list(itertools.product([0, 1], repeat=9))
         ]
-        itot = {ix: p for ix, p in enumerate(patterns)}
+        # NOTE: add another 1 because 0 is a pad token
+        itot.update({ix + len(itot) + 1: p for ix, p in enumerate(patterns)})
         ttoi = {v: k for k, v in itot.items()}
         return itot, ttoi
 
@@ -24,11 +24,11 @@ def get_vocab(part):
     pitches = list(range(pitch_min, pitch_max + 1))
     velocity_bins = list(range(n_velocity_bins))
 
-    # Create a mapping from token to integer, including first the rest and pad tokens as 0 and 1
-    itot = {0: "rest", 1: "pad"}
+    itot.update({2: "rest"})
+    # NOTE: add another 1 because 0 is a pad token
     itot.update(
         {
-            ix + 2: i
+            ix + len(itot) + 1: i
             for ix, i in enumerate(list(itertools.product(pitches, velocity_bins)))
         }
     )
@@ -61,7 +61,7 @@ def tokenize_roll(roll, part):
             raise Exception("Representation must be drum roll for Drums part")
         binarized = (roll > 0).astype(int)
         patterns = ["".join(i.astype(str)) for i in binarized]
-        return encode(patterns)
+        return encode(["start"]) + encode(patterns)
 
     # Will select the higher note in the case of polyphony
     pitches = roll.argmax(axis=1)
@@ -86,7 +86,7 @@ def tokenize_roll(roll, part):
             continue
         tokens.append((p, v))
 
-    return encode(tokens)
+    return encode(["start"]) + encode(tokens)
 
 
 def get_roll_from_sequence(seq, part):

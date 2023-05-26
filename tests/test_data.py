@@ -7,7 +7,7 @@ from rhythmic_relationships.data import (
     get_pair_sequences,
 )
 from torch.utils.data import DataLoader
-from rhythmic_relationships.vocab import PAD_TOKEN
+from rhythmic_relationships.data import PAD_TOKEN
 
 DATASET_NAME = "babyslakh_20_1bar_4res"
 batch_size = 1

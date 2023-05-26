@@ -13,9 +13,11 @@ from rhythmic_relationships import (
 )
 from rhythmic_relationships.parts import PARTS, get_part_pairs
 from rhythmic_relationships.representations import REPRESENTATIONS
-from rhythmic_relationships.vocab import tokenize_roll, PAD_TOKEN
+from rhythmic_relationships.vocab import tokenize_roll
 from torch.utils.data import Dataset
 from tqdm import tqdm
+
+PAD_TOKEN = 0
 
 
 def load_dataset_annotations(dataset_dir):
@@ -467,4 +469,4 @@ class PartPairDatasetSequential(Dataset):
 
         X, Y = get_pair_sequences(p1_tokenized, p2_tokenized, self.context_len)
 
-        return torch.tensor(X), torch.tensor(Y)
+        return torch.LongTensor(X), torch.LongTensor(Y)

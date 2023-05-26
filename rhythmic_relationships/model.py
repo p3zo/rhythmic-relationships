@@ -1,6 +1,8 @@
 import torch
 import torch.nn as nn
 
+from rhythmic_relationships.data import PAD_TOKEN
+
 
 class VAE(nn.Module):
     def __init__(self, x_dim, h_dims, z_dim, conditional=False, y_dim=0):
@@ -400,10 +402,12 @@ class TransformerEncoderDecoderNew(nn.Module):
         self.src_token_embedding = nn.Embedding(
             num_embeddings=src_vocab_size,
             embedding_dim=n_embed,
+            padding_idx=PAD_TOKEN,
         )
         self.tgt_token_embedding = nn.Embedding(
             num_embeddings=tgt_vocab_size,
             embedding_dim=n_embed,
+            padding_idx=PAD_TOKEN,
         )
 
         self.position_embedding = nn.Embedding(
@@ -424,40 +428,45 @@ class TransformerEncoderDecoderNew(nn.Module):
 
         self.register_buffer("tril", torch.tril(torch.ones(context_len, context_len)))
 
-    def forward(self, idx, idy):
+    def forward(self, x, y):
         # B, T, C=N_embed
-        enc_tok_emb = self.src_token_embedding(idx)
-        dec_tok_emb = self.tgt_token_embedding(idy)
+        enc_tok_emb = self.src_token_embedding(x)
+        dec_tok_emb = self.tgt_token_embedding(y)
 
         # T, C
-        enc_pos_emb = self.position_embedding.weight[: idx.shape[1]]
-        dec_pos_emb = self.position_embedding.weight[: idy.shape[1]]
+        enc_pos_emb = self.position_embedding.weight[: x.shape[1]]
+        dec_pos_emb = self.position_embedding.weight[: y.shape[1]]
 
         # B, T, C
-        x = enc_tok_emb + enc_pos_emb
-        y = dec_tok_emb + dec_pos_emb
+        src = enc_tok_emb + enc_pos_emb
+        tgt = dec_tok_emb + dec_pos_emb
 
-        tgt_mask = self.transformer.generate_square_subsequent_mask(y.shape[1]).to(
-            y.device
+        tgt_mask = self.transformer.generate_square_subsequent_mask(tgt.shape[1]).to(
+            tgt.device
         )
 
-        out = self.transformer(x, y, tgt_mask=tgt_mask)
+        out = self.transformer(
+            src,
+            tgt,
+            tgt_mask=tgt_mask,
+            src_key_padding_mask=x == PAD_TOKEN,
+        )
 
         return self.output_layer(out)
 
     @torch.no_grad()
-    def generate(self, idx, idy, max_new_tokens=32):
-        # idx is (B, T)
+    def generate(self, x, y, max_new_tokens=32):
+        # x is (B, T)
 
         self.eval()
 
         for _ in range(max_new_tokens):
-            # Crop idx to the last context_len tokens
-            idx_cond = idx[:, -self.context_len :]
-            idy_cond = idy[:, -self.context_len :]
+            # Crop x to the last context_len tokens
+            x_cond = x[:, -self.context_len :]
+            y_cond = y[:, -self.context_len :]
 
             # Get the predictions
-            logits = self(idx_cond, idy_cond)
+            logits = self(x_cond, y_cond)
 
             # focus only on the last time step
             logits = logits[:, -1, :]  # becomes (B, C)
@@ -466,11 +475,11 @@ class TransformerEncoderDecoderNew(nn.Module):
             probs = torch.nn.functional.softmax(logits, dim=-1)  # (B, C)
 
             # sample from the distribution
-            idy_next = torch.multinomial(probs, num_samples=1)  # (B, 1)
+            y_next = torch.multinomial(probs, num_samples=1)  # (B, 1)
 
             # append sampled index to the running sequence
-            idy = torch.cat((idy, idy_next), dim=1)  # (B, T+1)
+            y = torch.cat((y, y_next), dim=1)  # (B, T+1)
 
         self.train()
 
-        return idy
+        return y
