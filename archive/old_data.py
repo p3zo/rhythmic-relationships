@@ -17,6 +17,8 @@ from rhythmic_relationships.vocab import get_vocab_encoder_decoder
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
+PAD_IX = 0
+
 
 def load_dataset_annotations(dataset_dir):
     """Load the top-level annotations file for a given dataset"""
@@ -110,6 +112,106 @@ def get_roll_from_sequence(seq, part):
             raise ValueError("Invalid token type")
 
     return roll
+
+
+def get_sequences(tokenized, context_len):
+    """Partitions a tokenized segment into a recurrent sequence and returns X, Y pairs."""
+    X, Y = [], []
+
+    for t in range(len(tokenized)):
+        from_ix = 0
+        y_from_ix = from_ix
+        to_ix = t
+
+        if t == context_len:
+            y_from_ix = from_ix + 1
+        if t > context_len:
+            from_ix = t - context_len
+            y_from_ix = from_ix + 1
+
+        context = tokenized[from_ix:to_ix].tolist()
+        target = tokenized[y_from_ix : to_ix + 1].tolist()
+
+        if len(context) < context_len:
+            c_pad_len = context_len - len(context)
+            context = [PAD_IX] * c_pad_len + context
+
+        if len(target) < context_len:
+            t_pad_len = context_len - len(target)
+            target = [PAD_IX] * t_pad_len + target
+
+        X.append(context)
+        Y.append(target)
+
+    return X, Y
+
+
+def get_pair_sequences(p1_tokenized, p2_tokenized, context_len, pad_target=True):
+    """Partitions a pair of tokenized segments into recurrent sequences.
+
+    Returns X, Y pairs where X is always the full src sequence and Y is every shifted position of the tgt sequence.
+
+    Optionally pad context/target to create pairs that are always the same length.
+    """
+    X, Y = [], []
+
+    assert isinstance(p1_tokenized, list) and isinstance(p2_tokenized, list)
+
+    for t in range(len(p1_tokenized)):
+        from_ix = 0
+        to_ix = t + 1
+
+        if t >= context_len:
+            from_ix = to_ix - context_len
+
+        target = p2_tokenized[from_ix:to_ix]
+
+        # Pad target
+        if pad_target and len(target) < context_len:
+            t_pad_len = context_len - len(target)
+            target = target + [PAD_IX] * t_pad_len
+
+        X.append(p1_tokenized)
+        Y.append(target)
+
+    return X, Y
+
+
+def get_pair_sequences_old(
+    p1_tokenized, p2_tokenized, context_len, pad_context=True, pad_target=True
+):
+    """Partitions a pair of tokenized segments into recurrent sequences and returns X, Y pairs.
+
+    Optionally pad context/target to create pairs that are always the same length.
+    """
+    X, Y = [], []
+
+    assert isinstance(p1_tokenized, list) and isinstance(p2_tokenized, list)
+
+    for t in range(len(p1_tokenized)):
+        from_ix = 0
+        to_ix = t + 1
+
+        if t >= context_len:
+            from_ix = to_ix - context_len
+
+        context = p1_tokenized[from_ix:to_ix]
+        target = p2_tokenized[from_ix:to_ix]
+
+        # Pad context
+        if pad_context and len(context) < context_len:
+            c_pad_len = context_len - len(context)
+            context = [PAD_IX] * c_pad_len + context
+
+        # Pad target
+        if pad_target and len(target) < context_len:
+            t_pad_len = context_len - len(target)
+            target = [PAD_IX] * t_pad_len + target
+
+        X.append(context)
+        Y.append(target)
+
+    return X, Y
 
 
 class PartPairDataset(Dataset):
@@ -344,6 +446,67 @@ class PartDataset(Dataset):
         return df
 
 
+class PartDatasetSequential(Dataset):
+    """
+    Loads the same data as a PartDataset, but partitions each segment into a recurrent sequence and returns X, Y pairs.
+
+    Params
+        dataset_name, str
+            Name of a dataset created by `prepare_dataset.py`.
+
+        part, str
+            The part to use. See the list of parts in `parts.py`
+
+        representation, str
+            The representation to use. See the list of representations in `representations.py`
+
+        context_len, int
+            The length of the context window.
+
+        datasets_dir, str
+            The directory where the dataset is stored. Defaults to `DATASETS_DIR`.
+    """
+
+    def __init__(
+        self, dataset_name, part, representation, context_len, datasets_dir=DATASETS_DIR
+    ):
+        if part not in PARTS:
+            raise ValueError(f"Part must be one of: {PARTS}")
+
+        if representation not in REPRESENTATIONS:
+            raise ValueError(f"Representation must be one of: {REPRESENTATIONS}")
+
+        self.part = part
+
+        self.dataset_dir = os.path.join(datasets_dir, dataset_name)
+
+        # Load the list of available representations
+        with open(os.path.join(self.dataset_dir, REPRESENTATIONS_FILENAME), "r") as f:
+            self.representations = f.readline().split(",")
+
+        self.representation = representation
+        self.representation_ix = self.representations.index(representation)
+
+        # Load the segment metadata
+        df = load_dataset_annotations(self.dataset_dir)
+        self.part_df = df[df.part_id == part]
+
+        self.context_len = context_len
+
+    def __len__(self):
+        return len(self.part_df)
+
+    def __getitem__(self, idx):
+        seg = self.part_df.iloc[idx]
+        seg_repr = load_repr(seg, self.representation_ix)
+
+        tokenized = tokenize_roll(seg_repr, self.part)
+
+        X, Y = get_sequences(tokenized, self.context_len)
+
+        return torch.tensor(X), torch.tensor(Y)
+
+
 class PartPairDatasetSequential(Dataset):
     """
     Loads the same data as a PartPairDataset, but partitions each segment into a recurrent sequence and returns X, Y pairs.
@@ -356,6 +519,7 @@ class PartPairDatasetSequential(Dataset):
         part_2,
         repr_1,
         repr_2,
+        context_len,
         datasets_dir=DATASETS_DIR,
     ):
         if part_1 not in PARTS or part_2 not in PARTS:
@@ -393,6 +557,8 @@ class PartPairDatasetSequential(Dataset):
         self.p2_pairs = pairs_df.merge(
             df, how="left", left_on=part_2, right_on="roll_id"
         )
+
+        self.context_len = context_len
 
     def __len__(self):
         return len(self.p1_pairs)

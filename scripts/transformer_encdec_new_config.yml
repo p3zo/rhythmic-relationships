@@ -4,7 +4,6 @@ data:
   part_2: "Bass"
   repr_1: "onset_roll"
   repr_2: "onset_roll"
-  context_len: 33
 
 splits:
   train: 0.8
