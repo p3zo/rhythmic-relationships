@@ -10,7 +10,7 @@ from rhythmic_relationships.model import TransformerEncoderDecoderNew
 from rhythmic_relationships.train import train_transformer_encoder_decoder
 from rhythmic_relationships.vocab import get_vocab_sizes
 
-CONFIG_FILEPATH = "transformer_encdec_new_config.yml"
+CONFIG_FILEPATH = "config.yml"
 
 # DEVICE = torch.device("cpu")
 DEVICE = torch.device(
