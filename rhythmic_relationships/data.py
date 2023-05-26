@@ -169,12 +169,17 @@ class PartPairDataset(Dataset):
             df, how="left", left_on=part_2, right_on="roll_id"
         )
 
+        self.loaded_segments = []
+
     def __len__(self):
         return len(self.p1_pairs)
 
     def __getitem__(self, idx):
         p1_seg = self.p1_pairs.iloc[idx]
         p2_seg = self.p2_pairs.iloc[idx]
+
+        seg_id = (p1_seg["filepath"], p1_seg["segment_id"])
+        self.loaded_segments.append(seg_id)
 
         p1_seg_repr = load_repr(p1_seg, self.repr_1_ix)
         p2_seg_repr = load_repr(p2_seg, self.repr_2_ix)
@@ -287,7 +292,7 @@ class PartDataset(Dataset):
         df = load_dataset_annotations(self.dataset_dir)
         self.part_df = df[df.part_id == part]
 
-        self.loaded_segment_ids = []
+        self.loaded_segments = []
 
     def __len__(self):
         return len(self.part_df)
@@ -299,7 +304,7 @@ class PartDataset(Dataset):
         seg_id = (
             get_seg_fname(seg["filepath"], self.dataset_dir) + f'_{seg["segment_id"]}'
         )
-        self.loaded_segment_ids.append(seg_id)
+        self.loaded_segments.append(seg_id)
 
         # TODO: remove the astype once the dataset is created w explicit casts
         return torch.from_numpy(seg_repr.astype(np.float32)).to(torch.float32)
