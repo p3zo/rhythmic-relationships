@@ -6,6 +6,9 @@ START_TOKEN = 1
 
 
 def get_vocab(part):
+    if part not in PARTS:
+        raise ValueError(f"part must be one of {PARTS}")
+
     # Create a mapping from token to integer, including first any special tokens
     itot = {1: "start"}
 
@@ -44,6 +47,9 @@ def get_vocab_sizes():
 
 
 def get_vocab_encoder_decoder(part):
+    if part not in PARTS:
+        raise ValueError(f"part must be one of {PARTS}")
+
     itot = get_vocab(part)
     ttoi = {v: k for k, v in itot.items()}
 

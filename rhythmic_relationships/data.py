@@ -12,7 +12,7 @@ from rhythmic_relationships import (
     REPRESENTATIONS_FILENAME,
 )
 from rhythmic_relationships.parts import PARTS, get_part_pairs
-from rhythmic_relationships.representations import REPRESENTATIONS
+from rhythmic_relationships.representations import REPRESENTATIONS, DRUM_ROLL_VOICES
 from rhythmic_relationships.vocab import get_vocab_encoder_decoder
 from torch.utils.data import Dataset
 from tqdm import tqdm
@@ -90,9 +90,12 @@ def get_roll_from_sequence(seq, part):
     roll = np.zeros((len(seq), 128), np.uint8)
 
     if part == "Drums":
-        raise ValueError("Not yet implemented")
+        decoded = decode(seq)
+        for tick, token in enumerate(decoded):
+            roll[tick, DRUM_ROLL_VOICES] = [int(i) for i in token]
+        return roll
 
-    # Replace predicting padding with rests
+    # Replace padding predictions with rests
     seq[seq == PAD_IX] = encode(["rest"])[0]
 
     decoded = decode(seq)

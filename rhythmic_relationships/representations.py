@@ -43,6 +43,7 @@ DRUM_MAP_9_VOICE = {
     53: 51,
 }
 
+DRUM_ROLL_VOICES = sorted(list(set(list(DRUM_MAP_9_VOICE.values()))))
 
 def get_9voice_drum_roll_pitches(pitches):
     """Map a list of pitches to the pitches of a 9-voice drum roll
@@ -50,13 +51,12 @@ def get_9voice_drum_roll_pitches(pitches):
     :param pitches: list of MIDI pitches
     :return: list of drum roll pitches
     """
-    drum_roll_voices = sorted(list(np.unique(list(DRUM_MAP_9_VOICE.values()))))
 
     drum_roll_pitches = []
     for p in pitches:
         drum_roll_pitch = 0
         if p in DRUM_MAP_9_VOICE:
-            drum_roll_pitch = drum_roll_voices.index(DRUM_MAP_9_VOICE[p])
+            drum_roll_pitch = DRUM_ROLL_VOICES.index(DRUM_MAP_9_VOICE[p])
         drum_roll_pitches.append(drum_roll_pitch)
 
     return drum_roll_pitches

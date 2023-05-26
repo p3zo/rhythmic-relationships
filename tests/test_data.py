@@ -54,6 +54,12 @@ def test_get_roll_from_sequence():
 
     assert roll[3].sum() == 0
 
+    drum_seq = [1, 10, 100]
+    roll = get_roll_from_sequence(drum_seq, part="Drums")
+    assert roll.shape == (2, 128)
+    assert roll[0].nonzero()[0].tolist() == [47]
+    assert roll[1].nonzero()[0].tolist() == [42, 43, 50]
+
 
 def test_PartDataset():
     with pytest.raises(Exception):
