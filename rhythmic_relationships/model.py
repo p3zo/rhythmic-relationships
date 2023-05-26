@@ -2,7 +2,7 @@ import torch
 import torch.nn as nn
 
 
-class TransformerEncoderDecoderNew(nn.Module):
+class TransformerEncoderDecoder(nn.Module):
     def __init__(
         self,
         context_len,

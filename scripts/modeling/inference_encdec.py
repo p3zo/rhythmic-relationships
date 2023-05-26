@@ -13,7 +13,7 @@ from rhythmic_relationships.data import (
     tokenize_roll,
 )
 from rhythmic_relationships.io import write_midi_from_roll
-from rhythmic_relationships.model import TransformerEncoderDecoderNew
+from rhythmic_relationships.model import TransformerEncoderDecoder
 from rhythmic_relationships.vocab import get_vocab_encoder_decoder
 from rhythmtoolbox import pianoroll2descriptors
 from torch.utils.data import DataLoader
@@ -31,7 +31,7 @@ DEVICE = torch.device("cpu")
 
 
 if __name__ == "__main__":
-    model, config, stats = load_model(MODEL_NAME, TransformerEncoderDecoderNew)
+    model, config, stats = load_model(MODEL_NAME, TransformerEncoderDecoder)
     model = model.to(DEVICE)
 
     n_seqs = 50

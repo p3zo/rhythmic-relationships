@@ -5,7 +5,7 @@ import yaml
 from model_utils import get_loss_fn, get_model_name, load_config, save_model
 from rhythmic_relationships import DATASETS_DIR
 from rhythmic_relationships.data import PartPairDatasetSequential
-from rhythmic_relationships.model import TransformerEncoderDecoderNew
+from rhythmic_relationships.model import TransformerEncoderDecoder
 from rhythmic_relationships.train import train_transformer_encoder_decoder
 from rhythmic_relationships.vocab import get_vocab_sizes
 from torch.utils.data import DataLoader, random_split
@@ -58,7 +58,7 @@ if __name__ == "__main__":
 
     # Add 1 to the context length to account for the start token
     config["model"]["context_len"] = config["sequence_len"] + 1
-    model = TransformerEncoderDecoderNew(**config["model"]).to(DEVICE)
+    model = TransformerEncoderDecoder(**config["model"]).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
     loss_fn = get_loss_fn(config)
 
