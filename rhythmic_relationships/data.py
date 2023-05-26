@@ -95,9 +95,6 @@ def get_roll_from_sequence(seq, part):
             roll[tick, DRUM_ROLL_VOICES] = [int(i) for i in token]
         return roll
 
-    # Replace padding predictions with rests
-    seq[seq == PAD_IX] = encode(["rest"])[0]
-
     decoded = decode(seq)
 
     velocity_bins = np.array([0.25, 0.5, 0.75, 1])
@@ -545,6 +542,5 @@ class PartPairDatasetSequential(Dataset):
         p1_tokenized = tokenize_roll(p1_seg_repr, self.part_1)
         p2_tokenized = tokenize_roll(p2_seg_repr, self.part_2)
 
-        X, Y = get_pair_sequences(p1_tokenized, p2_tokenized, self.context_len)
-
-        return torch.LongTensor(X), torch.LongTensor(Y)
+        # TODO: rename class from sequential since we're no longer creating sequences
+        return torch.LongTensor(p1_tokenized), torch.LongTensor(p2_tokenized)

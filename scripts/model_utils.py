@@ -8,7 +8,6 @@ import pandas as pd
 import torch
 import yaml
 from rhythmic_relationships import MODELS_DIR
-from rhythmic_relationships.data import PAD_IX
 
 
 def load_config(filepath):
@@ -106,7 +105,7 @@ def get_loss_fn(config):
     elif config["loss_fn"] == "bce":
         return torch.nn.BCELoss(reduction=reduction)
     elif config["loss_fn"] == "cross-entropy":
-        return torch.nn.CrossEntropyLoss(reduction=reduction, ignore_index=PAD_IX)
+        return torch.nn.CrossEntropyLoss(reduction=reduction)
     elif config["loss_fn"] == "mse":
         return torch.nn.MSELoss(reduction=reduction)
     else:

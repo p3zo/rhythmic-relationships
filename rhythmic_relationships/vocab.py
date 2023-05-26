@@ -1,16 +1,13 @@
 import itertools
 from rhythmic_relationships.parts import PARTS
 
-# Do not change
-START_TOKEN = 1
-
 
 def get_vocab(part):
     if part not in PARTS:
         raise ValueError(f"part must be one of {PARTS}")
 
     # Create a mapping from token to integer, including first any special tokens
-    itot = {1: "start"}
+    itot = {0: "start"}
 
     if part == "Drums":
         patterns = [
@@ -18,7 +15,7 @@ def get_vocab(part):
             for i in list(itertools.product([0, 1], repeat=9))
         ]
         # NOTE: add another 1 because 0 is reserved for pad ix
-        itot.update({ix + len(itot) + 1: p for ix, p in enumerate(patterns)})
+        itot.update({ix + len(itot): p for ix, p in enumerate(patterns)})
 
         return itot
 
@@ -30,11 +27,11 @@ def get_vocab(part):
     pitches = list(range(pitch_min, pitch_max + 1))
     velocity_bins = list(range(n_velocity_bins))
 
-    itot.update({2: "rest"})
+    itot.update({1: "rest"})
     # NOTE: add another 1 because 0 is reserved for pad ix
     itot.update(
         {
-            ix + len(itot) + 1: i
+            ix + len(itot): i
             for ix, i in enumerate(list(itertools.product(pitches, velocity_bins)))
         }
     )
