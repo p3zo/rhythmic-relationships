@@ -1,16 +1,21 @@
 data:
-  dataset_name: "lmdc_500_2bar_4res"
-  part_1: "Drums"
+  dataset_name: "lmdc_17243_2bar_4res"
+  part_1: "Melody"
   part_2: "Bass"
-  repr_1: "drum_roll"
+  repr_1: "onset_roll"
   repr_2: "onset_roll"
-  context_len: 32
+  context_len: 33
+
+splits:
+  train: 0.8
+  val: 0.1
+  test: 0.1
 
 model:
-  n_embed: 64
-  n_layer: 2
+  n_embed: 96
+  n_layer: 3
   n_head: 2
-  d_ff: 512
+  d_ff: 1024
   dropout: 0.2
 
 sequence_len: 32
@@ -18,16 +23,11 @@ resolution: 4
 loss_fn: "cross-entropy"
 loss_reduction: 'mean'
 clip_gradients: False
-num_epochs: 3
-batch_size: 48
-lr: 1e-3
-n_eval_iters: 20
-n_eval_seqs: 20
-splits:
-  train: 0.8
-  val: 0.1
-  test: 0.1
+num_epochs: 5
+batch_size: 16
+lr: 1e-5
+n_eval_iters: 10
 seed: 13
-wandb: False
-bento: False
-save_checkpoints: False
+wandb: True
+bento: True
+save_checkpoints: True
