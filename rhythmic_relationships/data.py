@@ -13,11 +13,11 @@ from rhythmic_relationships import (
 )
 from rhythmic_relationships.parts import PARTS, get_part_pairs
 from rhythmic_relationships.representations import REPRESENTATIONS
-from rhythmic_relationships.vocab import tokenize_roll
+from rhythmic_relationships.vocab import get_vocab_encoder_decoder
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
-PAD_TOKEN = 0
+PAD_IX = 0
 
 
 def load_dataset_annotations(dataset_dir):
@@ -44,6 +44,76 @@ def get_seg_fname(filepath, dataset_dir):
     )[0].strip("/")
 
 
+def tokenize_roll(roll, part):
+    encode, _ = get_vocab_encoder_decoder(part)
+
+    if part == "Drums":
+        if len(roll[0]) != 9:
+            raise Exception("Representation must be drum roll for Drums part")
+        binarized = (roll > 0).astype(int)
+        patterns = ["".join(i.astype(str)) for i in binarized]
+        return encode(["start"]) + encode(patterns)
+
+    # Will select the higher note in the case of polyphony
+    pitches = roll.argmax(axis=1)
+
+    # Truncate to the standard 88-key piano midi range
+    for ix, p in enumerate(pitches):
+        if p < 21:
+            pitches[ix] = 0
+        elif p > 108:
+            pitches[ix] = 0
+
+    velocities = roll.max(axis=1)
+    velocity_bins = np.array([0.25, 0.5, 0.75, 1])
+    binned_velocities = np.digitize(velocities, velocity_bins, right=True)
+
+    pitch_velocities = list(zip(pitches, binned_velocities))
+
+    tokens = []
+    for p, v in pitch_velocities:
+        if p == 0:
+            tokens.append("rest")
+            continue
+        tokens.append((p, v))
+
+    return encode(["start"]) + encode(tokens)
+
+
+def get_roll_from_sequence(seq, part):
+    """Convert a monophonic sequence of pitches to a piano roll."""
+    encode, decode = get_vocab_encoder_decoder(part)
+
+    if seq[0] == encode(["start"])[0]:
+        seq = seq[1:]
+
+    roll = np.zeros((len(seq), 128), np.uint8)
+
+    if part == "Drums":
+        raise ValueError("Not yet implemented")
+
+    # Replace predicting padding with rests
+    seq[seq == PAD_IX] = encode(["rest"])[0]
+
+    decoded = decode(seq)
+
+    velocity_bins = np.array([0.25, 0.5, 0.75, 1])
+    velocity_bin_vals = (velocity_bins * 127).astype(int)
+
+    for tick, token in enumerate(decoded):
+        if isinstance(token, str):
+            continue
+
+        elif isinstance(token, tuple):
+            pitch, velocity_bin = token
+            roll[tick, pitch] = velocity_bin_vals[velocity_bin]
+
+        else:
+            raise ValueError("Invalid token type")
+
+    return roll
+
+
 def get_sequences(tokenized, context_len):
     """Partitions a tokenized segment into a recurrent sequence and returns X, Y pairs."""
     X, Y = [], []
@@ -64,11 +134,11 @@ def get_sequences(tokenized, context_len):
 
         if len(context) < context_len:
             c_pad_len = context_len - len(context)
-            context = [PAD_TOKEN] * c_pad_len + context
+            context = [PAD_IX] * c_pad_len + context
 
         if len(target) < context_len:
             t_pad_len = context_len - len(target)
-            target = [PAD_TOKEN] * t_pad_len + target
+            target = [PAD_IX] * t_pad_len + target
 
         X.append(context)
         Y.append(target)
@@ -100,12 +170,12 @@ def get_pair_sequences(
         # Pad context
         if pad_context and len(context) < context_len:
             c_pad_len = context_len - len(context)
-            context = [PAD_TOKEN] * c_pad_len + context
+            context = [PAD_IX] * c_pad_len + context
 
         # Pad target
         if pad_target and len(target) < context_len:
             t_pad_len = context_len - len(target)
-            target = [PAD_TOKEN] * t_pad_len + target
+            target = [PAD_IX] * t_pad_len + target
 
         X.append(context)
         Y.append(target)

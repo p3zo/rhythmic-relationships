@@ -1,13 +1,14 @@
 import argparse
 import torch
 import yaml
+from torch.utils.data import DataLoader, random_split
+
 from model_utils import get_loss_fn, get_model_name, load_config, save_model
 from rhythmic_relationships import DATASETS_DIR
-from rhythmic_relationships.data import PartPairDatasetSequential
+from rhythmic_relationships.data import PartPairDatasetSequential, PAD_IX
 from rhythmic_relationships.model import TransformerEncoderDecoderNew
 from rhythmic_relationships.train import train_transformer_encoder_decoder
 from rhythmic_relationships.vocab import get_vocab_sizes
-from torch.utils.data import DataLoader, random_split
 
 CONFIG_FILEPATH = "transformer_encdec_new_config.yml"
 
@@ -54,6 +55,7 @@ if __name__ == "__main__":
     config["model"]["tgt_vocab_size"] = vocab_sizes[config["data"]["part_2"]]
 
     config["model"]["context_len"] = config["data"]["context_len"]
+    config["model"]["pad_ix"] = PAD_IX
     model = TransformerEncoderDecoderNew(**config["model"]).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
     loss_fn = get_loss_fn(config)

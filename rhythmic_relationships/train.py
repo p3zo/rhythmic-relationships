@@ -8,19 +8,11 @@ from tqdm import tqdm
 from rhythmtoolbox import pianoroll2descriptors
 
 from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
+from rhythmic_relationships.data import PAD_IX, get_roll_from_sequence
 from rhythmic_relationships.io import write_midi_from_roll
-from rhythmic_relationships.vocab import PAD_TOKEN, get_roll_from_sequence
+from rhythmic_relationships.vocab import get_vocab_encoder_decoder
 
 WANDB_PROJECT_NAME = "rhythmic-relationships"
-
-
-# TODO: make a list of good segments for manual eval with each part
-TEST_SEGMENT_IDS = []
-# fmt: off
-TEST_SEQS = {
-    'Melody': [34, 0, 36, 0, 36, 0, 36, 0, 34, 0, 36, 0, 39, 0, 43, 0, 39, 0, 41, 0, 41, 0, 41, 0, 39, 0, 41, 0, 44, 0, 0, 0]
-}
-# fmt: on
 
 
 def save_checkpoint(model_dir, epoch, model, optimizer, loss, config):
@@ -173,9 +165,9 @@ def train_recurrent(
         batches = tqdm(train_loader)
         for batch in batches:
             # Forward pass
-            xb, yb = batch
+            xb, _ = batch
             x = xb.to(device).view(xb.shape[0] * xb.shape[1], xb.shape[2])
-            y = yb.to(device).view(yb.shape[0] * yb.shape[1])
+            # y = yb.to(device).view(yb.shape[0] * yb.shape[1])
             x_recon, mu, sigma = model(x)
             x_recon = x_recon.view(x.shape[0], x.shape[1])
 
@@ -257,7 +249,7 @@ def evaluate_transformer_decoder(
         descriptors = []
         print(f"Generating {n_seqs} {n_ticks}-tick sequences...")
         for _ in range(n_seqs):
-            idx = torch.full((1, 1), PAD_TOKEN, dtype=torch.long, device=device)
+            idx = torch.full((1, 1), PAD_IX, dtype=torch.long, device=device)
             seq = model.generate(idx, max_new_tokens=n_ticks - 1)[0]
             roll = get_roll_from_sequence(seq, part)
             rolls.append(roll)
@@ -422,24 +414,49 @@ def evaluate_transformer_encdec(
 
         evaluation = {}
 
-        tgt_part = config["data"]["part_2"]
         n_eval_iters = config["n_eval_iters"]
+        print(f"Evaluating for {n_eval_iters} iters")
 
-        print(f"Evaluating train loss for {n_eval_iters} iters")
         eval_train_losses = torch.zeros(n_eval_iters)
         for k in range(n_eval_iters):
-            src, tgt = parse_sequential_batch(next(iter(train_loader)), device)
-            logits = model(src, tgt)
-            loss = compute_loss(logits, tgt, loss_fn)
+            srcs, tgts = parse_sequential_batch(next(iter(train_loader)), device)
+            logits = model(srcs, tgts)
+            loss = compute_loss(logits, tgts, loss_fn)
             eval_train_losses[k] = loss.item()
 
-        print(f"Evaluating val loss for {n_eval_iters} iters")
+        generated_rolls = []
+        descriptors = []
         eval_val_losses = torch.zeros(n_eval_iters)
         for k in range(n_eval_iters):
-            src, tgt = parse_sequential_batch(next(iter(val_loader)), device)
-            logits = model(src, tgt)
-            loss = compute_loss(logits, tgt, loss_fn)
+            srcs, tgts = parse_sequential_batch(next(iter(val_loader)), device)
+            logits = model(srcs, tgts)
+            loss = compute_loss(logits, tgts, loss_fn)
             eval_val_losses[k] = loss.item()
+
+            # Generate new sequences using part_1s from the val set and just a start token for part_2
+            encode, _ = get_vocab_encoder_decoder(config["data"]["part_2"])
+            start_ix = encode(["start"])[0]
+            idy = torch.full(
+                (srcs.shape[0], 1), start_ix, dtype=torch.long, device=device
+            )
+            seqs = (
+                model.generate(srcs, idy, max_new_tokens=config["sequence_len"])
+                .detach()
+                .cpu()
+                .numpy()
+            )
+            for seq in seqs:
+                roll = get_roll_from_sequence(seq, part=config["data"]["part_2"])
+                generated_rolls.append(roll)
+                # TODO: also save the src rolls
+
+                # Compute sequence descriptors
+                descs = pianoroll2descriptors(
+                    roll,
+                    config["resolution"],
+                    drums=config["data"]["part_2"] == "Drums",
+                )
+                descriptors.append(descs)
 
         evaluation.update(
             {
@@ -458,33 +475,9 @@ def evaluate_transformer_encdec(
                 }
             )
 
-        # Generate sequences and compute their descriptors
-        n_ticks = config["sequence_len"]
-        n_seqs = config["n_eval_seqs"]
-        rolls = []
-        descriptors = []
-        print(f"Generating {n_seqs} {n_ticks}-tick sequences...")
-        for _ in range(n_seqs):
-            # Generate a new sequence starting with a padding token (idy) given a full sequence (idx)
-            # TODO: pull the x seq from the dataset, and also keep the original y to compare
-            idx = torch.tensor([TEST_SEQS["Melody"]], dtype=torch.long, device=device)
-            idy = torch.full((1, 1), PAD_TOKEN, dtype=torch.long, device=device)
-            seq = model.generate(idx, idy, max_new_tokens=n_ticks)[0]
-
-            roll = get_roll_from_sequence(seq, tgt_part)
-            rolls.append(roll)
-
-            # Compute sequence descriptors
-            descs = pianoroll2descriptors(
-                roll,
-                config["resolution"],
-                drums=tgt_part == "Drums",
-            )
-            descriptors.append(descs)
-
         # Save the descriptors along with a few samples
         evaluation["generated_descriptors"] = pd.DataFrame(descriptors).to_dict()
-        evaluation["generated_samples"] = rolls[:10]
+        evaluation["generated_samples"] = generated_rolls[:10]
 
         model.train()
 
@@ -517,12 +510,12 @@ def train_transformer_encoder_decoder(
         batches = tqdm(train_loader)
         for batch in batches:
             # Forward pass
-            src, tgt = parse_sequential_batch(batch, device)
+            srcs, tgts = parse_sequential_batch(batch, device)
 
-            logits = model(src, tgt)
+            logits = model(srcs, tgts)
 
             # Compute loss
-            loss = compute_loss(logits, tgt, loss_fn)
+            loss = compute_loss(logits, tgts, loss_fn)
             train_losses.append(loss.item())
 
             # Backprop

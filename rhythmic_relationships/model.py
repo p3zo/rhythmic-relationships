@@ -1,8 +1,6 @@
 import torch
 import torch.nn as nn
 
-from rhythmic_relationships.data import PAD_TOKEN
-
 
 class VAE(nn.Module):
     def __init__(self, x_dim, h_dims, z_dim, conditional=False, y_dim=0):
@@ -394,20 +392,22 @@ class TransformerEncoderDecoderNew(nn.Module):
         n_head,
         d_ff,
         dropout,
+        pad_ix,
     ):
         super().__init__()
 
         self.context_len = context_len
+        self.pad_ix = pad_ix
 
         self.src_token_embedding = nn.Embedding(
             num_embeddings=src_vocab_size,
             embedding_dim=n_embed,
-            padding_idx=PAD_TOKEN,
+            padding_idx=pad_ix,
         )
         self.tgt_token_embedding = nn.Embedding(
             num_embeddings=tgt_vocab_size,
             embedding_dim=n_embed,
-            padding_idx=PAD_TOKEN,
+            padding_idx=pad_ix,
         )
 
         self.position_embedding = nn.Embedding(
@@ -449,7 +449,7 @@ class TransformerEncoderDecoderNew(nn.Module):
             src,
             tgt,
             tgt_mask=tgt_mask,
-            src_key_padding_mask=x == PAD_TOKEN,
+            src_key_padding_mask=x == self.pad_ix,
         )
 
         return self.output_layer(out)
