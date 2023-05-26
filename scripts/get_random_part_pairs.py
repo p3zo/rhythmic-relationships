@@ -1,9 +1,9 @@
 import os
-from torch.utils.data import DataLoader
 
 from rhythmic_relationships import DATASETS_DIR
-from rhythmic_relationships.data import get_seg_fname, PartPairDataset
+from rhythmic_relationships.data import PartPairDataset, get_seg_fname
 from rhythmic_relationships.io import write_midi_from_roll
+from torch.utils.data import DataLoader
 
 
 def get_random_part_pairs(dataset_name, part_1, part_2, n_samples):

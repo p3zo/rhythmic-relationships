@@ -12,7 +12,7 @@ from rhythmic_relationships import (
     REPRESENTATIONS_FILENAME,
 )
 from rhythmic_relationships.parts import PARTS, get_part_pairs
-from rhythmic_relationships.representations import REPRESENTATIONS, DRUM_ROLL_VOICES
+from rhythmic_relationships.representations import DRUM_ROLL_VOICES, REPRESENTATIONS
 from rhythmic_relationships.vocab import get_vocab_encoder_decoder
 from torch.utils.data import Dataset
 from tqdm import tqdm

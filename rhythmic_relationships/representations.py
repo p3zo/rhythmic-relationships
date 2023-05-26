@@ -45,6 +45,7 @@ DRUM_MAP_9_VOICE = {
 
 DRUM_ROLL_VOICES = sorted(list(set(list(DRUM_MAP_9_VOICE.values()))))
 
+
 def get_9voice_drum_roll_pitches(pitches):
     """Map a list of pitches to the pitches of a 9-voice drum roll
 

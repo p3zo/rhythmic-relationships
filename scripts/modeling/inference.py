@@ -2,11 +2,8 @@ import os
 
 import matplotlib.pyplot as plt
 import pandas as pd
-import torch
 import seaborn as sns
-from torch.utils.data import DataLoader
-from rhythmtoolbox import pianoroll2descriptors
-
+import torch
 from model_utils import load_model
 from rhythmic_relationships import MODELS_DIR
 from rhythmic_relationships.data import (
@@ -18,7 +15,8 @@ from rhythmic_relationships.data import (
 from rhythmic_relationships.io import write_midi_from_roll
 from rhythmic_relationships.model import TransformerEncoderDecoderNew
 from rhythmic_relationships.vocab import get_vocab_encoder_decoder
-
+from rhythmtoolbox import pianoroll2descriptors
+from torch.utils.data import DataLoader
 
 MODEL_NAME = "noncannibalistic_2305260103"
 

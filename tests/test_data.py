@@ -1,13 +1,13 @@
 import pytest
 import torch
-from rhythmtoolbox import DESCRIPTOR_NAMES
 from rhythmic_relationships.data import (
     PartDataset,
     PartPairDataset,
     get_roll_from_sequence,
 )
-from torch.utils.data import DataLoader
 from rhythmic_relationships.vocab import get_vocab_encoder_decoder
+from rhythmtoolbox import DESCRIPTOR_NAMES
+from torch.utils.data import DataLoader
 
 DATASET_NAME = "babyslakh_20_1bar_4res"
 batch_size = 1

@@ -1,7 +1,7 @@
 import numpy as np
-from rhythmtoolbox import DESCRIPTOR_NAMES
-from rhythmic_relationships.io import load_midi_file, get_subdivisions
+from rhythmic_relationships.io import get_subdivisions, load_midi_file
 from rhythmic_relationships.representations import get_representations
+from rhythmtoolbox import DESCRIPTOR_NAMES
 
 N_DESCRIPTORS = len(DESCRIPTOR_NAMES)
 

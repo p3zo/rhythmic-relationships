@@ -1,15 +1,14 @@
 import os
-import wandb
 
 import matplotlib.pyplot as plt
 import pandas as pd
 import torch
-from tqdm import tqdm
-from rhythmtoolbox import pianoroll2descriptors
-
-from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
+import wandb
+from rhythmic_relationships import CHECKPOINTS_DIRNAME, MODELS_DIR
 from rhythmic_relationships.data import get_roll_from_sequence
 from rhythmic_relationships.vocab import get_vocab_encoder_decoder
+from rhythmtoolbox import pianoroll2descriptors
+from tqdm import tqdm
 
 WANDB_PROJECT_NAME = "rhythmic-relationships"
 

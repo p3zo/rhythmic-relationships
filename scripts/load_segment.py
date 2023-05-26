@@ -3,10 +3,7 @@ import argparse
 import os
 
 from rhythmic_relationships import DATASETS_DIR
-from rhythmic_relationships.data import (
-    load_dataset_annotations,
-    get_seg_fname,
-)
+from rhythmic_relationships.data import get_seg_fname, load_dataset_annotations
 from rhythmic_relationships.io import (
     get_pmid_segment,
     get_pmid_segment_reprs,

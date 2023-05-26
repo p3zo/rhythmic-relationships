@@ -1,5 +1,4 @@
 import pytest
-
 from rhythmic_relationships.vocab import get_vocab_encoder_decoder
 
 

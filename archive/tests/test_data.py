@@ -1,7 +1,4 @@
-from rhythmic_relationships.data import (
-    get_pair_sequences,
-    PAD_IX,
-)
+from rhythmic_relationships.data import PAD_IX, get_pair_sequences
 
 
 def test_get_pair_sequences():

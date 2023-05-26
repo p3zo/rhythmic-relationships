@@ -1,13 +1,12 @@
 import numpy as np
-
-from rhythmtoolbox import DESCRIPTOR_NAMES
 from rhythmic_relationships.io import (
     get_seg_iter,
-    slice_midi,
     load_midi_file,
     onset_chroma_is_monpohonic,
+    slice_midi,
 )
 from rhythmic_relationships.representations import REPRESENTATIONS
+from rhythmtoolbox import DESCRIPTOR_NAMES
 
 N_DESCRIPTORS = len(DESCRIPTOR_NAMES)
 

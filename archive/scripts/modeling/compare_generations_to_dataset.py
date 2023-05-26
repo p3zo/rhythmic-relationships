@@ -3,16 +3,15 @@ import os
 
 import matplotlib.pyplot as plt
 import pandas as pd
-import torch
 import seaborn as sns
+import torch
 from model_utils import load_model
-from tqdm import tqdm
-from rhythmtoolbox import pianoroll2descriptors
-
 from rhythmic_relationships import MODELS_DIR
 from rhythmic_relationships.data import PartDataset, get_roll_from_sequence
-from rhythmic_relationships.model import TransformerDecoder
 from rhythmic_relationships.io import write_midi_from_roll
+from rhythmic_relationships.model import TransformerDecoder
+from rhythmtoolbox import pianoroll2descriptors
+from tqdm import tqdm
 
 DEVICE = torch.device("mps" if torch.backends.mps.is_built() else "cpu")
 

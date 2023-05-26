@@ -1,14 +1,14 @@
 import argparse
+
 import torch
 import yaml
-from torch.utils.data import DataLoader, random_split
-
 from model_utils import get_loss_fn, get_model_name, load_config, save_model
 from rhythmic_relationships import DATASETS_DIR
 from rhythmic_relationships.data import PartPairDatasetSequential
 from rhythmic_relationships.model import TransformerEncoderDecoderNew
 from rhythmic_relationships.train import train_transformer_encoder_decoder
 from rhythmic_relationships.vocab import get_vocab_sizes
+from torch.utils.data import DataLoader, random_split
 
 CONFIG_FILEPATH = "config.yml"
 
