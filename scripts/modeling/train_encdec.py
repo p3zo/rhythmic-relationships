@@ -10,7 +10,7 @@ from rhythmic_relationships.train import train_transformer_encoder_decoder
 from rhythmic_relationships.vocab import get_vocab_sizes
 from torch.utils.data import DataLoader, random_split
 
-CONFIG_FILEPATH = "config.yml"
+CONFIG_FILEPATH = "config_encdec.yml"
 
 # DEVICE = torch.device("cpu")
 DEVICE = torch.device(
