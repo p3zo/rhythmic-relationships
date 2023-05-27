@@ -12,7 +12,6 @@ from torch.utils.data import DataLoader, random_split
 
 CONFIG_FILEPATH = "config_encdec.yml"
 
-# DEVICE = torch.device("cpu")
 DEVICE = torch.device(
     "mps"
     if torch.backends.mps.is_built()

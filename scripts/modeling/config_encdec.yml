@@ -11,20 +11,20 @@ splits:
   test: 0.1
 
 model:
-  n_embed: 48
-  n_layer: 1
-  n_head: 1
+  n_embed: 96
+  n_layer: 4
+  n_head: 3
   d_ff: 512
-  dropout: 0.1
+  dropout: 0.5
 
 sequence_len: 32
 resolution: 4
 loss_fn: "cross-entropy"
 loss_reduction: 'mean'
 clip_gradients: False
-num_epochs: 3
-batch_size: 16
-lr: 1e-5
+num_epochs: 5
+batch_size: 8
+lr: 1e-6
 n_eval_iters: 10
 seed: 13
 wandb: True

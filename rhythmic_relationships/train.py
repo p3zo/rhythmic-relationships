@@ -2,10 +2,12 @@ import os
 
 import matplotlib.pyplot as plt
 import pandas as pd
+import seaborn as sns
 import torch
 import wandb
 from rhythmic_relationships import CHECKPOINTS_DIRNAME, MODELS_DIR
 from rhythmic_relationships.data import get_roll_from_sequence
+from rhythmic_relationships.io import write_midi_from_roll
 from rhythmic_relationships.vocab import get_vocab_encoder_decoder
 from rhythmtoolbox import pianoroll2descriptors
 from tqdm import tqdm
@@ -37,10 +39,10 @@ def compute_loss(logits, y, loss_fn):
     return loss_fn(logits.view(B * T, C), y.view(y.shape[0] * y.shape[1]))
 
 
-def parse_sequential_batch(batch, device):
+def parse_batch(batch, device):
     xb, yb = batch
-    x = xb.to(device).view(xb.shape[0] * xb.shape[1], xb.shape[2])
-    y = yb.to(device).view(yb.shape[0] * yb.shape[1], yb.shape[2])
+    x = xb.to(device)
+    y = yb.to(device)
     return x, y
 
 
@@ -51,38 +53,41 @@ def evaluate_transformer_encdec(
     val_loader,
     loss_fn,
     device,
+    epoch,
+    model_name,
 ):
-    # TODO: remove this temp workaround for a NotImplementedError related to nested tensors when running on an mps device
-    prev_device = device
-    device = torch.device("cpu")
-    model.to(device)
+    eval_dir = os.path.join(MODELS_DIR, model_name, "eval", f"epoch_{epoch}")
+    if not os.path.isdir(eval_dir):
+        os.makedirs(eval_dir)
+
+    n_eval_iters = config["n_eval_iters"]
+    part_1 = config["data"]["part_1"]
+    part_2 = config["data"]["part_2"]
+
+    evaluation = {}
 
     with torch.no_grad():
         model.eval()
 
-        evaluation = {}
-
-        n_eval_iters = config["n_eval_iters"]
         print(f"Evaluating for {n_eval_iters} iters")
 
         eval_train_losses = torch.zeros(n_eval_iters)
         for k in range(n_eval_iters):
-            srcs, tgts = parse_sequential_batch(next(iter(train_loader)), device)
+            srcs, tgts = parse_batch(next(iter(train_loader)), device)
             logits = model(srcs, tgts)
             loss = compute_loss(logits, tgts, loss_fn)
             eval_train_losses[k] = loss.item()
 
-        generated_rolls = []
-        descriptors = []
+        desc_dfs = []
         eval_val_losses = torch.zeros(n_eval_iters)
         for k in range(n_eval_iters):
-            srcs, tgts = parse_sequential_batch(next(iter(val_loader)), device)
+            srcs, tgts = parse_batch(next(iter(val_loader)), device)
             logits = model(srcs, tgts)
             loss = compute_loss(logits, tgts, loss_fn)
             eval_val_losses[k] = loss.item()
 
             # Generate new sequences using part_1s from the val set and just a start token for part_2
-            encode, _ = get_vocab_encoder_decoder(config["data"]["part_2"])
+            encode, _ = get_vocab_encoder_decoder(part_2)
             start_ix = encode(["start"])[0]
             idy = torch.full(
                 (srcs.shape[0], 1), start_ix, dtype=torch.long, device=device
@@ -93,18 +98,82 @@ def evaluate_transformer_encdec(
                 .cpu()
                 .numpy()
             )
-            for seq in seqs:
-                roll = get_roll_from_sequence(seq, part=config["data"]["part_2"])
-                generated_rolls.append(roll)
-                # TODO: also save the src rolls
 
-                # Compute sequence descriptors
-                descs = pianoroll2descriptors(
-                    roll,
-                    config["resolution"],
-                    drums=config["data"]["part_2"] == "Drums",
+            for ix, seq in enumerate(seqs):
+                gen_roll = get_roll_from_sequence(seq, part=part_2)
+                write_midi_from_roll(
+                    gen_roll,
+                    outpath=os.path.join(eval_dir, f"{ix}_gen.mid"),
+                    part=part_2,
+                    binary=False,
+                    onset_roll=True,
                 )
-                descriptors.append(descs)
+
+                src_roll = get_roll_from_sequence(srcs[ix].cpu().numpy(), part=part_1)
+                write_midi_from_roll(
+                    src_roll,
+                    outpath=os.path.join(eval_dir, f"{ix}_src.mid"),
+                    part=part_1,
+                    binary=False,
+                    onset_roll=True,
+                )
+
+                tgt_roll = get_roll_from_sequence(tgts[ix].cpu().numpy(), part=part_2)
+                write_midi_from_roll(
+                    tgt_roll,
+                    outpath=os.path.join(eval_dir, f"{ix}_tgt.mid"),
+                    part=part_2,
+                    binary=False,
+                    onset_roll=True,
+                )
+
+                # Compare descriptors of the generated and target rolls
+                gen_roll_descs = pianoroll2descriptors(
+                    gen_roll,
+                    config["resolution"],
+                    drums=part_2 == "Drums",
+                )
+
+                tgt_roll_descs = pianoroll2descriptors(
+                    tgt_roll,
+                    config["resolution"],
+                    drums=part_2 == "Drums",
+                )
+
+                df = pd.DataFrame.from_dict(
+                    {"generated": gen_roll_descs, "target": tgt_roll_descs},
+                    orient="index",
+                )
+                desc_dfs.append(df)
+
+        desc_df = pd.concat(desc_dfs).dropna(how="all", axis=1)
+        if "stepDensity" in desc_df.columns:
+            desc_df.drop("stepDensity", axis=1, inplace=True)
+
+        # Scale the feature columns to [0, 1]
+        desc_df_scaled = (desc_df - desc_df.min()) / (desc_df.max() - desc_df.min())
+
+        # Plot a comparison of distributions for all descriptors
+        sns.boxplot(
+            x="variable",
+            y="value",
+            hue="index",
+            data=pd.melt(desc_df_scaled.reset_index(), id_vars="index"),
+        )
+        plt.ylabel("")
+        plt.xlabel("")
+        plt.yticks([])
+        plt.title(f"{model_name}\nEpoch {epoch}\nn={n_eval_iters}")
+        plt.legend(
+            loc="upper center",
+            bbox_to_anchor=(0.5, -0.08),
+            fancybox=True,
+            shadow=False,
+            ncol=2,
+        )
+        plt.tight_layout()
+        plt.savefig(os.path.join(eval_dir, "gen_tgt_comparison.png"))
+        plt.clf()
 
         evaluation.update(
             {
@@ -123,13 +192,7 @@ def evaluate_transformer_encdec(
                 }
             )
 
-        # Save the descriptors along with a few samples
-        evaluation["generated_descriptors"] = pd.DataFrame(descriptors).to_dict()
-        evaluation["generated_samples"] = generated_rolls[:10]
-
         model.train()
-
-    model.to(prev_device)
 
     return evaluation
 
@@ -160,7 +223,7 @@ def train_transformer_encoder_decoder(
         batches = tqdm(train_loader)
         for batch in batches:
             # Forward pass
-            srcs, tgts = parse_sequential_batch(batch, device)
+            srcs, tgts = parse_batch(batch, device)
 
             logits = model(srcs, tgts)
 
@@ -191,6 +254,8 @@ def train_transformer_encoder_decoder(
             val_loader=val_loader,
             loss_fn=loss_fn,
             device=device,
+            epoch=epoch,
+            model_name=model_name,
         )
         epoch_evals.append(epoch_eval)
 

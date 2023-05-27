@@ -18,16 +18,15 @@ from rhythmic_relationships.vocab import get_vocab_encoder_decoder
 from rhythmtoolbox import pianoroll2descriptors
 from torch.utils.data import DataLoader
 
-MODEL_NAME = "noncannibalistic_2305260103"
+MODEL_NAME = "digitalis_2305261633"
 
-DEVICE = torch.device("cpu")
-# DEVICE = torch.device(
-#     "mps"
-#     if torch.backends.mps.is_built()
-#     else torch.device("cuda:0")
-#     if torch.cuda.device_count() > 0
-#     else torch.device("cpu")
-# )
+DEVICE = torch.device(
+    "mps"
+    if torch.backends.mps.is_built()
+    else torch.device("cuda:0")
+    if torch.cuda.device_count() > 0
+    else torch.device("cpu")
+)
 
 
 if __name__ == "__main__":
@@ -52,7 +51,6 @@ if __name__ == "__main__":
     n_generated = 0
     all_zeros = 0
 
-    del config["data"]["context_len"]
     dataset = PartPairDataset(**config["data"])
     loader = DataLoader(dataset, batch_size=n_seqs, shuffle=True)
 
@@ -133,7 +131,7 @@ if __name__ == "__main__":
         how="all", axis=1
     )
 
-    plots_dir = os.path.join(MODELS_DIR, MODEL_NAME, "eval_plots")
+    plots_dir = os.path.join(MODELS_DIR, MODEL_NAME, "eval")
     if not os.path.isdir(plots_dir):
         os.makedirs(plots_dir)
 
