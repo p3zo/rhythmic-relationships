@@ -1,6 +1,7 @@
 import argparse
 
 import torch
+import wandb
 import yaml
 from model_utils import get_loss_fn, get_model_name, load_config, save_model
 from rhythmic_relationships import DATASETS_DIR
@@ -10,7 +11,8 @@ from rhythmic_relationships.train import train_transformer_encoder_decoder
 from rhythmic_relationships.vocab import get_vocab_sizes
 from torch.utils.data import DataLoader, random_split
 
-CONFIG_FILEPATH = "config_encdec.yml"
+DEFAULT_CONFIG_FILEPATH = "config_encdec.yml"
+WANDB_PROJECT_NAME = "rhythmic-relationships"
 
 DEVICE = torch.device(
     "mps"
@@ -22,20 +24,15 @@ DEVICE = torch.device(
 
 
 if __name__ == "__main__":
+    print(f"{DEVICE=}")
+
     parser = argparse.ArgumentParser()
-    parser.add_argument(
-        "--datasets_dir",
-        type=str,
-        default=DATASETS_DIR,
-        help="Path to the dir containing the dataset.",
-    )
+    parser.add_argument("--datasets_dir", type=str, default=DATASETS_DIR)
+    parser.add_argument("--config_path", type=str, default=DEFAULT_CONFIG_FILEPATH)
     args = parser.parse_args()
 
     datasets_dir = args.datasets_dir
-
-    print(f"{DEVICE=}")
-
-    config = load_config(CONFIG_FILEPATH)
+    config = load_config(args.config_path)
     print(yaml.dump(config))
 
     torch.manual_seed(config["seed"])
@@ -60,6 +57,10 @@ if __name__ == "__main__":
     model = TransformerEncoderDecoder(**config["model"]).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
     loss_fn = get_loss_fn(config)
+
+    if config["wandb"]:
+        wandb.init(project=WANDB_PROJECT_NAME, config=config, name=model_name)
+        wandb.config.update(config)
 
     epoch_evals = train_transformer_encoder_decoder(
         model=model,

@@ -12,8 +12,6 @@ from rhythmic_relationships.vocab import get_vocab_encoder_decoder
 from rhythmtoolbox import pianoroll2descriptors
 from tqdm import tqdm
 
-WANDB_PROJECT_NAME = "rhythmic-relationships"
-
 
 def save_checkpoint(model_dir, epoch, model, optimizer, loss, config):
     checkpoints_dir = os.path.join(model_dir, CHECKPOINTS_DIRNAME)
@@ -189,6 +187,7 @@ def evaluate_transformer_encdec(
                 {
                     "train_loss": evaluation["train_loss"],
                     "val_loss": evaluation["val_loss"],
+                    "epoch": epoch,
                 }
             )
 
@@ -213,9 +212,6 @@ def train_transformer_encoder_decoder(
     if not os.path.isdir(model_dir):
         os.makedirs(model_dir)
 
-    if config["wandb"]:
-        wandb.init(project=WANDB_PROJECT_NAME, config=config, name=model_name)
-
     train_losses = []
     epoch_evals = []
 
@@ -230,6 +226,8 @@ def train_transformer_encoder_decoder(
             # Compute loss
             loss = compute_loss(logits, tgts, loss_fn)
             train_losses.append(loss.item())
+            if config["wandb"]:
+                wandb.log({"batch_loss": loss.item()})
 
             # Backprop
             optimizer.zero_grad(set_to_none=True)
@@ -282,7 +280,7 @@ def train_transformer_encoder_decoder(
         print(f"Saved {loss_plot_path}")
         plt.clf()
 
-        if config["save_checkpoints"]:
+        if config["checkpoints"]:
             save_checkpoint(
                 model_dir=model_dir,
                 epoch=epoch,

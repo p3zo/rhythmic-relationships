@@ -62,11 +62,7 @@ class TransformerEncoderDecoder(nn.Module):
             tgt.device
         )
 
-        out = self.transformer(
-            src,
-            tgt,
-            tgt_mask=tgt_mask,
-        )
+        out = self.transformer(src, tgt, tgt_mask=tgt_mask)
 
         return self.output_layer(out)
 

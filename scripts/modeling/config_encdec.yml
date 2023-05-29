@@ -1,9 +1,9 @@
 data:
   dataset_name: "lmdc_17243_2bar_4res"
-  part_1: "Melody"
-  part_2: "Bass"
+  part_1: "Bass"
+  part_2: "Drums"
   repr_1: "onset_roll"
-  repr_2: "onset_roll"
+  repr_2: "drum_roll"
 
 splits:
   train: 0.8
@@ -11,10 +11,10 @@ splits:
   test: 0.1
 
 model:
-  n_embed: 96
-  n_layer: 4
-  n_head: 3
-  d_ff: 512
+  n_embed: 128
+  n_layer: 3
+  n_head: 4
+  d_ff: 1024
   dropout: 0.5
 
 sequence_len: 32
@@ -24,9 +24,9 @@ loss_reduction: 'mean'
 clip_gradients: False
 num_epochs: 5
 batch_size: 8
-lr: 1e-6
-n_eval_iters: 10
+lr: 1e-4
+n_eval_iters: 25
 seed: 13
 wandb: True
 bento: True
-save_checkpoints: True
+checkpoints: True
