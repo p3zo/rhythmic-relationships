@@ -40,6 +40,7 @@ class TransformerEncoderDecoder(nn.Module):
             dim_feedforward=d_ff,
             dropout=dropout,
             batch_first=True,
+            norm_first=True,
         )
         self.output_layer = nn.Linear(n_embed, tgt_vocab_size)
 
