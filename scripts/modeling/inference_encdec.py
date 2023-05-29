@@ -5,7 +5,7 @@ import pandas as pd
 import seaborn as sns
 import torch
 from model_utils import load_model
-from rhythmic_relationships import MODELS_DIR
+from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
 from rhythmic_relationships.data import (
     PartDataset,
     PartPairDataset,
@@ -18,7 +18,8 @@ from rhythmic_relationships.vocab import get_vocab_encoder_decoder
 from rhythmtoolbox import pianoroll2descriptors
 from torch.utils.data import DataLoader
 
-MODEL_NAME = "digitalis_2305261633"
+MODEL_NAME = "octapodic_2305291243"
+CHECKPOINT_NUM = 1
 
 DEVICE = torch.device(
     "mps"
@@ -30,7 +31,15 @@ DEVICE = torch.device(
 
 
 if __name__ == "__main__":
-    model, config, stats = load_model(MODEL_NAME, TransformerEncoderDecoder)
+    model_dir = os.path.join(MODELS_DIR, MODEL_NAME)
+
+    if CHECKPOINT_NUM:
+        checkpoints_dir = os.path.join(model_dir, CHECKPOINTS_DIRNAME)
+        model_path = os.path.join(checkpoints_dir, str(CHECKPOINT_NUM))
+    else:
+        model_path = os.path.join(model_dir, "model.pt")
+
+    model, config = load_model(model_path, TransformerEncoderDecoder)
     model = model.to(DEVICE)
 
     n_seqs = 50
@@ -40,20 +49,20 @@ if __name__ == "__main__":
     write_midi = True
 
     gen_dir = os.path.join(MODELS_DIR, MODEL_NAME, "inference")
-    if write_midi:
-        if not os.path.isdir(gen_dir):
-            os.makedirs(gen_dir)
+    if write_midi and not os.path.isdir(gen_dir):
+        os.makedirs(gen_dir)
 
-    # Generate new sequences using part_1s from the dataset and just a start token for part_2
-    print(f"Generating {n_seqs} sequences")
+    # Generate seqs using part_1s from the dataset as encoder input and a start token as decoder input
     generated_rolls = []
     generated_descs = []
     n_generated = 0
     all_zeros = 0
 
+    print(f"Loading {n_seqs} ({part_1}, {part_2}) pairs")
     dataset = PartPairDataset(**config["data"])
     loader = DataLoader(dataset, batch_size=n_seqs, shuffle=True)
 
+    print(f"Generating {n_seqs} sequences")
     encode, _ = get_vocab_encoder_decoder(config["data"]["part_2"])
     start_ix = encode(["start"])[0]
     idy = torch.full((n_seqs, 1), start_ix, dtype=torch.long, device=DEVICE)

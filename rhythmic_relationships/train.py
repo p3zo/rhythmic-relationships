@@ -13,25 +13,6 @@ from rhythmtoolbox import pianoroll2descriptors
 from tqdm import tqdm
 
 
-def save_checkpoint(model_dir, epoch, model, optimizer, loss, config):
-    checkpoints_dir = os.path.join(model_dir, CHECKPOINTS_DIRNAME)
-    if not os.path.isdir(checkpoints_dir):
-        os.makedirs(checkpoints_dir)
-
-    checkpoint_path = os.path.join(checkpoints_dir, str(epoch))
-    torch.save(
-        {
-            "epoch": epoch,
-            "model_state_dict": model.state_dict(),
-            "optimizer_state_dict": optimizer.state_dict(),
-            "loss": loss,
-            "config": config,
-        },
-        checkpoint_path,
-    )
-    print(f"Saved checkpoint to {checkpoint_path}")
-
-
 def compute_loss(logits, y, loss_fn):
     B, T, C = logits.shape
     return loss_fn(logits.view(B * T, C), y.view(y.shape[0] * y.shape[1]))
@@ -42,6 +23,43 @@ def parse_batch(batch, device):
     x = xb.to(device)
     y = yb.to(device)
     return x, y
+
+
+def save_checkpoint(
+    model_dir,
+    epoch,
+    model,
+    optimizer,
+    loss,
+    config,
+    epoch_evals,
+    delete_prev=True,
+):
+    checkpoints_dir = os.path.join(model_dir, CHECKPOINTS_DIRNAME)
+    if not os.path.isdir(checkpoints_dir):
+        os.makedirs(checkpoints_dir)
+
+    checkpoint_path = os.path.join(checkpoints_dir, str(epoch))
+
+    torch.save(
+        {
+            "model_class": model.__class__.__name__,
+            "epoch": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "loss": loss,
+            "config": config,
+            "epoch_evals": epoch_evals,
+        },
+        checkpoint_path,
+    )
+    print(f"Saved checkpoint: {checkpoint_path}")
+
+    if delete_prev:
+        prev_checkpoint_path = os.path.join(checkpoints_dir, str(epoch - 1))
+        if os.path.isfile(prev_checkpoint_path):
+            os.remove(prev_checkpoint_path)
+            print(f"Deleted previous checkpoint: {prev_checkpoint_path}")
 
 
 def evaluate_transformer_encdec(
@@ -214,6 +232,8 @@ def train_transformer_encoder_decoder(
     train_losses = []
     epoch_evals = []
 
+    model.train()
+
     for epoch in range(1, num_epochs + 1):
         batches = tqdm(train_loader)
         for batch in batches:
@@ -288,6 +308,8 @@ def train_transformer_encoder_decoder(
                 optimizer=optimizer,
                 loss=loss,
                 config=config,
+                epoch_evals=epoch_evals,
+                delete_prev=True,
             )
 
     return epoch_evals

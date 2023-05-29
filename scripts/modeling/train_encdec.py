@@ -5,7 +5,13 @@ import pandas as pd
 import torch
 import wandb
 import yaml
-from model_utils import get_loss_fn, get_model_name, load_config, save_model
+from model_utils import (
+    get_loss_fn,
+    get_model_name,
+    load_config,
+    save_model,
+    save_bento_model,
+)
 from rhythmic_relationships import DATASETS_DIR, MODELS_DIR
 from rhythmic_relationships.data import PartPairDatasetSequential
 from rhythmic_relationships.model import TransformerEncoderDecoder
@@ -64,7 +70,9 @@ if __name__ == "__main__":
     # Add 1 to the context length to account for the start token
     config["model"]["context_len"] = config["sequence_len"] + 1
     model = TransformerEncoderDecoder(**config["model"]).to(DEVICE)
-    optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"], weight_decay=config['weight_decay'])
+    optimizer = torch.optim.Adam(
+        model.parameters(), lr=config["lr"], weight_decay=config["weight_decay"]
+    )
     loss_fn = get_loss_fn(config)
 
     if config["wandb"]:
@@ -83,10 +91,13 @@ if __name__ == "__main__":
         model_dir=model_dir,
     )
 
-    # Save the stats for the last epoch
-    stats = {
-        "epoch_evals": epoch_evals,
-        "n_params": sum(p.nelement() for p in model.parameters()),
-    }
-
-    save_model(model, config, model_name, stats, bento=config["bento"])
+    model_path = os.path.join(model_dir, "model.pt")
+    save_model(
+        model_path=model_path,
+        model=model,
+        config=config,
+        model_name=model_name,
+        epoch_evals=epoch_evals,
+    )
+    if config["bento"]:
+        save_bento_model(model=model, model_name=model_name)

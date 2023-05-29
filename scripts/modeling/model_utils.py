@@ -33,50 +33,42 @@ def get_model_name():
     return f"{word}_{timestamp}"
 
 
-def save_model(model, config, model_name, stats, bento=True):
-    model_dir = os.path.join(MODELS_DIR, model_name)
-    if not os.path.isdir(model_dir):
-        os.makedirs(model_dir)
-    model_path = os.path.join(model_dir, "model.pt")
+def get_model_n_params(model):
+    return sum(p.nelement() for p in model.parameters())
 
+
+def save_model(model_path, model, config, model_name, epoch_evals):
     torch.save(
         {
             "name": model_name,
             "model_class": model.__class__.__name__,
             "config": config,
-            "stats": stats,
-            "state_dict": model.state_dict(),
+            "epoch_evals": epoch_evals,
+            "n_params": get_model_n_params(model),
+            "model_state_dict": model.state_dict(),
         },
         model_path,
     )
     print(f"Saved {model_path}")
 
-    if bento:
-        from bentoml.pytorch import save_model as save_bento_model
 
-        saved_model = save_bento_model(
-            model_name,
-            model,
-            signatures={
-                "encode": {
-                    "batchable": True,
-                },
-                "decode": {
-                    "batchable": True,
-                },
-            },
-        )
-        print(f"Bento model saved: {saved_model}")
+def save_bento_model(model, model_name):
+    from bentoml.pytorch import save_model as save_bento_model
+
+    saved_model = save_bento_model(
+        model_name,
+        model,
+        signatures={"encode": {"batchable": True}, "decode": {"batchable": True}},
+    )
+    print(f"Bento model saved: {saved_model}")
 
 
-def load_model(model_name, model_class):
-    model_path = os.path.join(MODELS_DIR, model_name, "model.pt")
-    model_obj = torch.load(model_path, map_location=torch.device('cpu'))
+def load_model(model_path, model_class):
+    model_obj = torch.load(model_path, map_location=torch.device("cpu"))
     config = model_obj["config"]
-    stats = model_obj["stats"]
     model = model_class(**config["model"])
-    model.load_state_dict(state_dict=model_obj["state_dict"])
-    return model, config, stats
+    model.load_state_dict(state_dict=model_obj["model_state_dict"])
+    return model, config
 
 
 def get_model_catalog():
@@ -90,7 +82,8 @@ def get_model_catalog():
 
         catalog_info = {}
         catalog_info["model_class"] = model_obj.get("model_class")
-        catalog_info["stats"] = model_obj.get("stats")
+        catalog_info["n_params"] = model_obj.get("n_params")
+        catalog_info["epoch_evals"] = model_obj.get("epoch_evals")
         catalog_info["config"] = model_obj.get("config")
         catalog[model_obj["name"]] = catalog_info
 
