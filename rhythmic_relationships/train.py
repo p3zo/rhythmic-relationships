@@ -101,7 +101,7 @@ def evaluate_transformer_encdec(
                 gen_roll = get_roll_from_sequence(seq, part=part_2)
                 write_midi_from_roll(
                     gen_roll,
-                    outpath=os.path.join(eval_dir, f"{ix}_gen.mid"),
+                    outpath=os.path.join(eval_dir, f"{k}_{ix}_gen.mid"),
                     part=part_2,
                     binary=False,
                     onset_roll=True,
@@ -110,7 +110,7 @@ def evaluate_transformer_encdec(
                 src_roll = get_roll_from_sequence(srcs[ix].cpu().numpy(), part=part_1)
                 write_midi_from_roll(
                     src_roll,
-                    outpath=os.path.join(eval_dir, f"{ix}_src.mid"),
+                    outpath=os.path.join(eval_dir, f"{k}_{ix}_src.mid"),
                     part=part_1,
                     binary=False,
                     onset_roll=True,
@@ -119,7 +119,7 @@ def evaluate_transformer_encdec(
                 tgt_roll = get_roll_from_sequence(tgts[ix].cpu().numpy(), part=part_2)
                 write_midi_from_roll(
                     tgt_roll,
-                    outpath=os.path.join(eval_dir, f"{ix}_tgt.mid"),
+                    outpath=os.path.join(eval_dir, f"{k}_{ix}_tgt.mid"),
                     part=part_2,
                     binary=False,
                     onset_roll=True,
@@ -161,13 +161,14 @@ def evaluate_transformer_encdec(
         plt.ylabel("")
         plt.xlabel("")
         plt.yticks([])
-        plt.title(f"{model_name}\nEpoch {epoch}\nn={n_eval_iters}")
+        plt.xticks(rotation=90)
+        plt.title(f"{model_name}\nEpoch {epoch}, n={n_eval_iters}")
         plt.legend(
             loc="upper center",
-            bbox_to_anchor=(0.5, -0.08),
+            bbox_to_anchor=(0.9, 1.2),
             fancybox=True,
             shadow=False,
-            ncol=2,
+            ncol=1,
         )
         plt.tight_layout()
         plt.savefig(os.path.join(eval_dir, "gen_tgt_comparison.png"))
