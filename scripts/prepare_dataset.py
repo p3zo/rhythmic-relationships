@@ -76,6 +76,12 @@ if __name__ == "__main__":
         help="Path to the input: either a MIDI file or a directory of MIDI files.",
     )
     parser.add_argument(
+        "--outdir",
+        type=str,
+        default=DATASETS_DIR,
+        help="Path to the output directory.",
+    )
+    parser.add_argument(
         "--prefix",
         type=str,
         default="babyslakh",
@@ -143,6 +149,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
 
     path = args.path
+    outdir = args.outdir
     seg_size = args.seg_size
     resolution = args.resolution
     n_beat_bars = args.n_beat_bars
@@ -175,7 +182,7 @@ if __name__ == "__main__":
         sys.exit(0)
 
     dataset_name = f"{prefix}_{len(filepaths)}_{seg_size}bar_{resolution}res"
-    output_dir = os.path.join(DATASETS_DIR, dataset_name)
+    output_dir = os.path.join(outdir, dataset_name)
     data_dir = os.path.join(output_dir, REPRESENTATIONS_DIRNAME)
     if not os.path.isdir(data_dir):
         os.makedirs(data_dir)
