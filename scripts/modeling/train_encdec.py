@@ -64,7 +64,7 @@ if __name__ == "__main__":
     # Add 1 to the context length to account for the start token
     config["model"]["context_len"] = config["sequence_len"] + 1
     model = TransformerEncoderDecoder(**config["model"]).to(DEVICE)
-    optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
+    optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"], weight_decay=config['weight_decay'])
     loss_fn = get_loss_fn(config)
 
     if config["wandb"]:
