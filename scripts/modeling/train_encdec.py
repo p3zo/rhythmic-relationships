@@ -1,10 +1,12 @@
 import argparse
+import os
 
+import pandas as pd
 import torch
 import wandb
 import yaml
 from model_utils import get_loss_fn, get_model_name, load_config, save_model
-from rhythmic_relationships import DATASETS_DIR
+from rhythmic_relationships import DATASETS_DIR, MODELS_DIR
 from rhythmic_relationships.data import PartPairDatasetSequential
 from rhythmic_relationships.model import TransformerEncoderDecoder
 from rhythmic_relationships.train import train_transformer_encoder_decoder
@@ -37,16 +39,23 @@ if __name__ == "__main__":
 
     torch.manual_seed(config["seed"])
 
+    model_name = get_model_name()
+    print(f"{model_name=}")
+
+    model_dir = os.path.join(MODELS_DIR, model_name)
+    if not os.path.isdir(model_dir):
+        os.makedirs(model_dir)
+
     dataset = PartPairDatasetSequential(**config["data"], datasets_dir=datasets_dir)
     splits = config["splits"]
     train_data, val_data, test_data = random_split(dataset, list(splits.values()))
+    for k, v in {"train": train_data, "val": val_data, "test": test_data}.items():
+        ix_path = os.path.join(model_dir, f"{k}_ixs.csv")
+        pd.Series(v.indices).to_csv(ix_path, index=False, header=False)
     print(f"{splits=}: {len(train_data)}, {len(val_data)}, {len(test_data)}")
 
     train_loader = DataLoader(train_data, batch_size=config["batch_size"], shuffle=True)
     val_loader = DataLoader(val_data, batch_size=config["batch_size"], shuffle=True)
-
-    model_name = get_model_name()
-    print(f"{model_name=}")
 
     vocab_sizes = get_vocab_sizes()
     config["model"]["src_vocab_size"] = vocab_sizes[config["data"]["part_1"]]
@@ -71,6 +80,7 @@ if __name__ == "__main__":
         config=config,
         device=DEVICE,
         model_name=model_name,
+        model_dir=model_dir,
     )
 
     # Save the stats for the last epoch

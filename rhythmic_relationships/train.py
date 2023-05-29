@@ -5,7 +5,7 @@ import pandas as pd
 import seaborn as sns
 import torch
 import wandb
-from rhythmic_relationships import CHECKPOINTS_DIRNAME, MODELS_DIR
+from rhythmic_relationships import CHECKPOINTS_DIRNAME
 from rhythmic_relationships.data import get_roll_from_sequence
 from rhythmic_relationships.io import write_midi_from_roll
 from rhythmic_relationships.vocab import get_vocab_encoder_decoder
@@ -53,8 +53,9 @@ def evaluate_transformer_encdec(
     device,
     epoch,
     model_name,
+    model_dir,
 ):
-    eval_dir = os.path.join(MODELS_DIR, model_name, "eval", f"epoch_{epoch}")
+    eval_dir = os.path.join(model_dir, "eval", f"epoch_{epoch}")
     if not os.path.isdir(eval_dir):
         os.makedirs(eval_dir)
 
@@ -206,12 +207,9 @@ def train_transformer_encoder_decoder(
     config,
     device,
     model_name,
+    model_dir,
 ):
     num_epochs = config["num_epochs"]
-
-    model_dir = os.path.join(MODELS_DIR, model_name)
-    if not os.path.isdir(model_dir):
-        os.makedirs(model_dir)
 
     train_losses = []
     epoch_evals = []
@@ -255,6 +253,7 @@ def train_transformer_encoder_decoder(
             device=device,
             epoch=epoch,
             model_name=model_name,
+            model_dir=model_dir,
         )
         epoch_evals.append(epoch_eval)
 
