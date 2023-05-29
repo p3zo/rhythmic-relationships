@@ -90,6 +90,8 @@ def get_roll_from_sequence(seq, part):
     if part == "Drums":
         decoded = decode(seq)
         for tick, token in enumerate(decoded):
+            if token == "start":
+                continue
             roll[tick, DRUM_ROLL_VOICES] = [int(i) for i in token]
         return roll
 
@@ -101,11 +103,9 @@ def get_roll_from_sequence(seq, part):
     for tick, token in enumerate(decoded):
         if isinstance(token, str):
             continue
-
         elif isinstance(token, tuple):
             pitch, velocity_bin = token
             roll[tick, pitch] = velocity_bin_vals[velocity_bin]
-
         else:
             raise ValueError("Invalid token type")
 
