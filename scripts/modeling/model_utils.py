@@ -71,7 +71,7 @@ def save_model(model, config, model_name, stats, bento=True):
 
 def load_model(model_name, model_class):
     model_path = os.path.join(MODELS_DIR, model_name, "model.pt")
-    model_obj = torch.load(model_path)
+    model_obj = torch.load(model_path, map_location=torch.device('cpu'))
     config = model_obj["config"]
     stats = model_obj["stats"]
     model = model_class(**config["model"])
