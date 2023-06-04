@@ -42,7 +42,8 @@ class TransformerEncoderDecoder(nn.Module):
             batch_first=True,
             norm_first=True,
         )
-        self.output_layer = nn.Linear(n_embed, tgt_vocab_size)
+        self.output_layer_norm = nn.LayerNorm(n_embed)
+        self.output_layer = nn.Linear(n_embed, tgt_vocab_size, bias=False)
 
         self.register_buffer("tril", torch.tril(torch.ones(context_len, context_len)))
 
@@ -51,7 +52,7 @@ class TransformerEncoderDecoder(nn.Module):
         enc_tok_emb = self.src_token_embedding(x)
         dec_tok_emb = self.tgt_token_embedding(y)
 
-        # # T, C
+        # T, C
         enc_pos_emb = self.position_embedding.weight[: x.shape[1]]
         dec_pos_emb = self.position_embedding.weight[: y.shape[1]]
 
@@ -65,7 +66,9 @@ class TransformerEncoderDecoder(nn.Module):
 
         out = self.transformer(src, tgt, tgt_mask=tgt_mask)
 
-        return self.output_layer(out)
+        normed = self.output_layer_norm(out)
+
+        return self.output_layer(normed)
 
     @torch.no_grad()
     def generate(self, x, y, max_new_tokens=32):
@@ -73,9 +76,10 @@ class TransformerEncoderDecoder(nn.Module):
 
         self.eval()
 
+        # Crop inputs to the last context_len tokens
+        x_cond = x[:, -self.context_len :]
+
         for _ in range(max_new_tokens):
-            # Crop x to the last context_len tokens
-            x_cond = x[:, -self.context_len :]
             y_cond = y[:, -self.context_len :]
 
             # Get the predictions
