@@ -79,9 +79,24 @@ def tokenize_roll(roll, part):
 
 
 def get_roll_from_sequence(seq, part):
-    """Convert a monophonic sequence of pitches to a piano roll."""
+    """Convert a monophonic sequence of tokens to a piano roll.
+
+    Parameters
+    ----------
+    seq : np.array
+        A sequence of tokens
+
+    part : str
+        The part to use. See the list of parts in `parts.py`
+
+    Returns
+    -------
+    roll : np.array
+        A piano roll representation of the sequence.
+    """
     encode, decode = get_vocab_encoder_decoder(part)
 
+    seq = seq.copy()
     if seq[0] == encode(["start"])[0]:
         seq = seq[1:]
 
