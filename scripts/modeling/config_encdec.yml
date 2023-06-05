@@ -19,7 +19,6 @@ model:
 
 sequence_len: 32
 resolution: 4
-loss_fn: "cross-entropy"
 loss_reduction: 'mean'
 clip_gradients: False
 num_epochs: 5

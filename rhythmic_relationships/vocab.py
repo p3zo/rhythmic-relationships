@@ -8,14 +8,14 @@ def get_vocab(part):
         raise ValueError(f"part must be one of {PARTS}")
 
     # Create a mapping from token to integer, including first any special tokens
-    itot = {0: "start"}
+    itot = {0: "pad", 1: "start"}
 
     if part == "Drums":
         patterns = [
             "".join([str(j) for j in i])
             for i in list(itertools.product([0, 1], repeat=9))
         ]
-        # NOTE: add another 1 because 0 is reserved for pad ix
+
         itot.update({ix + len(itot): p for ix, p in enumerate(patterns)})
 
         return itot
@@ -28,8 +28,7 @@ def get_vocab(part):
     pitches = list(range(pitch_min, pitch_max + 1))
     velocity_bins = list(range(n_velocity_bins))
 
-    itot.update({1: "rest"})
-    # NOTE: add another 1 because 0 is reserved for pad ix
+    itot.update({2: "rest"})
     itot.update(
         {
             ix + len(itot): i

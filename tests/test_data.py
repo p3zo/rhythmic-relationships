@@ -43,7 +43,7 @@ def test_get_roll_from_sequence():
 
     assert roll[3].sum() == 0
 
-    drum_seq = [1, 10, 100]
+    drum_seq = [1, 2, 11, 101]
     roll = get_roll_from_sequence(drum_seq, part="Drums")
     assert roll.shape == (3, 128)
     assert roll[0].sum() == 0

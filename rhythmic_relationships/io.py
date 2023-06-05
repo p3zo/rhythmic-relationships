@@ -378,6 +378,7 @@ def get_pretty_midi_from_roll(
     roll,
     resolution,
     binary=False,
+    scaled=False,
     program=0,
     is_drum=False,
     part="",
@@ -398,7 +399,9 @@ def get_pretty_midi_from_roll(
         is_drum : bool
             Indicates if the instrument is a drum or not
         binary : bool
-            Indicates if the roll is binary or not
+            Indicates if the roll is binary
+        scaled : bool
+            Indicates if the roll is scaled to the range [0,1]
         part : str
             The name of the part
         n_octaves : int
@@ -412,7 +415,7 @@ def get_pretty_midi_from_roll(
     """
     if binary:
         roll[roll.nonzero()] = 100
-    else:
+    elif scaled:
         roll = (roll * 127).astype(np.uint8)
 
     if n_octaves:

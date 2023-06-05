@@ -573,5 +573,6 @@ class PartPairDatasetSequential(Dataset):
         p1_tokenized = tokenize_roll(p1_seg_repr, self.part_1)
         p2_tokenized = tokenize_roll(p2_seg_repr, self.part_2)
 
-        # TODO: rename class from sequential since we're no longer creating sequences
-        return torch.LongTensor(p1_tokenized), torch.LongTensor(p2_tokenized)
+        X, Y = get_pair_sequences(p1_tokenized, p2_tokenized, self.context_len)
+
+        return torch.LongTensor(X), torch.LongTensor(Y)

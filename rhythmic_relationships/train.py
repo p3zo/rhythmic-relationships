@@ -18,10 +18,10 @@ def compute_loss(logits, y, loss_fn):
     return loss_fn(logits.view(B * T, C), y.view(y.shape[0] * y.shape[1]))
 
 
-def parse_batch(batch, device):
+def parse_sequential_batch(batch, device):
     xb, yb = batch
-    x = xb.to(device)
-    y = yb.to(device)
+    x = xb.to(device).view(xb.shape[0] * xb.shape[1], xb.shape[2])
+    y = yb.to(device).view(yb.shape[0] * yb.shape[1], yb.shape[2])
     return x, y
 
 
@@ -90,7 +90,7 @@ def evaluate_transformer_encdec(
 
         eval_train_losses = torch.zeros(n_eval_iters)
         for k in range(n_eval_iters):
-            srcs, tgts = parse_batch(next(iter(train_loader)), device)
+            srcs, tgts = parse_sequential_batch(next(iter(train_loader)), device)
             logits = model(srcs, tgts)
             loss = compute_loss(logits, tgts, loss_fn)
             eval_train_losses[k] = loss.item()
@@ -98,7 +98,7 @@ def evaluate_transformer_encdec(
         desc_dfs = []
         eval_val_losses = torch.zeros(n_eval_iters)
         for k in range(n_eval_iters):
-            srcs, tgts = parse_batch(next(iter(val_loader)), device)
+            srcs, tgts = parse_sequential_batch(next(iter(val_loader)), device)
             logits = model(srcs, tgts)
             loss = compute_loss(logits, tgts, loss_fn)
             eval_val_losses[k] = loss.item()
@@ -238,7 +238,7 @@ def train_transformer_encoder_decoder(
         batches = tqdm(train_loader)
         for batch in batches:
             # Forward pass
-            srcs, tgts = parse_batch(batch, device)
+            srcs, tgts = parse_sequential_batch(batch, device)
 
             logits = model(srcs, tgts)
 

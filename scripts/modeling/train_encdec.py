@@ -6,7 +6,6 @@ import torch
 import wandb
 import yaml
 from model_utils import (
-    get_loss_fn,
     get_model_name,
     load_config,
     save_model,
@@ -16,7 +15,7 @@ from rhythmic_relationships import DATASETS_DIR, MODELS_DIR
 from rhythmic_relationships.data import PartPairDatasetSequential
 from rhythmic_relationships.model import TransformerEncoderDecoder
 from rhythmic_relationships.train import train_transformer_encoder_decoder
-from rhythmic_relationships.vocab import get_vocab_sizes
+from rhythmic_relationships.vocab import get_vocab_sizes, get_vocab_encoder_decoder
 from torch.utils.data import DataLoader, random_split
 
 DEFAULT_CONFIG_FILEPATH = "config_encdec.yml"
@@ -64,16 +63,24 @@ if __name__ == "__main__":
     val_loader = DataLoader(val_data, batch_size=config["batch_size"], shuffle=True)
 
     vocab_sizes = get_vocab_sizes()
+    encode, _ = get_vocab_encoder_decoder(config["data"]["part_2"])
+    pad_ix = encode(["pad"])[0]
     config["model"]["src_vocab_size"] = vocab_sizes[config["data"]["part_1"]]
     config["model"]["tgt_vocab_size"] = vocab_sizes[config["data"]["part_2"]]
-
     # Add 1 to the context length to account for the start token
     config["model"]["context_len"] = config["sequence_len"] + 1
+    config["model"]["pad_ix"] = pad_ix
     model = TransformerEncoderDecoder(**config["model"]).to(DEVICE)
+
     optimizer = torch.optim.Adam(
-        model.parameters(), lr=config["lr"], weight_decay=config["weight_decay"]
+        model.parameters(),
+        lr=config["lr"],
+        weight_decay=config["weight_decay"],
     )
-    loss_fn = get_loss_fn(config)
+    loss_fn = torch.nn.CrossEntropyLoss(
+        reduction=config["loss_reduction"],
+        ignore_index=pad_ix,
+    )
 
     if config["wandb"]:
         wandb.init(project=WANDB_PROJECT_NAME, config=config, name=model_name)

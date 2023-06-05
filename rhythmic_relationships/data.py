@@ -95,6 +95,10 @@ def get_roll_from_sequence(seq, part):
             roll[tick, DRUM_ROLL_VOICES] = [int(i) for i in token]
         return roll
 
+    # Replace padding with rests
+    pad_ix = encode(["pad"])[0]
+    seq[seq == pad_ix] = encode(["rest"])[0]
+
     decoded = decode(seq)
 
     velocity_bins = np.array([0.25, 0.5, 0.75, 1])
@@ -344,6 +348,37 @@ class PartDataset(Dataset):
         return df
 
 
+def get_pair_sequences(p1_tokenized, p2_tokenized, context_len, pad_ix=None):
+    """Partitions a pair of tokenized segments into recurrent sequences.
+
+    Returns X, Y pairs where X is always the full src sequence and Y is every shifted position of the tgt sequence.
+
+    Optionally pad target to create pairs that are always the same length.
+    """
+    X, Y = [], []
+
+    assert isinstance(p1_tokenized, list) and isinstance(p2_tokenized, list)
+
+    for t in range(len(p1_tokenized)):
+        from_ix = 0
+        to_ix = t + 1
+
+        if t >= context_len:
+            from_ix = to_ix - context_len
+
+        target = p2_tokenized[from_ix:to_ix]
+
+        # Pad target
+        if pad_ix is not None and len(target) < context_len:
+            t_pad_len = context_len - len(target)
+            target = target + [pad_ix] * t_pad_len
+
+        X.append(p1_tokenized)
+        Y.append(target)
+
+    return X, Y
+
+
 class PartPairDatasetSequential(Dataset):
     """
     Loads the same data as a PartPairDataset, but partitions each segment into a recurrent sequence and returns X, Y pairs.
@@ -356,6 +391,7 @@ class PartPairDatasetSequential(Dataset):
         part_2,
         repr_1,
         repr_2,
+        context_len,
         datasets_dir=DATASETS_DIR,
     ):
         if part_1 not in PARTS or part_2 not in PARTS:
@@ -394,6 +430,11 @@ class PartPairDatasetSequential(Dataset):
             df, how="left", left_on=part_2, right_on="roll_id"
         )
 
+        self.context_len = context_len
+
+        encode, _ = get_vocab_encoder_decoder(part_2)
+        self.pad_ix = encode(["pad"])[0]
+
     def __len__(self):
         return len(self.p1_pairs)
 
@@ -407,5 +448,11 @@ class PartPairDatasetSequential(Dataset):
         p1_tokenized = tokenize_roll(p1_seg_repr, self.part_1)
         p2_tokenized = tokenize_roll(p2_seg_repr, self.part_2)
 
-        # TODO: rename class from sequential since we're no longer creating sequences
-        return torch.LongTensor(p1_tokenized), torch.LongTensor(p2_tokenized)
+        X, Y = get_pair_sequences(
+            p1_tokenized,
+            p2_tokenized,
+            self.context_len,
+            pad_ix=self.pad_ix,
+        )
+
+        return torch.LongTensor(X), torch.LongTensor(Y)

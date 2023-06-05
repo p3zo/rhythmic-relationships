@@ -13,18 +13,22 @@ class TransformerEncoderDecoder(nn.Module):
         n_head,
         d_ff,
         dropout,
+        pad_ix,
     ):
         super().__init__()
 
         self.context_len = context_len
+        self.pad_ix = pad_ix
 
         self.src_token_embedding = nn.Embedding(
             num_embeddings=src_vocab_size,
             embedding_dim=n_embed,
+            padding_idx=pad_ix,
         )
         self.tgt_token_embedding = nn.Embedding(
             num_embeddings=tgt_vocab_size,
             embedding_dim=n_embed,
+            padding_idx=pad_ix,
         )
 
         self.position_embedding = nn.Embedding(
@@ -64,7 +68,12 @@ class TransformerEncoderDecoder(nn.Module):
             tgt.device
         )
 
-        out = self.transformer(src, tgt, tgt_mask=tgt_mask)
+        out = self.transformer(
+            src,
+            tgt,
+            tgt_mask=tgt_mask,
+            tgt_key_padding_mask=y == self.pad_ix,
+        )
 
         normed = self.output_layer_norm(out)
 
