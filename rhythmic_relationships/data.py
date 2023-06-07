@@ -374,7 +374,7 @@ def get_pair_sequences(p1_tokenized, p2_tokenized, context_len, pad_ix=None):
 
     assert isinstance(p1_tokenized, list) and isinstance(p2_tokenized, list)
 
-    for t in range(len(p1_tokenized)):
+    for t in range(len(p2_tokenized)):
         from_ix = 0
         to_ix = t + 1
 

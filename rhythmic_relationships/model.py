@@ -1,8 +1,99 @@
 import torch
 import torch.nn as nn
+from x_transformers import TransformerWrapper, Decoder, Encoder
 
 
 class TransformerEncoderDecoder(nn.Module):
+    def __init__(
+        self,
+        context_len,
+        src_vocab_size,
+        tgt_vocab_size,
+        enc_n_embed,
+        enc_n_layer,
+        enc_n_head,
+        enc_d_ff,
+        enc_dropout,
+        dec_n_embed,
+        dec_n_layer,
+        dec_n_head,
+        dec_d_ff,
+        dec_dropout,
+        pad_ix,
+    ):
+        super().__init__()
+
+        self.context_len = context_len
+        self.pad_ix = pad_ix
+
+        # TODO: try deepnorm=True
+        # TODO: attn_sparse_topk=8 throws NameError
+        # TODO: how to set ff dims?
+        self.encoder = TransformerWrapper(
+            num_tokens=src_vocab_size,
+            max_seq_len=33,
+            l2norm_embed=True,
+            attn_layers=Encoder(
+                dim=enc_n_embed,
+                depth=enc_n_layer,
+                heads=enc_n_head,
+                layer_dropout=enc_dropout,
+                rotary_pos_emb=True,
+                ff_glu=True,
+                ff_no_bias=True,
+            ),
+        )
+
+        self.decoder = TransformerWrapper(
+            num_tokens=tgt_vocab_size,
+            max_seq_len=33,
+            l2norm_embed=True,
+            attn_layers=Decoder(
+                dim=dec_n_embed,
+                depth=dec_n_layer,
+                heads=dec_n_head,
+                layer_dropout=dec_dropout,
+                cross_attend=True,
+                rotary_pos_emb=True,
+                ff_glu=True,
+                ff_no_bias=True,
+                attn_one_kv_head=True,  # only use one head for k/v, but multi-headed q
+            ),
+        )
+
+    def forward(self, x, y):
+        encoded = self.encoder(x, return_embeddings=True)
+        return self.decoder(y, context=encoded)
+
+    @torch.no_grad()
+    def generate(
+        self,
+        seq_in,
+        seq_out_start,
+        seq_len,
+        mask=None,
+        attn_mask=None,
+        **kwargs,
+    ):
+        self.eval()
+        encodings = self.encoder(
+            seq_in,
+            mask=mask,
+            attn_mask=attn_mask,
+            return_embeddings=True,
+        )
+        out = self.decoder.generate(
+            seq_out_start,
+            seq_len,
+            context=encodings,
+            context_mask=mask,
+            **kwargs,
+        )
+        self.train()
+        return out
+
+
+class TransformerEncoderDecoderOld(nn.Module):
     def __init__(
         self,
         context_len,
@@ -94,7 +185,7 @@ class TransformerEncoderDecoder(nn.Module):
             # Get the predictions
             logits = self(x_cond, y_cond)
 
-            # Take the last predicted token
+            # Take the logits for the last tokens
             logits = logits[:, -1, :]  # becomes (B, C)
 
             # Apply softmax to get probabilities
