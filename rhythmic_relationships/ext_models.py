@@ -2,26 +2,19 @@
 
 import torch
 import torch.nn as nn
+from x_transformers import TransformerWrapper, Decoder, Encoder
 
 
-def get_causal_mask(seq_len, device):
-    mask = (
-        torch.triu(
-            torch.ones(
-                seq_len,
-                seq_len,
-                device=device,
-            )
-        )
-        == 1
-    ).transpose(0, 1)
-    mask = (
+def get_causal_mask(sz, device, boolean=False):
+    mask = (torch.triu(torch.ones(sz, sz, device=device)) == 1).transpose(0, 1)
+    mask.requires_grad = False
+    if boolean:
+        return mask
+    return (
         mask.float()
         .masked_fill(mask == 0, float("-inf"))
         .masked_fill(mask == 1, float(0.0))
     )
-    mask.requires_grad = False
-    return mask
 
 
 def weight_init_normal(weight, normal_std):
@@ -99,8 +92,9 @@ class VAETransformerEncoder(nn.Module):
         d_ff,
         d_vae_latent,
         dropout,
+        vocab_size,
+        context_len,
     ):
-        """Adapted from https://github.com/YatingMusic/MuseMorphose/blob/main/model/transformer_encoder.py"""
         super().__init__()
         self.n_layer = n_layer
         self.n_head = n_head
@@ -108,23 +102,32 @@ class VAETransformerEncoder(nn.Module):
         self.d_ff = d_ff
         self.d_vae_latent = d_vae_latent
         self.dropout = dropout
+        self.vocab_size = vocab_size
+        self.context_len = context_len
 
-        self.encoder_layer = nn.TransformerEncoderLayer(
-            d_model,
-            n_head,
-            d_ff,
-            dropout,
+        # TODO: how to set ff dims?
+        self.encoder = TransformerWrapper(
+            num_tokens=vocab_size,
+            max_seq_len=context_len,
+            l2norm_embed=True,
+            attn_layers=Encoder(
+                dim=d_model,
+                depth=n_layer,
+                heads=n_head,
+                layer_dropout=dropout,
+                rotary_pos_emb=True,
+                ff_glu=True,
+                ff_no_bias=True,
+            ),
         )
-        self.encoder = nn.TransformerEncoder(self.encoder_layer, n_layer)
 
         self.fc_mu = nn.Linear(d_model, d_vae_latent)
         self.fc_logvar = nn.Linear(d_model, d_vae_latent)
 
     def forward(self, x):
-        out = self.encoder(x)
-        hidden_out = out[0, :, :]
-        mu, logvar = self.fc_mu(hidden_out), self.fc_logvar(hidden_out)
-        return hidden_out, mu, logvar
+        h = self.encoder(x, return_embeddings=True)
+        mu, logvar = self.fc_mu(h), self.fc_logvar(h)
+        return h, mu, logvar
 
 
 class VAETransformerDecoder(nn.Module):
@@ -134,37 +137,46 @@ class VAETransformerDecoder(nn.Module):
         n_head,
         d_model,
         d_ff,
-        d_seg_emb,
+        d_latent,
         pad_ix,
         dropout,
+        vocab_size,
+        context_len,
     ):
         """Adapted from https://github.com/YatingMusic/MuseMorphose/blob/main/model/musemorphose.py"""
         super().__init__()
+
         self.n_layer = n_layer
         self.n_head = n_head
         self.d_model = d_model
         self.d_ff = d_ff
-        self.d_seg_emb = d_seg_emb
+        self.d_latent = d_latent
         self.pad_ix = pad_ix
         self.dropout = dropout
-        self.seg_emb_proj = nn.Linear(d_seg_emb, d_model, bias=False)
-        self.decoder_layers = nn.ModuleList()
-        for i in range(n_layer):
-            self.decoder_layers.append(
-                nn.TransformerEncoderLayer(d_model, n_head, d_ff, dropout)
-            )
+        self.latent_proj = nn.Linear(d_latent, d_model, bias=False)
+        self.vocab_size = vocab_size
+        self.context_len = context_len
 
-    def forward(self, x, seg_emb):
-        attn_mask = get_causal_mask(x.size(0), device=x.device)
+        self.decoder = TransformerWrapper(
+            num_tokens=vocab_size,
+            max_seq_len=context_len,
+            l2norm_embed=True,
+            attn_layers=Decoder(
+                dim=d_model,
+                depth=n_layer,
+                heads=n_head,
+                layer_dropout=dropout,
+                cross_attend=True,
+                rotary_pos_emb=True,
+                ff_glu=True,
+                ff_no_bias=True,
+            ),
+        )
 
-        seg_emb = self.seg_emb_proj(seg_emb)
-
-        out = x
-        for i in range(self.n_layer):
-            out += seg_emb
-            # TODO: pass key padding mask?
-            out = self.decoder_layers[i](x, src_mask=attn_mask)
-
+    def forward(self, x, latent):
+        latent_proj = self.latent_proj(latent)
+        attn_mask = get_causal_mask(x.size(1), device=x.device, boolean=True)
+        out = self.decoder(x, context=latent_proj, attn_mask=attn_mask)
         return out
 
 
@@ -204,8 +216,6 @@ class MuseMorphoseAdapted(nn.Module):
         self.dec_dropout = dec_dropout
 
         self.d_vae_latent = d_vae_latent
-        self.src_vocab_size = src_vocab_size
-
         self.pad_ix = pad_ix
 
         self.src_token_embedding = TokenEmbedding(
@@ -221,11 +231,12 @@ class MuseMorphoseAdapted(nn.Module):
             pad_ix=pad_ix,
         )
         self.d_embed = d_embed
+        self.emb_dropout = nn.Dropout(emb_dropout)
         self.pe = nn.Embedding(
             num_embeddings=context_len,
             embedding_dim=d_embed,
         )
-        self.dec_out_proj = nn.Linear(dec_d_model, tgt_vocab_size)
+
         self.encoder = VAETransformerEncoder(
             n_layer=enc_n_layer,
             n_head=enc_n_head,
@@ -233,6 +244,8 @@ class MuseMorphoseAdapted(nn.Module):
             d_ff=enc_d_ff,
             d_vae_latent=d_vae_latent,
             dropout=enc_dropout,
+            vocab_size=src_vocab_size,
+            context_len=context_len,
         )
 
         self.decoder = VAETransformerDecoder(
@@ -240,12 +253,13 @@ class MuseMorphoseAdapted(nn.Module):
             n_head=dec_n_head,
             d_model=dec_d_model,
             d_ff=dec_d_ff,
-            d_seg_emb=d_vae_latent,
+            d_latent=d_vae_latent,
             pad_ix=pad_ix,
             dropout=dec_dropout,
+            vocab_size=tgt_vocab_size,
+            context_len=context_len,
         )
 
-        self.emb_dropout = nn.Dropout(emb_dropout)
         self.apply(weights_init)
 
     def reparameterize(self, mu, logvar, use_sampling=True, sampling_var=1.0):
@@ -256,50 +270,29 @@ class MuseMorphoseAdapted(nn.Module):
             eps = torch.zeros_like(std, device=mu.device)
         return eps * std + mu
 
-    def get_sampled_latent(self, inp, use_sampling, sampling_var):
-        enc_tok_emb = self.src_token_embedding(inp)
-        enc_pos_emb = self.pe.weight[: inp.shape[1]]
-        enc_inp = self.emb_dropout(enc_tok_emb) + enc_pos_emb
-
-        _, mu, logvar = self.encoder(enc_inp)
+    def get_sampled_latent(self, x, use_sampling, sampling_var):
+        _, mu, logvar = self.encoder(x)
         mu, logvar = mu.reshape(-1, mu.size(-1)), logvar.reshape(-1, mu.size(-1))
 
-        vae_latent = self.reparameterize(
+        latent = self.reparameterize(
             mu,
             logvar,
             use_sampling=use_sampling,
             sampling_var=sampling_var,
         )
 
-        return vae_latent
+        return latent
 
     @torch.no_grad()
-    def generate(self, dec_seg_emb, ctx):
-        dec_tok_emb = self.tgt_token_embedding(ctx)
-        dec_pos_emb = self.pe.weight[: ctx.shape[1]]
-        dec_inp = self.emb_dropout(dec_tok_emb) + dec_pos_emb
-
-        out = self.decoder(dec_inp, dec_seg_emb)
-        out = self.dec_out_proj(out)
-
+    def generate(self, y, latent):
+        out = self.decoder(y, latent)
         return out
 
     def forward(self, x, y):
-        enc_tok_emb = self.src_token_embedding(x)
-        dec_tok_emb = self.tgt_token_embedding(y)
+        _, mu, logvar = self.encoder(x)
+        latent = self.reparameterize(mu, logvar)
 
-        enc_pos_emb = self.pe.weight[: x.shape[1]]
-        dec_pos_emb = self.pe.weight[: y.shape[1]]
-
-        enc_inp = enc_tok_emb + enc_pos_emb
-        dec_inp = dec_tok_emb + dec_pos_emb
-
-        _, mu, logvar = self.encoder(enc_inp)
-
-        vae_latent = self.reparameterize(mu, logvar)
-
-        dec_out = self.decoder(dec_inp, vae_latent)
-        dec_logits = self.dec_out_proj(dec_out)
+        dec_logits = self.decoder(y, latent)
 
         return mu, logvar, dec_logits
 

@@ -22,7 +22,7 @@ from rhythmic_relationships.data import (
 from rhythmic_relationships.ext_models import MuseMorphoseAdapted
 from rhythmic_relationships.io import write_midi_from_roll
 from rhythmic_relationships.vocab import get_vocab_encoder_decoder, get_vocab_sizes
-
+from rhythmic_relationships.train import save_checkpoint
 
 DEFAULT_CONFIG_FILEPATH = "config_mma.yml"
 WANDB_PROJECT_NAME = "rhythmic-relationships"
@@ -88,7 +88,7 @@ def inference_latent_vanilla_truncate(
 
         # Get the predictions
         with torch.no_grad():
-            logits = model.generate(dec_seg_emb=dec_seg_emb, ctx=y)
+            logits = model.generate(y=y, latent=dec_seg_emb)
 
         # Take the logits for the last tokens
         logits = logits[:, -1, :]
@@ -340,6 +340,18 @@ def train_mma(
                     model_dir=model_dir,
                 )
                 vals.append(val)
+
+        if config["checkpoints"]:
+            save_checkpoint(
+                model_dir=model_dir,
+                epoch=epoch,
+                model=model,
+                optimizer=optimizer,
+                loss=losses["total_loss"],
+                config=config,
+                epoch_evals=epoch_evals,
+                delete_prev=True,
+            )
 
     return vals
 

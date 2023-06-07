@@ -31,7 +31,7 @@ class TransformerEncoderDecoder(nn.Module):
         # TODO: how to set ff dims?
         self.encoder = TransformerWrapper(
             num_tokens=src_vocab_size,
-            max_seq_len=33,
+            max_seq_len=context_len,
             l2norm_embed=True,
             attn_layers=Encoder(
                 dim=enc_n_embed,
@@ -46,7 +46,7 @@ class TransformerEncoderDecoder(nn.Module):
 
         self.decoder = TransformerWrapper(
             num_tokens=tgt_vocab_size,
-            max_seq_len=33,
+            max_seq_len=context_len,
             l2norm_embed=True,
             attn_layers=Decoder(
                 dim=dec_n_embed,
