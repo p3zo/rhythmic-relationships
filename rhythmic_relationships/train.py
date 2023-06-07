@@ -211,7 +211,7 @@ def evaluate_transformer_encdec(
                 }
             )
 
-        model.train()
+    model.train()
 
     return evaluation
 

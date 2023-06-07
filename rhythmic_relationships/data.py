@@ -94,6 +94,9 @@ def get_roll_from_sequence(seq, part):
     roll : np.array
         A piano roll representation of the sequence.
     """
+    if not isinstance(seq, np.ndarray):
+        raise ValueError("Sequence must be a numpy array")
+
     encode, decode = get_vocab_encoder_decoder(part)
 
     seq = seq.copy()

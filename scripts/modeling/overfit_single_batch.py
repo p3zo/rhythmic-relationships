@@ -182,7 +182,7 @@ def overfit_single_batch(
 
         # Save loss after each batch
         plt.plot(train_losses)
-        loss_plot_path = os.path.join(model_dir, f"loss.png")
+        loss_plot_path = os.path.join(model_dir, "loss.png")
         plt.tight_layout()
         plt.savefig(loss_plot_path)
         plt.clf()
