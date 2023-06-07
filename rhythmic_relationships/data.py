@@ -363,6 +363,33 @@ class PartDataset(Dataset):
         return df
 
 
+def get_sequences(tokenized, context_len, pad_ix):
+    """Partitions a single tokenized sequence into a recurrent sequence and returns X, Y pairs."""
+    ctx, tgt = [], []
+
+    for t in range(len(tokenized) - 1):
+        from_ix = 0
+        to_ix = t + 1
+
+        # TODO: generalize so this works for seq len > context_len
+
+        context = tokenized[from_ix:to_ix]
+        target = tokenized[from_ix : to_ix + 1]
+
+        if len(context) < context_len:
+            c_pad_len = context_len - len(context)
+            context = context + [pad_ix] * c_pad_len
+
+        if len(target) < context_len:
+            t_pad_len = context_len - len(target)
+            target = target + [pad_ix] * t_pad_len
+
+        ctx.append(context)
+        tgt.append(target)
+
+    return ctx, tgt
+
+
 def get_pair_sequences(p1_tokenized, p2_tokenized, context_len, pad_ix=None):
     """Partitions a pair of tokenized segments into recurrent sequences.
 
@@ -397,6 +424,8 @@ def get_pair_sequences(p1_tokenized, p2_tokenized, context_len, pad_ix=None):
 class PartPairDatasetSequential(Dataset):
     """
     Loads the same data as a PartPairDataset, but partitions each segment into a recurrent sequence and returns X, Y pairs.
+
+    :param with_ctx: If True, returns a tuple of (src, ctx, tgt) where src is the full source sequence, ctx is the context sequence, and tgt is the target sequence.
     """
 
     def __init__(
@@ -408,6 +437,7 @@ class PartPairDatasetSequential(Dataset):
         repr_2,
         context_len,
         datasets_dir=DATASETS_DIR,
+        with_ctx=False,
     ):
         if part_1 not in PARTS or part_2 not in PARTS:
             raise ValueError(f"Part names must be one of: {PARTS}")
@@ -450,6 +480,8 @@ class PartPairDatasetSequential(Dataset):
         encode, _ = get_vocab_encoder_decoder(part_2)
         self.pad_ix = encode(["pad"])[0]
 
+        self.with_ctx = with_ctx
+
     def __len__(self):
         return len(self.p1_pairs)
 
@@ -463,11 +495,15 @@ class PartPairDatasetSequential(Dataset):
         p1_tokenized = tokenize_roll(p1_seg_repr, self.part_1)
         p2_tokenized = tokenize_roll(p2_seg_repr, self.part_2)
 
-        X, Y = get_pair_sequences(
+        if self.with_ctx:
+            src = torch.LongTensor(p1_tokenized).repeat(self.context_len - 1, 1)
+            ctx, tgt = get_sequences(p2_tokenized, self.context_len, self.pad_ix)
+            return src, torch.LongTensor(ctx), torch.LongTensor(tgt)
+
+        src, tgt = get_pair_sequences(
             p1_tokenized,
             p2_tokenized,
             self.context_len,
             pad_ix=self.pad_ix,
         )
-
-        return torch.LongTensor(X), torch.LongTensor(Y)
+        return torch.LongTensor(src), torch.LongTensor(tgt)
