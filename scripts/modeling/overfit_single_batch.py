@@ -35,14 +35,9 @@ DEVICE = torch.device(
 )
 
 
-# def compute_loss(logits, y, loss_fn):
-#     B, T, C = logits.shape
-#     return loss_fn(logits.view(B * T, C), y.view(y.shape[0] * y.shape[1]))
-
-
 def evaluate_single_batch(
-    srcs,
-    tgts,
+    src,
+    tgt,
     model,
     config,
     device,
@@ -58,12 +53,12 @@ def evaluate_single_batch(
     part_2 = config["data"]["part_2"]
 
     # TODO: select ixs automatically
-    eval_ixs = [32, 65, 98, 131, 164, 197, 230, 263]
+    # eval_ixs = [32, 65, 98, 131, 164, 197, 230, 263]
     # n_seqs = config["data"]["context_len"] * config["batch_size"]
     # eval_ixs = list(range(32,n_seqs + 1, 33))
 
-    srcs = srcs[eval_ixs]
-    tgts = tgts[eval_ixs]
+    src = src[-1].unsqueeze(0)
+    tgt = tgt[-1].unsqueeze(0)
 
     # TODO: no grad here necessary since its in the model generate method?
     with torch.no_grad():
@@ -79,10 +74,10 @@ def evaluate_single_batch(
             encode, _ = get_vocab_encoder_decoder(part_2)
             start_ix = encode(["start"])[0]
             idy = torch.full(
-                (srcs.shape[0], 1), start_ix, dtype=torch.long, device=device
+                (src.shape[0], 1), start_ix, dtype=torch.long, device=device
             )
             seqs = (
-                model.generate(srcs, idy, max_new_tokens=config["sequence_len"])
+                model.generate(src, idy, max_new_tokens=config["sequence_len"])
                 .detach()
                 .cpu()
                 .numpy()
@@ -90,7 +85,7 @@ def evaluate_single_batch(
 
             for ix, seq in enumerate(seqs):
                 gen_roll = get_roll_from_sequence(seq, part=part_2)
-                tgt_roll = get_roll_from_sequence(tgts[ix].cpu().numpy(), part=part_2)
+                tgt_roll = get_roll_from_sequence(tgt[ix].cpu().numpy(), part=part_2)
 
                 # Compare descriptors of the generated and target rolls
                 gen_roll_descs = pianoroll2descriptors(
@@ -153,8 +148,8 @@ def evaluate_single_batch(
 
 def overfit_single_batch(
     model,
-    srcs,
-    tgts,
+    src,
+    tgt,
     optimizer,
     loss_fn,
     config,
@@ -170,16 +165,12 @@ def overfit_single_batch(
     model.train()
 
     epochs = tqdm(range(1, n_epochs + 1))
+
     for epoch in epochs:
-        logits = model(srcs, tgts)
+        logits = model(src, tgt)
 
         B, T, C = logits.shape
-        logits_flat = logits.view(B * T, C)
-        tgts_flat = tgts.view(B * T)
-
-        # tgts_flat = tgts[:, 1:].contiguous().view(-1)  # Shift the target sequence by one token to the right
-
-        loss = loss_fn(logits_flat, tgts_flat)
+        loss = loss_fn(logits.view(B * T, C), tgt.view(B * T))
 
         train_losses.append(loss.item())
         epochs.set_postfix({"loss": f"{loss.item():.4f}"})
@@ -198,8 +189,8 @@ def overfit_single_batch(
 
         if epoch > 1 and epoch % evaluate_every == 0:
             evaluate_single_batch(
-                srcs=srcs,
-                tgts=tgts,
+                src=src,
+                tgt=tgt,
                 model=model,
                 config=config,
                 device=device,
@@ -220,8 +211,11 @@ if __name__ == "__main__":
     datasets_dir = args.datasets_dir
     config = load_config(args.config_path)
     config["batch_size"] = 1
-    config["n_eval_iters"] = 4
-    config["n_epochs"] = 100
+    config["n_eval_iters"] = 3
+    config["n_epochs"] = 500
+    config["wandb"] = False
+    config["bento"] = False
+    config["checkpoints"] = False
 
     torch.manual_seed(config["seed"])
 
@@ -293,8 +287,8 @@ if __name__ == "__main__":
 
     overfit_single_batch(
         model=model,
-        srcs=x,
-        tgts=y,
+        src=x,
+        tgt=y,
         optimizer=optimizer,
         loss_fn=loss_fn,
         config=config,
