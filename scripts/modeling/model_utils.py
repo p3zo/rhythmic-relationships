@@ -37,13 +37,13 @@ def get_model_n_params(model):
     return sum(p.nelement() for p in model.parameters())
 
 
-def save_model(model_path, model, config, model_name, epoch_evals=[]):
+def save_model(model_path, model, config, model_name, evals=[]):
     torch.save(
         {
             "name": model_name,
             "model_class": model.__class__.__name__,
             "config": config,
-            "epoch_evals": epoch_evals,
+            "evals": evals,
             "n_params": get_model_n_params(model),
             "model_state_dict": model.state_dict(),
         },
@@ -83,7 +83,7 @@ def get_model_catalog():
         catalog_info = {}
         catalog_info["model_class"] = model_obj.get("model_class")
         catalog_info["n_params"] = model_obj.get("n_params")
-        catalog_info["epoch_evals"] = model_obj.get("epoch_evals")
+        catalog_info["evals"] = model_obj.get("evals")
         catalog_info["config"] = model_obj.get("config")
         catalog[model_obj["name"]] = catalog_info
 

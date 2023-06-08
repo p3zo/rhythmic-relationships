@@ -32,7 +32,7 @@ def save_checkpoint(
     optimizer,
     loss,
     config,
-    epoch_evals,
+    evals,
     delete_prev=True,
 ):
     checkpoints_dir = os.path.join(model_dir, CHECKPOINTS_DIRNAME)
@@ -49,7 +49,7 @@ def save_checkpoint(
             "optimizer_state_dict": optimizer.state_dict(),
             "loss": loss,
             "config": config,
-            "epoch_evals": epoch_evals,
+            "evals": evals,
         },
         checkpoint_path,
     )
@@ -308,7 +308,7 @@ def train_transformer_encoder_decoder(
                 optimizer=optimizer,
                 loss=loss,
                 config=config,
-                epoch_evals=epoch_evals,
+                evals=epoch_evals,
                 delete_prev=True,
             )
 

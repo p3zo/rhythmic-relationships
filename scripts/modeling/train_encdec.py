@@ -104,7 +104,7 @@ if __name__ == "__main__":
         model=model,
         config=config,
         model_name=model_name,
-        epoch_evals=epoch_evals,
+        evals=epoch_evals,
     )
     if config["bento"]:
         save_bento_model(model=model, model_name=model_name)

@@ -287,7 +287,7 @@ def train_mma(
     n_epochs = config["n_epochs"]
     val_interval = config["val_interval"]
 
-    vals = []
+    evals = []
     train_losses = []
 
     model.train()
@@ -339,7 +339,7 @@ def train_mma(
                     model_name=model_name,
                     model_dir=model_dir,
                 )
-                vals.append(val)
+                evals.append(val)
 
         if config["checkpoints"]:
             save_checkpoint(
@@ -349,11 +349,11 @@ def train_mma(
                 optimizer=optimizer,
                 loss=losses["total_loss"],
                 config=config,
-                epoch_evals=epoch_evals,
+                evals=evals,
                 delete_prev=True,
             )
 
-    return vals
+    return evals
 
 
 if __name__ == "__main__":
@@ -412,7 +412,7 @@ if __name__ == "__main__":
         wandb.init(project=WANDB_PROJECT_NAME, config=config, name=model_name)
         wandb.config.update(config)
 
-    epoch_evals = train_mma(
+    evals = train_mma(
         model=model,
         train_loader=train_loader,
         val_loader=val_loader,
@@ -428,5 +428,5 @@ if __name__ == "__main__":
         model=model,
         config=config,
         model_name=model_name,
-        epoch_evals=epoch_evals,
+        evals=evals,
     )
