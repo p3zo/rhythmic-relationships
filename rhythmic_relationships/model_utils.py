@@ -22,7 +22,8 @@ def load_config(filepath):
 
 def get_model_name():
     # a copy of /usr/share/dict/web2 from a macbook air (early 2014)
-    with open("words") as words_file:
+    this_path = os.path.dirname(__file__)
+    with open(os.path.join(this_path, "words")) as words_file:
         words = words_file.read().split()
 
     word = random.choice(words).lower()

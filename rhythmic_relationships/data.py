@@ -409,8 +409,8 @@ def get_sequences(tokenized, context_len, pad_ix):
             from_ix = t - context_len
             y_from_ix = from_ix + 1
 
-        context = tokenized[from_ix:to_ix].tolist()
-        target = tokenized[y_from_ix : to_ix + 1].tolist()
+        context = tokenized[from_ix:to_ix]
+        target = tokenized[y_from_ix : to_ix + 1]
 
         if len(context) < context_len:
             c_pad_len = context_len - len(context)
@@ -601,6 +601,9 @@ class PartDatasetSequential(Dataset):
 
         self.context_len = context_len
 
+        encode, _ = get_vocab_encoder_decoder(part)
+        self.pad_ix = encode(["pad"])[0]
+
     def __len__(self):
         return len(self.part_df)
 
@@ -614,6 +617,10 @@ class PartDatasetSequential(Dataset):
             else tokenize_roll(seg_repr, self.part)
         )
 
-        X, Y = get_sequences(tokenized, self.context_len)
+        X, Y = get_sequences(
+            tokenized,
+            context_len=self.context_len,
+            pad_ix=self.pad_ix,
+        )
 
         return torch.tensor(X), torch.tensor(Y)

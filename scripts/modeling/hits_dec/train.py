@@ -26,7 +26,7 @@ from rhythmic_relationships.data import (
     get_roll_from_sequence,
     get_hits_from_hits_seq,
 )
-from rhythmic_relationships.model_hits_decoder import TransformerDecoder
+from rhythmic_relationships.models.hits_decoder import HitsDecoder
 from rhythmic_relationships.io import write_midi_from_hits
 
 DEFAULT_CONFIG_FILEPATH = "config_hits_decoder.yml"
@@ -295,8 +295,9 @@ if __name__ == "__main__":
     if not os.path.isdir(model_dir):
         os.makedirs(model_dir)
 
-    pad_ix = encode(["pad"])[0]
-    config["model"]["pad_ix"] = 0
+    # TODO: get pad_ix from vocab
+    pad_ix = 5
+    config["model"]["pad_ix"] = pad_ix
 
     dataset = PartDatasetSequential(**config["data"], datasets_dir=datasets_dir)
     splits = config["splits"]
@@ -314,7 +315,7 @@ if __name__ == "__main__":
     config["model"]["context_len"] = config["sequence_len"]
     print(yaml.dump(config))
 
-    model = TransformerDecoder(**config["model"]).to(DEVICE)
+    model = HitsDecoder(**config["model"]).to(DEVICE)
 
     optimizer = torch.optim.Adam(
         model.parameters(),
