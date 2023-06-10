@@ -7,7 +7,7 @@ from collections import defaultdict
 import pandas as pd
 import torch
 import yaml
-from rhythmic_relationships import MODELS_DIR
+from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
 
 
 def load_config(filepath):
@@ -88,3 +88,55 @@ def get_model_catalog():
         catalog[model_obj["name"]] = catalog_info
 
     return pd.DataFrame.from_dict(catalog, orient="index")
+
+
+def save_checkpoint(
+    model_dir,
+    epoch,
+    model,
+    optimizer,
+    loss,
+    config,
+    evals,
+    delete_prev=True,
+):
+    checkpoints_dir = os.path.join(model_dir, CHECKPOINTS_DIRNAME)
+    if not os.path.isdir(checkpoints_dir):
+        os.makedirs(checkpoints_dir)
+
+    checkpoint_path = os.path.join(checkpoints_dir, str(epoch))
+
+    torch.save(
+        {
+            "model_class": model.__class__.__name__,
+            "epoch": epoch,
+            "model_state_dict": model.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+            "loss": loss,
+            "config": config,
+            "evals": evals,
+        },
+        checkpoint_path,
+    )
+    print(f"Saved checkpoint: {checkpoint_path}")
+
+    if delete_prev:
+        prev_checkpoint_path = os.path.join(checkpoints_dir, str(epoch - 1))
+        if os.path.isfile(prev_checkpoint_path):
+            os.remove(prev_checkpoint_path)
+            print(f"Deleted previous checkpoint: {prev_checkpoint_path}")
+
+
+def get_loss_fn(config):
+    reduction = config["loss_reduction"]
+
+    if config["loss_fn"] == "bce-logits":
+        return torch.nn.BCEWithLogitsLoss(reduction=reduction)
+    elif config["loss_fn"] == "bce":
+        return torch.nn.BCELoss(reduction=reduction)
+    elif config["loss_fn"] == "cross-entropy":
+        return torch.nn.CrossEntropyLoss(reduction=reduction)
+    elif config["loss_fn"] == "mse":
+        return torch.nn.MSELoss(reduction=reduction)
+    else:
+        raise ValueError(f"`{config['loss_fn']}` is not a valid loss function")

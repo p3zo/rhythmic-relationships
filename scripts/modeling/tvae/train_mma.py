@@ -13,7 +13,7 @@ from rhythmtoolbox import pianoroll2descriptors
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
-from rhythmic_relationships.model_utils import get_model_name, load_config, save_model
+from rhythmic_relationships.model_utils import get_model_name, load_config, save_model, save_checkpoint
 from rhythmic_relationships import DATASETS_DIR, MODELS_DIR
 from rhythmic_relationships.data import (
     PartPairDatasetSequential,
@@ -22,7 +22,6 @@ from rhythmic_relationships.data import (
 from rhythmic_relationships.ext_models import MuseMorphoseAdapted
 from rhythmic_relationships.io import write_midi_from_roll
 from rhythmic_relationships.vocab import get_vocab_encoder_decoder, get_vocab_sizes
-from rhythmic_relationships.train import save_checkpoint
 
 DEFAULT_CONFIG_FILEPATH = "config_mma.yml"
 WANDB_PROJECT_NAME = "rhythmic-relationships"
