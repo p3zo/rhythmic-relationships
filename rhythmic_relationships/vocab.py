@@ -1,6 +1,23 @@
 import itertools
+import numpy as np
 
 from rhythmic_relationships.parts import PARTS
+
+
+def get_hits_vocab():
+    # TODO: make this programmatically
+    return {0: 0, 1: 0.25, 2: 0.5, 3: 0.75, 4: 1.0, 5: "pad"}
+
+
+def encode_hits(hits, n_bins=4):
+    """0 is rest, 1 to n_bins are equally-spaced velocity bins"""
+    vel_bins = np.linspace(0, 1, n_bins + 1)
+    return np.digitize(hits, vel_bins, right=True).tolist()
+
+
+def decode_hits(tokenized_hits):
+    itot = get_hits_vocab()
+    return [itot[i] for i in tokenized_hits]
 
 
 def get_vocab(part):

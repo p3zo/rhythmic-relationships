@@ -627,17 +627,17 @@ def write_image_from_roll(roll, outpath, im_size=None, binary=False):
     logger.debug(f"  Saved {outpath}")
 
 
-def write_midi_from_hits(hits, outpath, pitch=36, part=""):
+def write_midi_from_hits(hits, outpath, pitch=48, part=""):
     # TODO: explain choice of note_duration
-    note_duration = 0.25
+    note_duration = 0.125
 
     instrument = pm.Instrument(program=0, is_drum=False, name=part)
 
     for event_ix, vel in enumerate(hits):
-        if vel:
+        if vel > 0:
             start = event_ix * note_duration
             note = pm.Note(
-                velocity=127, pitch=pitch, start=start, end=start + note_duration
+                velocity=int(vel), pitch=pitch, start=start, end=start + note_duration
             )
             instrument.notes.append(note)
 

@@ -1,0 +1,34 @@
+data:
+  dataset_name: "lmdc_3000_2bar_4res"
+  part: "Melody"
+  representation: "hits"
+  context_len: 31
+
+splits:
+  train: 0.8
+  val: 0.1
+  test: 0.1
+
+model:
+  d_model: 48
+  n_layer: 3
+  n_head: 2
+  d_ff: 48
+  dropout: 0.1
+
+seed: 13
+sequence_len: 32
+resolution: 4
+n_epochs: 5
+batch_size: 36
+
+lr: 1e-4
+loss_reduction: "mean"
+loss_fn: "cross-entropy"
+weight_decay: 0
+
+n_eval_iters: 3
+wandb: False
+bento: False
+checkpoints: False
+val_interval: 250

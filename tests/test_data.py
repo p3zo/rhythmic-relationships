@@ -4,6 +4,7 @@ from rhythmic_relationships.data import (
     PartDataset,
     PartPairDataset,
     get_roll_from_sequence,
+    tokenize_hits,
 )
 from rhythmic_relationships.vocab import get_vocab_encoder_decoder
 from rhythmtoolbox import DESCRIPTOR_NAMES
@@ -19,6 +20,14 @@ N_DESCRIPTORS = len(DESCRIPTOR_NAMES)
 
 def get_expected_velocity_from_bin(vel_bin, n_bins):
     return int((vel_bin + 1) * (127 / n_bins))
+
+
+def test_tokenize_hits():
+    n_bins = 4
+    hits = [0.0, 0.1, 0.3, 0.6, 1.0]
+    assert tokenize_hits(hits, n_bins) == [0, 1, 2, 3, 4]
+    hits = [0.0, 0.25, 0.5, 0.75, 1.0]
+    assert tokenize_hits(hits, n_bins) == [0, 1, 2, 3, 4]
 
 
 def test_get_roll_from_sequence():

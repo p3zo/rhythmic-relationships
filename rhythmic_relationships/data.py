@@ -134,6 +134,19 @@ def get_roll_from_sequence(seq, part):
     return roll
 
 
+def get_hits_from_hits_seq(seq, part, pitch=60):
+    """Same as get_roll_from_sequence but for hits sequences
+    TODO: specify hits vocabulary and use get_roll_from_sequence instead of this"""
+
+    if not isinstance(seq, np.ndarray):
+        raise ValueError("Sequence must be a numpy array")
+
+    seq = seq.copy()
+    roll = np.zeros((len(seq), 128), np.uint8)
+
+    return decode_hits(seq)
+
+
 class PartPairDataset(Dataset):
     """
     Params
@@ -153,14 +166,16 @@ class PartPairDataset(Dataset):
             The representation to use for part 2 segments. See the list of representations in `representations.py`
     """
 
-    def __init__(self, dataset_name, part_1, part_2, repr_1, repr_2):
+    def __init__(
+        self, dataset_name, part_1, part_2, repr_1, repr_2, datasets_dir=DATASETS_DIR
+    ):
         if part_1 not in PARTS or part_2 not in PARTS:
             raise ValueError(f"Part names must be one of: {PARTS}")
 
         if repr_1 not in REPRESENTATIONS or repr_2 not in REPRESENTATIONS:
             raise ValueError(f"Representation names must be one of: {REPRESENTATIONS}")
 
-        self.dataset_dir = os.path.join(DATASETS_DIR, dataset_name)
+        self.dataset_dir = os.path.join(datasets_dir, dataset_name)
 
         # Load the list of available representations
         with open(os.path.join(self.dataset_dir, REPRESENTATIONS_FILENAME), "r") as f:
@@ -205,8 +220,17 @@ class PartPairDataset(Dataset):
         p1_seg_repr = load_repr(p1_seg, self.repr_1_ix)
         p2_seg_repr = load_repr(p2_seg, self.repr_2_ix)
 
-        x = torch.from_numpy(p1_seg_repr).to(torch.float32)
-        y = torch.from_numpy(p2_seg_repr).to(torch.float32)
+        # TODO: parameterize if hits should be binned
+        if self.repr_1 == "hits":
+            tokenized = tokenize_hits(p1_seg_repr)
+            x = torch.LongTensor(tokenized)
+        else:
+            x = torch.from_numpy(p1_seg_repr).to(torch.float32)
+        if self.repr_2 == "hits":
+            p2_seg_repr = tokenize_hits(p2_seg_repr)
+            y = torch.LongTensor(p2_seg_repr)
+        else:
+            y = torch.from_numpy(p2_seg_repr).to(torch.float32)
 
         return x, y
 
@@ -291,7 +315,7 @@ class PartDataset(Dataset):
             The representation to use. See the list of representations in `representations.py`
     """
 
-    def __init__(self, dataset_name, part, representation):
+    def __init__(self, dataset_name, part, representation, datasets_dir=DATASETS_DIR):
         if part not in PARTS:
             raise ValueError(f"Part must be one of: {PARTS}")
 
@@ -300,7 +324,7 @@ class PartDataset(Dataset):
 
         self.part = part
 
-        self.dataset_dir = os.path.join(DATASETS_DIR, dataset_name)
+        self.dataset_dir = os.path.join(datasets_dir, dataset_name)
 
         # Load the list of available representations
         with open(os.path.join(self.dataset_dir, REPRESENTATIONS_FILENAME), "r") as f:
@@ -327,8 +351,12 @@ class PartDataset(Dataset):
         )
         self.loaded_segments.append(seg_id)
 
-        # TODO: remove the astype once the dataset is created w explicit casts
-        return torch.from_numpy(seg_repr.astype(np.float32)).to(torch.float32)
+        # TODO: parameterize if hits should be binned
+        if self.representation == "hits":
+            tokenized = tokenize_hits(seg_repr)
+            return torch.LongTensor(tokenized)
+
+        return torch.from_numpy(seg_repr).to(torch.float32)
 
     def as_df(self, shuffle=False, subset=None):
         """Returns the entire dataset in a dataframe. Useful for analysis."""
@@ -367,25 +395,30 @@ class PartDataset(Dataset):
 
 
 def get_sequences(tokenized, context_len, pad_ix):
-    """Partitions a single tokenized sequence into a recurrent sequence and returns X, Y pairs."""
+    """Partitions a tokenized segment into a recurrent sequence and returns X, Y pairs."""
     ctx, tgt = [], []
 
-    for t in range(len(tokenized) - 1):
+    for t in range(len(tokenized)):
         from_ix = 0
-        to_ix = t + 1
+        y_from_ix = from_ix
+        to_ix = t
 
-        # TODO: generalize so this works for seq len > context_len
+        if t == context_len:
+            y_from_ix = from_ix + 1
+        if t > context_len:
+            from_ix = t - context_len
+            y_from_ix = from_ix + 1
 
-        context = tokenized[from_ix:to_ix]
-        target = tokenized[from_ix : to_ix + 1]
+        context = tokenized[from_ix:to_ix].tolist()
+        target = tokenized[y_from_ix : to_ix + 1].tolist()
 
         if len(context) < context_len:
             c_pad_len = context_len - len(context)
-            context = context + [pad_ix] * c_pad_len
+            context = [pad_ix] * c_pad_len + context
 
         if len(target) < context_len:
             t_pad_len = context_len - len(target)
-            target = target + [pad_ix] * t_pad_len
+            target = [pad_ix] * t_pad_len + target
 
         ctx.append(context)
         tgt.append(target)
@@ -495,8 +528,17 @@ class PartPairDatasetSequential(Dataset):
         p1_seg_repr = load_repr(p1_seg, self.repr_1_ix)
         p2_seg_repr = load_repr(p2_seg, self.repr_2_ix)
 
-        p1_tokenized = tokenize_roll(p1_seg_repr, self.part_1)
-        p2_tokenized = tokenize_roll(p2_seg_repr, self.part_2)
+        # TODO: parameterize if hits should be binned
+        p1_tokenized = (
+            tokenize_hits(p1_seg_repr)
+            if self.repr_1 == "hits"
+            else tokenize_roll(p1_seg_repr, self.part_1)
+        )
+        p2_tokenized = (
+            tokenize_hits(p2_seg_repr)
+            if self.repr_2 == "hits"
+            else tokenize_roll(p2_seg_repr, self.part_2)
+        )
 
         if self.with_ctx:
             src = torch.LongTensor(p1_tokenized).repeat(self.context_len - 1, 1)
@@ -510,3 +552,68 @@ class PartPairDatasetSequential(Dataset):
             pad_ix=self.pad_ix,
         )
         return torch.LongTensor(src), torch.LongTensor(tgt)
+
+
+class PartDatasetSequential(Dataset):
+    """
+    Loads the same data as a PartDataset, but partitions each segment into a recurrent sequence and returns X, Y pairs.
+
+    Params
+        dataset_name, str
+            Name of a dataset created by `prepare_dataset.py`.
+
+        part, str
+            The part to use. See the list of parts in `parts.py`
+
+        representation, str
+            The representation to use. See the list of representations in `representations.py`
+
+        context_len, int
+            The length of the context window.
+
+        datasets_dir, str
+            The directory where the dataset is stored. Defaults to `DATASETS_DIR`.
+    """
+
+    def __init__(
+        self, dataset_name, part, representation, context_len, datasets_dir=DATASETS_DIR
+    ):
+        if part not in PARTS:
+            raise ValueError(f"Part must be one of: {PARTS}")
+
+        if representation not in REPRESENTATIONS:
+            raise ValueError(f"Representation must be one of: {REPRESENTATIONS}")
+
+        self.part = part
+
+        self.dataset_dir = os.path.join(datasets_dir, dataset_name)
+
+        # Load the list of available representations
+        with open(os.path.join(self.dataset_dir, REPRESENTATIONS_FILENAME), "r") as f:
+            self.representations = f.readline().split(",")
+
+        self.representation = representation
+        self.representation_ix = self.representations.index(representation)
+
+        # Load the segment metadata
+        df = load_dataset_annotations(self.dataset_dir)
+        self.part_df = df[df.part_id == part]
+
+        self.context_len = context_len
+
+    def __len__(self):
+        return len(self.part_df)
+
+    def __getitem__(self, idx):
+        seg = self.part_df.iloc[idx]
+        seg_repr = load_repr(seg, self.representation_ix)
+
+        tokenized = (
+            tokenize_hits(seg_repr)
+            if self.representation == "hits"
+            else tokenize_roll(seg_repr, self.part)
+        )
+
+        X, Y = get_sequences(tokenized, self.context_len)
+
+        return torch.tensor(X), torch.tensor(Y)
