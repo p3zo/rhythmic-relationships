@@ -1,0 +1,24 @@
+program: train.py
+method: random
+metric:
+  goal: minimize
+  name: val_loss
+epochs:
+  value: 5
+parameters:
+  dropout:
+    values: [0.1, 0.5]
+  n_embed:
+    values: [48, 96, 192, 348, 576]
+  n_layer:
+    values: [1, 4, 10]
+  n_head:
+    values: [1, 2, 3, 4]
+  learn_rate:
+    values: [1e-3, 1e-4, 1e-5]
+  d_ff:
+    values: [144, 576, 1728]
+  batch_size:
+    values: [8, 32, 64, 128]
+  weight_decay:
+    values: [0.0, 0.0001]
