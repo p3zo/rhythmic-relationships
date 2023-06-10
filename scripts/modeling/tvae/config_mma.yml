@@ -37,7 +37,7 @@ lr: 1e-4
 weight_decay: 0.0001
 n_eval_iters: 3
 seed: 13
-wandb: True
+wandb: False
 bento: False
-checkpoints: True
+checkpoints: False
 val_interval: 2500
