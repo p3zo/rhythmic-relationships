@@ -5,7 +5,7 @@ import pandas as pd
 import torch
 import wandb
 import yaml
-from model_utils import (
+from rhythmic_relationships.model_utils import (
     get_model_name,
     load_config,
     save_model,

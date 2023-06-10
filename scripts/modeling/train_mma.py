@@ -13,7 +13,7 @@ from rhythmtoolbox import pianoroll2descriptors
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
-from model_utils import get_model_name, load_config, save_model
+from rhythmic_relationships.model_utils import get_model_name, load_config, save_model
 from rhythmic_relationships import DATASETS_DIR, MODELS_DIR
 from rhythmic_relationships.data import (
     PartPairDatasetSequential,

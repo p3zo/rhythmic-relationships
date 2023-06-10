@@ -4,7 +4,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 import torch
-from model_utils import load_model
+from rhythmic_relationships.model_utils import load_model
 from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
 from rhythmic_relationships.data import (
     PartDataset,
