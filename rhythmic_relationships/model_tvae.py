@@ -180,7 +180,7 @@ class VAETransformerDecoder(nn.Module):
         return out
 
 
-class MuseMorphoseAdapted(nn.Module):
+class VAETransformer(nn.Module):
     def __init__(
         self,
         enc_n_layer,
