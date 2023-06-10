@@ -9,7 +9,7 @@ from rhythmic_relationships.model_utils import load_model
 from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
 from rhythmic_relationships.data import get_roll_from_sequence, tokenize_roll
 from rhythmic_relationships.io import write_midi_from_roll, load_midi_file, slice_midi
-from rhythmic_relationships.model import TransformerEncoderDecoder
+from rhythmic_relationships.models.encdec import TransformerEncoderDecoder
 from rhythmic_relationships.vocab import get_vocab_encoder_decoder
 from rhythmtoolbox import pianoroll2descriptors
 

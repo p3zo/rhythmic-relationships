@@ -15,7 +15,7 @@ from rhythmic_relationships.data import (
     PartPairDatasetSequential,
     get_roll_from_sequence,
 )
-from rhythmic_relationships.model import TransformerEncoderDecoder
+from rhythmic_relationships.models.encdec import TransformerEncoderDecoder
 from rhythmic_relationships.io import write_midi_from_roll
 from rhythmic_relationships.vocab import get_vocab_sizes, get_vocab_encoder_decoder
 from rhythmtoolbox import pianoroll2descriptors

@@ -2,10 +2,10 @@ import torch
 import torch.nn as nn
 from x_transformers import TransformerWrapper, Decoder
 
-from rhythmic_relationships.model_hits import get_causal_mask
+from rhythmic_relationships.models.hits_encdec import get_causal_mask
 
 
-class TransformerDecoder(nn.Module):
+class HitsDecoder(nn.Module):
     def __init__(
         self,
         n_layer,

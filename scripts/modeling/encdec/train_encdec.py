@@ -13,7 +13,7 @@ from rhythmic_relationships.data import (
     get_roll_from_sequence,
 )
 from rhythmic_relationships.io import write_midi_from_roll
-from rhythmic_relationships.model import TransformerEncoderDecoder
+from rhythmic_relationships.models.encdec import TransformerEncoderDecoder
 from rhythmic_relationships.model_utils import (
     get_model_name,
     load_config,
