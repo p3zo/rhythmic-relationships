@@ -20,7 +20,7 @@ import wandb
 import matplotlib.pyplot as plt
 from tqdm import tqdm
 
-DEFAULT_CONFIG_FILEPATH = "config_decoder.yml"
+DEFAULT_CONFIG_FILEPATH = "config.yml"
 WANDB_PROJECT_NAME = "rhythmic-relationships"
 
 DEVICE = torch.device(

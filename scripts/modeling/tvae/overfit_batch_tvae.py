@@ -25,7 +25,7 @@ from rhythmic_relationships.io import write_midi_from_roll
 from rhythmic_relationships.vocab import get_vocab_encoder_decoder, get_vocab_sizes
 
 
-DEFAULT_CONFIG_FILEPATH = "config_tvae.yml"
+DEFAULT_CONFIG_FILEPATH = "config.yml"
 
 DEVICE = torch.device(
     "mps"

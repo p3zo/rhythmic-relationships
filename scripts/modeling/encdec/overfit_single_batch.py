@@ -20,7 +20,7 @@ from rhythmic_relationships.io import write_midi_from_roll
 from rhythmic_relationships.vocab import get_vocab_sizes, get_vocab_encoder_decoder
 from rhythmtoolbox import pianoroll2descriptors
 
-DEFAULT_CONFIG_FILEPATH = "config_encdec.yml"
+DEFAULT_CONFIG_FILEPATH = "config.yml"
 
 DEVICE = torch.device(
     "mps"

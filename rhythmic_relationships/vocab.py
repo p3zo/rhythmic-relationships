@@ -4,22 +4,6 @@ import numpy as np
 from rhythmic_relationships.parts import PARTS
 
 
-def get_hits_vocab():
-    # TODO: make this programmatically
-    return {0: 0, 1: 0.25, 2: 0.5, 3: 0.75, 4: 1.0, 5: "pad"}
-
-
-def encode_hits(hits, n_bins=4):
-    """0 is rest, 1 to n_bins are equally-spaced velocity bins"""
-    vel_bins = np.linspace(0, 1, n_bins + 1)
-    return np.digitize(hits, vel_bins, right=True).tolist()
-
-
-def decode_hits(tokenized_hits):
-    itot = get_hits_vocab()
-    return [itot[i] for i in tokenized_hits]
-
-
 def get_vocab(part):
     if part not in PARTS:
         raise ValueError(f"part must be one of {PARTS}")
@@ -58,6 +42,26 @@ def get_vocab(part):
 
 def get_vocab_sizes():
     return {part: len(get_vocab(part)) for part in PARTS}
+
+
+def get_hits_vocab():
+    return {0: "pad", 1: 0, 2: 0.25, 3: 0.5, 4: 0.75, 5: 1.0}
+
+
+def encode_hits(hits, n_bins):
+    vel_bins = np.linspace(0, 1, n_bins + 1)
+    tokenized = np.digitize(hits, vel_bins, right=True).tolist()
+    # Add 1 to account for padding token at ix 0
+    return [i + 1 for i in tokenized]
+
+
+def decode_hits(tokenized_hits):
+    itot = get_hits_vocab()
+    return [itot[i] for i in tokenized_hits]
+
+
+def get_hits_vocab_encoder_decoder():
+    return encode_hits, decode_hits
 
 
 def get_vocab_encoder_decoder(part):

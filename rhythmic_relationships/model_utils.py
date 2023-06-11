@@ -128,7 +128,7 @@ def save_checkpoint(
             print(f"Deleted previous checkpoint: {prev_checkpoint_path}")
 
 
-def get_loss_fn(config):
+def get_loss_fn(config, pad_ix=-100):
     reduction = config["loss_reduction"]
 
     if config["loss_fn"] == "bce-logits":
@@ -136,7 +136,7 @@ def get_loss_fn(config):
     elif config["loss_fn"] == "bce":
         return torch.nn.BCELoss(reduction=reduction)
     elif config["loss_fn"] == "cross-entropy":
-        return torch.nn.CrossEntropyLoss(reduction=reduction)
+        return torch.nn.CrossEntropyLoss(reduction=reduction, ignore_index=pad_ix)
     elif config["loss_fn"] == "mse":
         return torch.nn.MSELoss(reduction=reduction)
     else:

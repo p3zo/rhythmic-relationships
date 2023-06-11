@@ -13,7 +13,10 @@ from rhythmic_relationships import (
 )
 from rhythmic_relationships.parts import PARTS, get_part_pairs
 from rhythmic_relationships.representations import DRUM_ROLL_VOICES, REPRESENTATIONS
-from rhythmic_relationships.vocab import get_vocab_encoder_decoder
+from rhythmic_relationships.vocab import (
+    get_vocab_encoder_decoder,
+    get_hits_vocab_encoder_decoder,
+)
 from torch.utils.data import Dataset
 from tqdm import tqdm
 
@@ -40,6 +43,16 @@ def get_seg_fname(filepath, dataset_dir):
     return os.path.splitext(
         filepath.split(os.path.join(dataset_dir, REPRESENTATIONS_DIRNAME))[1]
     )[0].strip("/")
+
+
+def tokenize_hits(hits, n_bins=4):
+    encode, _ = get_hits_vocab_encoder_decoder()
+    return encode(hits, n_bins=n_bins)
+
+
+def decode_hits(tokenized_hits):
+    _, decode = get_hits_vocab_encoder_decoder()
+    return decode(tokenized_hits)
 
 
 def tokenize_roll(roll, part):
@@ -141,10 +154,27 @@ def get_hits_from_hits_seq(seq, part, pitch=60):
     if not isinstance(seq, np.ndarray):
         raise ValueError("Sequence must be a numpy array")
 
-    seq = seq.copy()
     roll = np.zeros((len(seq), 128), np.uint8)
 
-    return decode_hits(seq)
+    out = decode_hits(seq.copy())
+
+    n_rests = 0
+    n_pads = 0
+    for ix, i in enumerate(out):
+        if i == 'pad':
+            n_pads += 1
+            n_rests += 1
+            out[ix] = 0.
+            continue
+        if i == 0:
+            n_rests += 1
+
+    # Log percentage of output rests that were padding predictions
+    print(f'  pct rests: {n_rests / len(out) * 100:.2f}')
+    if n_rests > 0:
+        print(f"  rests from pads: {n_pads / n_rests * 100:.2f}")
+
+    return out
 
 
 class PartPairDataset(Dataset):
@@ -398,7 +428,7 @@ def get_sequences(tokenized, context_len, pad_ix):
     """Partitions a tokenized segment into a recurrent sequence and returns X, Y pairs."""
     ctx, tgt = [], []
 
-    for t in range(len(tokenized)):
+    for t in range(len(tokenized) - 1):
         from_ix = 0
         y_from_ix = from_ix
         to_ix = t
@@ -414,11 +444,11 @@ def get_sequences(tokenized, context_len, pad_ix):
 
         if len(context) < context_len:
             c_pad_len = context_len - len(context)
-            context = [pad_ix] * c_pad_len + context
+            context = context + [pad_ix] * c_pad_len
 
         if len(target) < context_len:
             t_pad_len = context_len - len(target)
-            target = [pad_ix] * t_pad_len + target
+            target = target + [pad_ix] * t_pad_len
 
         ctx.append(context)
         tgt.append(target)
@@ -601,8 +631,11 @@ class PartDatasetSequential(Dataset):
 
         self.context_len = context_len
 
-        encode, _ = get_vocab_encoder_decoder(part)
-        self.pad_ix = encode(["pad"])[0]
+        if representation == "hits":
+            self.pad_ix = 0
+        else:
+            encode, _ = get_vocab_encoder_decoder(part)
+            self.pad_ix = encode(["pad"])[0]
 
     def __len__(self):
         return len(self.part_df)

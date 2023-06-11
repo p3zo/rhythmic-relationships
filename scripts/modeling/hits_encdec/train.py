@@ -23,7 +23,7 @@ from rhythmic_relationships.data import (
 from rhythmic_relationships.model_hits import TVAE
 from rhythmic_relationships.io import write_midi_from_hits
 
-DEFAULT_CONFIG_FILEPATH = "config_hits.yml"
+DEFAULT_CONFIG_FILEPATH = "config.yml"
 WANDB_PROJECT_NAME = "rhythmic-relationships"
 
 DEVICE = torch.device(

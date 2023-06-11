@@ -17,7 +17,7 @@ loss_reduction: 'mean'
 clip_gradients: False
 num_epochs: 5
 batch_size: 128
-lr: 1e-3
+lr: 1e-4
 n_eval_iters: 20
 n_eval_seqs: 100
 splits:

@@ -26,7 +26,7 @@ from rhythmtoolbox import pianoroll2descriptors
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
-DEFAULT_CONFIG_FILEPATH = "config_encdec.yml"
+DEFAULT_CONFIG_FILEPATH = "config.yml"
 WANDB_PROJECT_NAME = "rhythmic-relationships"
 
 DEVICE = torch.device(

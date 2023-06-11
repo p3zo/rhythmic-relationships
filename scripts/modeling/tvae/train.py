@@ -28,7 +28,7 @@ from rhythmic_relationships.models.tvae import VAETransformer
 from rhythmic_relationships.io import write_midi_from_roll
 from rhythmic_relationships.vocab import get_vocab_encoder_decoder, get_vocab_sizes
 
-DEFAULT_CONFIG_FILEPATH = "config_tvae.yml"
+DEFAULT_CONFIG_FILEPATH = "config.yml"
 WANDB_PROJECT_NAME = "rhythmic-relationships"
 
 DEVICE = torch.device(
@@ -358,6 +358,7 @@ def train_mma(
             )
 
     return evals
+
 
 
 if __name__ == "__main__":

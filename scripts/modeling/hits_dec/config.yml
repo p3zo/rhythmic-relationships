@@ -10,25 +10,25 @@ splits:
   test: 0.1
 
 model:
-  d_model: 48
+  n_embed: 96
   n_layer: 3
   n_head: 2
-  d_ff: 48
-  dropout: 0.1
+  dropout: 0.2
 
 seed: 13
 sequence_len: 32
-resolution: 4
 n_epochs: 5
-batch_size: 36
+batch_size: 64
 
-lr: 1e-4
-loss_reduction: "mean"
+lr: 3e-4
 loss_fn: "cross-entropy"
+loss_reduction: "mean"
+clip_gradients: True
 weight_decay: 0
 
-n_eval_iters: 3
+n_eval_iters: 10
 wandb: False
 bento: False
 checkpoints: False
-val_interval: 250
+
+val_interval: 50

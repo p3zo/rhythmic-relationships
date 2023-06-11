@@ -22,25 +22,24 @@ from rhythmic_relationships.model_utils import (
 )
 from rhythmic_relationships import DATASETS_DIR, MODELS_DIR
 from rhythmic_relationships.data import (
-    PartDatasetSequential,
+    PartDataset,
     get_roll_from_sequence,
     get_hits_from_hits_seq,
 )
-from rhythmic_relationships.models.hits_decoder import TransformerDecoder
+from rhythmic_relationships.models.hits_decoder_xformer import HitsDecoder
 from rhythmic_relationships.io import write_midi_from_hits
 from rhythmic_relationships.vocab import get_hits_vocab
 
 DEFAULT_CONFIG_FILEPATH = "config.yml"
 WANDB_PROJECT_NAME = "rhythmic-relationships"
 
-DEVICE = torch.device("cpu")
-# DEVICE = torch.device(
-#     "mps"
-#     if torch.backends.mps.is_built()
-#     else torch.device("cuda:0")
-#     if torch.cuda.device_count() > 0
-#     else torch.device("cpu")
-# )
+DEVICE = torch.device(
+    "mps"
+    if torch.backends.mps.is_built()
+    else torch.device("cuda:0")
+    if torch.cuda.device_count() > 0
+    else torch.device("cpu")
+)
 
 
 def parse_sequential_batch(batch, device):
@@ -79,22 +78,19 @@ def nucleus(probs, p):
     return word
 
 
-def compute_loss(logits, y, loss_fn):
-    B, T, C = logits.shape
-    return loss_fn(logits.view(B * T, C), y.view(y.shape[0] * y.shape[1]))
-
-
-def inference(model, n_tokens, temperature, device):
+def inference(model, n_samples, n_tokens, temperature, device):
     hits_vocab = get_hits_vocab()
     ttoi = {v: k for k, v in hits_vocab.items()}
     pad_ix = ttoi["pad"]
-
+    generated_tokens = []
     y = torch.tensor(
         [[pad_ix] * n_tokens],
         dtype=torch.long,
         requires_grad=False,
         device=device,
     )
+
+    entropies = []
 
     for ix in range(n_tokens):
         # Get the predictions
@@ -106,6 +102,7 @@ def inference(model, n_tokens, temperature, device):
 
         # Apply softmax to get probabilities
         probs = temperatured_softmax(logits.cpu().numpy(), temperature)
+        entropies.append(entropy(probs))
 
         y_next = torch.multinomial(
             torch.tensor(probs, dtype=torch.float32, device=DEVICE),
@@ -114,11 +111,15 @@ def inference(model, n_tokens, temperature, device):
 
         y[:, ix] = y_next.item()
 
-    return y.squeeze(0)
+    return y, np.array(entropies)
+
+
+def compute_loss(logits, y, loss_fn):
+    B, T, C = logits.shape
+    return loss_fn(logits.view(B * T, C), y.view(y.shape[0] * y.shape[1]))
 
 
 def evaluate_hits_decoder(
-    train_loader,
     val_loader,
     model,
     config,
@@ -145,32 +146,33 @@ def evaluate_hits_decoder(
 
     print(f"Evaluating for {n_eval_iters} iters")
 
-    evals_train_loss = []
-    for k in range(n_eval_iters):
-        src, tgt = parse_sequential_batch(next(iter(train_loader)), device)
-        with torch.no_grad():
-            logits = model(src)
-            loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
-            evals_train_loss.append(loss.item())
+    evals_loss = []
 
-    evals_val_loss = []
     for k in range(n_eval_iters):
-        src, tgt = parse_sequential_batch(next(iter(val_loader)), device)
+        # src, tgt = parse_sequential_batch(next(iter(val_loader)), device)
+        # with torch.no_grad():
+        #     logits = model(src)
+        #     loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
+        #     evals_loss.append(loss.item())
+
+        batch = next(iter(val_loader)).to(device)
         with torch.no_grad():
-            logits = model(src)
-            loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
-            evals_val_loss.append(loss.item())
+            loss = model(batch)
+            evals_loss.append(loss.item())
 
     n_generated = 0
     all_zeros = 0
     all_same = 0
 
-    n_seqs = 2
-    for ix in range(n_seqs):
-        # idx = torch.zeros((1, 1), dtype=torch.long, device=device)
-        # seq = model.generate(idx, n_tokens=31)[0]
+    # seqs, entropies = inference(
+    #     model=model, n_samples=10, n_tokens=32, temperature=1.2, device=device
+    # )
+    # print("[entropy] {:.4f} (+/- {:.4f})".format(np.mean(entropies), np.std(entropies)))
+    # for ix, seq in enumerate(seqs):
 
-        seq = inference(model=model, n_tokens=32, temperature=1.2, device=device)
+    n_seqs = 1
+    for ix in range(n_seqs):
+        seq = model.generate(device=device)
 
         gen_hits = get_hits_from_hits_seq(seq.cpu().numpy(), part=part)
 
@@ -184,7 +186,7 @@ def evaluate_hits_decoder(
 
         write_midi_from_hits(
             [i * 127 for i in gen_hits],
-            outpath=os.path.join(eval_dir, f"{ix}_gen.mid"),
+            outpath=os.path.join(eval_dir, f"{k}_{ix}_gen.mid"),
             part=part,
             pitch=72,
         )
@@ -193,10 +195,7 @@ def evaluate_hits_decoder(
     print(f"  {all_zeros=} ({100*round(all_zeros/n_generated, 2)}%)")
     print(f"  {all_same=} ({100*round(all_same/n_generated, 2)}%)")
 
-    curr_eval = {
-        "val_loss": np.mean(evals_val_loss),
-        "train_loss": np.mean(evals_train_loss),
-    }
+    curr_eval = {"val_loss": np.mean(evals_loss)}
     print(f"{curr_eval=}")
 
     evaluation.update(curr_eval)
@@ -232,9 +231,11 @@ def train_hits_decoder(
     for epoch in range(1, n_epochs + 1):
         batches = tqdm(train_loader)
         for batch in batches:
-            src, tgt = parse_sequential_batch(batch, device)
-            logits = model(src)
-            loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
+            batch = batch.to(device)
+            loss = model(batch)
+            # src, tgt = parse_sequential_batch(batch, device)
+            # logits = model(src)
+            # loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
 
             train_losses.append(loss.item())
             batches.set_postfix({"loss": f"{loss.item():.4f}"})
@@ -259,7 +260,6 @@ def train_hits_decoder(
 
             if ix % val_interval == 0:
                 val = evaluate_hits_decoder(
-                    train_loader=train_loader,
                     val_loader=val_loader,
                     model=model,
                     config=config,
@@ -270,21 +270,6 @@ def train_hits_decoder(
                     device=device,
                 )
                 evals.append(val)
-
-                e_ixs = range(len(evals))
-                eval_val_losses = [evals[i]["val_loss"] for i in e_ixs]
-                eval_train_losses = [evals[i]["train_loss"] for i in e_ixs]
-                marker = "o" if epoch == 1 else None
-                plt.plot(
-                    e_ixs, eval_train_losses, label="train", c="blue", marker=marker
-                )
-                plt.plot(e_ixs, eval_val_losses, label="val", c="orange", marker=marker)
-                eval_loss_plot_path = os.path.join(model_dir, f"eval_loss.png")
-                plt.legend()
-                plt.title(f"{model_name}")
-                plt.tight_layout()
-                plt.savefig(eval_loss_plot_path)
-                plt.clf()
 
         if config["checkpoints"]:
             save_checkpoint(
@@ -314,7 +299,8 @@ def train_hits_decoder(
 
 
 def train(config, model_name, datasets_dir, model_dir):
-    dataset = PartDatasetSequential(**config["data"], datasets_dir=datasets_dir)
+    del config["data"]["context_len"]
+    dataset = PartDataset(**config["data"], datasets_dir=datasets_dir)
     splits = config["splits"]
     train_data, val_data, test_data = random_split(dataset, list(splits.values()))
     for k, v in {"train": train_data, "val": val_data, "test": test_data}.items():
@@ -332,7 +318,7 @@ def train(config, model_name, datasets_dir, model_dir):
     config["model"]["context_len"] = config["sequence_len"]
     config["model"]["pad_ix"] = pad_ix
 
-    model = TransformerDecoder(**config["model"]).to(DEVICE)
+    model = HitsDecoder(**config["model"]).to(DEVICE)
 
     optimizer = torch.optim.Adam(
         model.parameters(),
