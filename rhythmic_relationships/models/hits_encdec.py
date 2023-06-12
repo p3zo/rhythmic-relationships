@@ -1,3 +1,4 @@
+
 """Adapted from https://github.com/YatingMusic/MuseMorphose"""
 
 import torch
@@ -5,16 +6,7 @@ import torch.nn as nn
 from x_transformers import TransformerWrapper, Decoder, Encoder
 
 
-def get_causal_mask(sz, device, boolean=False):
-    mask = (torch.triu(torch.ones(sz, sz, device=device)) == 1).transpose(0, 1)
-    mask.requires_grad = False
-    if boolean:
-        return mask
-    return (
-        mask.float()
-        .masked_fill(mask == 0, float("-inf"))
-        .masked_fill(mask == 1, float(0.0))
-    )
+
 
 
 def weight_init_normal(weight, normal_std):

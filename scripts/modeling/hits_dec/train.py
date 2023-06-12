@@ -4,11 +4,9 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
-import seaborn as sns
 import torch
 import wandb
 import yaml
-from scipy.stats import entropy
 from rhythmtoolbox import pianoroll2descriptors
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
@@ -82,7 +80,17 @@ def compute_loss(logits, y, loss_fn):
     return loss_fn(logits.view(B * T, C), y.view(y.shape[0] * y.shape[1]))
 
 
-def inference(model, n_tokens, temperature, device):
+def inference(
+    model,
+    n_tokens,
+    temperature,
+    device,
+    sampler="multinomial",
+    nucleus_p=0.92,
+):
+    if sampler not in ["multinomial", "nucleus"]:
+        raise ValueError(f"Unsupported {sampler}: sampler")
+
     hits_vocab = get_hits_vocab()
     ttoi = {v: k for k, v in hits_vocab.items()}
     pad_ix = ttoi["pad"]
@@ -105,14 +113,25 @@ def inference(model, n_tokens, temperature, device):
         # Apply softmax to get probabilities
         probs = temperatured_softmax(logits.cpu().numpy(), temperature)
 
-        y_next = torch.multinomial(
-            torch.tensor(probs, dtype=torch.float32, device=DEVICE),
-            num_samples=1,
-        )
+        if sampler == "nucleus":
+            y_next = []
+            for j in range(probs.shape[0]):
+                yn = nucleus(probs[j], nucleus_p)
+                y_next.append(yn)
+            y_next = torch.tensor(y_next, dtype=torch.long, device=DEVICE).unsqueeze(1)
+        else:
+            y_next = torch.multinomial(
+                torch.tensor(probs, dtype=torch.float32, device=DEVICE),
+                num_samples=1,
+            )
 
         y[:, ix] = y_next.item()
 
     return y.squeeze(0)
+
+
+def pct_diff(x, y):
+    return 100 * np.abs(x - y) / ((x + y) / 2)
 
 
 def evaluate_hits_decoder(
@@ -188,9 +207,12 @@ def evaluate_hits_decoder(
     print(f"  {all_zeros=} ({100*round(all_zeros/n_generated, 2)}%)")
     print(f"  {all_same=} ({100*round(all_same/n_generated, 2)}%)")
 
+    val_loss_mean = np.mean(evals_val_loss)
+    train_loss_mean = np.mean(evals_train_loss)
     curr_eval = {
-        "val_loss": np.mean(evals_val_loss),
-        "train_loss": np.mean(evals_train_loss),
+        "val_loss": val_loss_mean,
+        "train_loss": train_loss_mean,
+        "val_train_loss_pct_diff": pct_diff(val_loss_mean, train_loss_mean),
     }
     print(f"{curr_eval=}")
 
@@ -274,7 +296,7 @@ def train_hits_decoder(
                     e_ixs, eval_train_losses, label="train", c="blue", marker=marker
                 )
                 plt.plot(e_ixs, eval_val_losses, label="val", c="orange", marker=marker)
-                eval_loss_plot_path = os.path.join(model_dir, f"eval_loss.png")
+                eval_loss_plot_path = os.path.join(model_dir, "eval_loss.png")
                 plt.legend()
                 plt.title(f"{model_name}")
                 plt.tight_layout()

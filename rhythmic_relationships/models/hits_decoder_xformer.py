@@ -1,6 +1,6 @@
 import torch
 import torch.nn as nn
-from x_transformers import TransformerWrapper, Decoder, AutoregressiveWrapper
+from x_transformers import TransformerWrapper, Decoder
 
 from rhythmic_relationships.models.hits_encdec import get_causal_mask
 
@@ -26,9 +26,8 @@ class HitsDecoder(nn.Module):
         self.dropout = dropout
         self.vocab_size = vocab_size
         self.context_len = context_len
-        self.pad_ix = pad_ix
 
-        decoder = TransformerWrapper(
+        self.decoder = TransformerWrapper(
             num_tokens=vocab_size,
             max_seq_len=context_len,
             l2norm_embed=True,
@@ -42,12 +41,6 @@ class HitsDecoder(nn.Module):
                 ff_no_bias=True,
             ),
         )
-
-        self.decoder = AutoregressiveWrapper(
-            decoder,
-            ignore_index=pad_ix,
-            pad_value=pad_ix,
-        )
         self.apply(self._init_weights)
 
     def _init_weights(self, module):
@@ -59,9 +52,8 @@ class HitsDecoder(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, x):
-        # attn_mask = get_causal_mask(x.size(1), device=x.device, boolean=True)
-        # out = self.decoder(x, attn_mask=attn_mask)
-        out = self.decoder(x)
+        attn_mask = get_causal_mask(x.size(1), device=x.device, boolean=True)
+        out = self.decoder(x, attn_mask=attn_mask)
         return out
 
     @torch.no_grad()

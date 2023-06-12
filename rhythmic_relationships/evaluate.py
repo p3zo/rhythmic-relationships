@@ -10,6 +10,7 @@ def compute_oa(A, B):
     lower_limit = np.min((np.min(A), np.min(B)))  # min of both
     upper_limit = np.max((np.max(A), np.max(B)))  # max of both
 
+    # TODO: subsample pdfs to speed up integration
     area = integrate.quad(lambda x: min(pdf_A(x), pdf_B(x)), lower_limit, upper_limit)
     return area[0]
 
@@ -22,3 +23,9 @@ def compute_kld(A, B, num_sample=1000):
     sample_B = np.linspace(np.min(B), np.max(B), num_sample)
 
     return stats.entropy(pdf_A(sample_A), pdf_B(sample_B))
+
+
+def compute_oa_and_kld(train_dist, train_gen_dist):
+    oa = compute_oa(train_dist, train_gen_dist)
+    kld = compute_kld(train_dist, train_gen_dist)
+    return oa, kld
