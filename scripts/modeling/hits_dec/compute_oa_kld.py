@@ -1,0 +1,184 @@
+"""Compare training set descriptors to generated after each epoch"""
+import os
+
+import numpy as np
+from scipy.spatial import distance_matrix
+import matplotlib.pyplot as plt
+import pandas as pd
+import seaborn as sns
+import torch
+from tqdm import tqdm
+
+from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
+from rhythmic_relationships.data import PartDataset, get_hits_from_hits_seq
+from rhythmic_relationships.evaluate import compute_oa, compute_kld
+from rhythmic_relationships.io import write_midi_from_hits, get_roll_from_hits
+from rhythmic_relationships.model_utils import load_model
+from rhythmic_relationships.models.hits_decoder import TransformerDecoder
+from rhythmtoolbox import pianoroll2descriptors
+
+from train import inference
+
+DEVICE = torch.device(
+    "mps"
+    if torch.backends.mps.is_built()
+    else torch.device("cuda:0")
+    if torch.cuda.device_count() > 0
+    else torch.device("cpu")
+)
+
+
+def get_flat_nonzero_dissimilarity_matrix(x):
+    dists = distance_matrix(x, x, p=2)
+    flat = dists.flatten()
+    return np.delete(flat, np.arange(0, len(flat), len(x) + 1))
+
+
+if __name__ == "__main__":
+    model_name = "multiovulate_2306112040"
+    checkpoint_num = 8
+    n_seqs = 100
+    write_generations = True
+    device = DEVICE
+
+    # Load model
+    model_dir = os.path.join(MODELS_DIR, model_name)
+    if checkpoint_num:
+        checkpoints_dir = os.path.join(model_dir, CHECKPOINTS_DIRNAME)
+        model_path = os.path.join(checkpoints_dir, str(checkpoint_num))
+    else:
+        model_path = os.path.join(model_dir, "model.pt")
+
+    model, config = load_model(model_path, TransformerDecoder)
+    model = model.to(DEVICE)
+    part = config["data"]["part"]
+
+    # Use the model to generate new sequences
+    gen_dir = os.path.join(MODELS_DIR, model_name, "inference")
+    if write_generations:
+        if not os.path.isdir(gen_dir):
+            os.makedirs(gen_dir)
+
+    generated_rolls = []
+    generated_descs = []
+
+    n_generated = 0
+    all_zeros = 0
+    all_same = 0
+
+    pitch = 72
+    resolution = 4
+    n_seqs = 100
+    temperature = 1
+    for ix in tqdm(range(n_seqs)):
+        seq = inference(
+            model=model,
+            n_tokens=32,
+            temperature=temperature,
+            device=device,
+        )
+
+        gen_hits = get_hits_from_hits_seq(seq.cpu().numpy(), part=part, verbose=False)
+
+        n_generated += 1
+        if max(gen_hits) == 0:
+            all_zeros += 1
+            continue
+        if len(set(gen_hits)) == 1:
+            all_same += 1
+            continue
+
+        if write_generations:
+            write_midi_from_hits(
+                [i * 127 for i in gen_hits],
+                outpath=os.path.join(gen_dir, f"{ix}.mid"),
+                part=part,
+                pitch=pitch,
+            )
+
+        roll = get_roll_from_hits([i * 127 for i in gen_hits], pitch=pitch, resolution=resolution)
+        generated_rolls.append(roll)
+
+        gen_descs = pianoroll2descriptors(
+            roll,
+            resolution,
+            drums=part == "Drums",
+        )
+        generated_descs.append(gen_descs)
+
+    print(f"{n_generated=}")
+    print(f"  {all_zeros=} ({100*round(all_zeros/n_generated, 2)}%)")
+    print(f"  {all_same=} ({100*round(all_same/n_generated, 2)}%)")
+
+    drop_features = ["noi", "stepDensity"]
+    gen_df = pd.DataFrame(generated_descs).dropna(how="all", axis=1)
+    gen_df.drop(drop_features, axis=1, inplace=True)
+
+    # Get distribution from training set
+    full_df = PartDataset(
+        dataset_name=config["data"]["dataset_name"],
+        part=part,
+        representation="descriptors",
+    ).as_df(subset=10000)
+    dataset_df = full_df.drop(
+        ["filename", "segment_id"] + drop_features,
+        axis=1,
+    ).dropna(how="all", axis=1)
+
+    plots_dir = os.path.join(MODELS_DIR, model_name, "eval_plots")
+    if not os.path.isdir(plots_dir):
+        os.makedirs(plots_dir)
+
+    # Combine the generated with the ground truth
+    id_col = "Generated"
+    gen_df[id_col] = f"Generated (n={len(gen_df)})"
+    dataset_df[id_col] = f"Dataset (n={len(dataset_df)})"
+    compare_df = pd.concat([gen_df, dataset_df])
+
+    # Scale the feature columns to [0, 1]
+    feature_cols = [c for c in dataset_df.columns if c != id_col]
+    compare_df_scaled = (compare_df[feature_cols] - compare_df[feature_cols].min()) / (
+        compare_df[feature_cols].max() - compare_df[feature_cols].min()
+    )
+    compare_df_scaled[id_col] = compare_df[id_col]
+
+    # Plot a comparison of distributions for all descriptors
+    sns.boxplot(
+        x="variable",
+        y="value",
+        hue=id_col,
+        data=pd.melt(compare_df_scaled, id_vars=id_col),
+    )
+    plt.ylabel("")
+    plt.xlabel("")
+    plt.yticks([])
+    plt.title(f"{model_name}, temperature={temperature}")
+    plt.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.08),
+        fancybox=True,
+        shadow=False,
+        ncol=2,
+    )
+    plt.tight_layout()
+    plt.savefig(os.path.join(plots_dir, "all-comparison.png"))
+    plt.clf()
+
+    # Descriptors from training dataset
+    train = dataset_df[feature_cols].values
+
+    # Descriptors from generated dataset
+    gen = gen_df[feature_cols].values
+
+    train_dist = get_flat_nonzero_dissimilarity_matrix(train)
+
+    # Stack training and generation
+    train_gen = np.concatenate((train, gen))
+    train_gen_dist = get_flat_nonzero_dissimilarity_matrix(train_gen)
+
+    # Compute distribution comparison metrics
+    oa = compute_oa(train_dist, train_gen_dist)
+    kld = compute_kld(train_dist, train_gen_dist)
+
+    print(f"{oa=}, {kld=}")
+    print()

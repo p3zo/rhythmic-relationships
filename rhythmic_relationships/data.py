@@ -147,7 +147,7 @@ def get_roll_from_sequence(seq, part):
     return roll
 
 
-def get_hits_from_hits_seq(seq, part, pitch=60):
+def get_hits_from_hits_seq(seq, part, pitch=60, verbose=False):
     """Same as get_roll_from_sequence but for hits sequences
     TODO: specify hits vocabulary and use get_roll_from_sequence instead of this"""
 
@@ -170,9 +170,10 @@ def get_hits_from_hits_seq(seq, part, pitch=60):
             n_rests += 1
 
     # Log percentage of output rests that were padding predictions
-    print(f'  pct rests: {n_rests / len(out) * 100:.2f}')
-    if n_rests > 0:
-        print(f"  rests from pads: {n_pads / n_rests * 100:.2f}")
+    if verbose:
+        print(f'  pct rests: {n_rests / len(out) * 100:.2f}')
+        if n_rests > 0:
+            print(f"  rests from pads: {n_pads / n_rests * 100:.2f}")
 
     return out
 

@@ -627,23 +627,45 @@ def write_image_from_roll(roll, outpath, im_size=None, binary=False):
     logger.debug(f"  Saved {outpath}")
 
 
-def write_midi_from_hits(hits, outpath, pitch=48, part=""):
-    # TODO: explain choice of note_duration
-    note_duration = 0.125
+def get_pmid_from_hits(hits, pitch=48, part="", resolution=4):
+    program = 0
+    is_drum = False
+    if part:
+        program = get_program_from_part(part)
+        if part == "Drums":
+            is_drum = True
 
-    instrument = pm.Instrument(program=0, is_drum=False, name=part)
+    pmid = pm.PrettyMIDI()
+    instrument = pm.Instrument(program=program, is_drum=is_drum, name=part)
 
-    for event_ix, vel in enumerate(hits):
+    fs = resolution * 2
+
+    for tick, vel in enumerate(hits):
         if vel > 0:
-            start = event_ix * note_duration
-            note = pm.Note(
-                velocity=int(vel), pitch=pitch, start=start, end=start + note_duration
+            instrument.notes.append(
+                pm.Note(
+                    velocity=int(vel),
+                    pitch=pitch,
+                    start=tick / fs,
+                    end=(tick + 1) / fs,
+                )
             )
-            instrument.notes.append(note)
+    pmid.instruments.append(instrument)
+    return pmid
 
-    track = pm.PrettyMIDI()
-    track.instruments.append(instrument)
-    track.write(outpath)
+
+def get_roll_from_hits(hits, pitch=48, resolution=4):
+    pmid = get_pmid_from_hits(hits, pitch=pitch, resolution=resolution)
+    roll = pmid.get_piano_roll(fs=resolution * 2).T
+    if len(roll) < len(hits):
+        padded = np.zeros((len(hits), roll.shape[1]))
+        padded[: len(roll)] = roll
+        roll = padded
+    return roll
+
+def write_midi_from_hits(hits, outpath, pitch=48, part="", resolution=4):
+    pmid = get_pmid_from_hits(hits, pitch=pitch, part=part, resolution=resolution)
+    pmid.write(outpath)
     logger.debug(f"Saved {outpath}")
 
 

@@ -23,7 +23,6 @@ from rhythmic_relationships.model_utils import (
 from rhythmic_relationships import DATASETS_DIR, MODELS_DIR
 from rhythmic_relationships.data import (
     PartDatasetSequential,
-    get_roll_from_sequence,
     get_hits_from_hits_seq,
 )
 from rhythmic_relationships.models.hits_decoder import TransformerDecoder
@@ -33,14 +32,13 @@ from rhythmic_relationships.vocab import get_hits_vocab
 DEFAULT_CONFIG_FILEPATH = "config.yml"
 WANDB_PROJECT_NAME = "rhythmic-relationships"
 
-DEVICE = torch.device("cpu")
-# DEVICE = torch.device(
-#     "mps"
-#     if torch.backends.mps.is_built()
-#     else torch.device("cuda:0")
-#     if torch.cuda.device_count() > 0
-#     else torch.device("cpu")
-# )
+DEVICE = torch.device(
+    "mps"
+    if torch.backends.mps.is_built()
+    else torch.device("cuda:0")
+    if torch.cuda.device_count() > 0
+    else torch.device("cpu")
+)
 
 
 def parse_sequential_batch(batch, device):
@@ -167,9 +165,6 @@ def evaluate_hits_decoder(
 
     n_seqs = 2
     for ix in range(n_seqs):
-        # idx = torch.zeros((1, 1), dtype=torch.long, device=device)
-        # seq = model.generate(idx, n_tokens=31)[0]
-
         seq = inference(model=model, n_tokens=32, temperature=1.2, device=device)
 
         gen_hits = get_hits_from_hits_seq(seq.cpu().numpy(), part=part)
