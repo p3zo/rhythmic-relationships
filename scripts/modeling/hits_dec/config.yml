@@ -23,10 +23,10 @@ batch_size: 64
 lr: 3e-4
 loss_fn: "cross-entropy"
 loss_reduction: "mean"
-clip_gradients: True
+clip_gradients: False
 weight_decay: 0
 
-n_eval_iters: 10
+n_eval_iters: 5
 wandb: False
 bento: False
 checkpoints: False
