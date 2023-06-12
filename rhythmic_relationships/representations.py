@@ -147,6 +147,7 @@ def get_representations(pmid, subdivisions):
         onset_chroma = np.zeros((n_ticks, 12), np.uint8)
         pattern = np.zeros(n_ticks, np.uint8)
         hits = np.zeros(n_ticks, np.uint8)
+        # TODO: add drum_hits repr using poly drum flattening algorithm
 
         onsets_unquantized = [note.start for note in instrument.notes]
         onsets = [np.argmin(np.abs(t - subdivisions)) for t in onsets_unquantized]

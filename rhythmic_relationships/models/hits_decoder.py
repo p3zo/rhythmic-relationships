@@ -1,7 +1,18 @@
 import torch
 import torch.nn as nn
 from x_transformers import TransformerWrapper, Decoder
-from rhythmic_relationships.model_utils import get_causal_mask
+
+
+def get_causal_mask(sz, device, boolean=False):
+    mask = (torch.triu(torch.ones(sz, sz, device=device)) == 1).transpose(0, 1)
+    mask.requires_grad = False
+    if boolean:
+        return mask
+    return (
+        mask.float()
+        .masked_fill(mask == 0, float("-inf"))
+        .masked_fill(mask == 1, float(0.0))
+    )
 
 
 class TransformerDecoder(nn.Module):
@@ -52,6 +63,7 @@ class TransformerDecoder(nn.Module):
         attn_mask = get_causal_mask(x.size(1), device=x.device, boolean=True)
         out = self.decoder(x, attn_mask=attn_mask)
         return out
+
 
 # class Head(nn.Module):
 #     """One head of self-attention"""

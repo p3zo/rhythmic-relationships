@@ -10,18 +10,6 @@ import yaml
 from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
 
 
-def get_causal_mask(sz, device, boolean=False):
-    mask = (torch.triu(torch.ones(sz, sz, device=device)) == 1).transpose(0, 1)
-    mask.requires_grad = False
-    if boolean:
-        return mask
-    return (
-        mask.float()
-        .masked_fill(mask == 0, float("-inf"))
-        .masked_fill(mask == 1, float(0.0))
-    )
-
-
 def load_config(filepath):
     """Loads a model config and adds derived values"""
     with open(filepath, "r") as fh:

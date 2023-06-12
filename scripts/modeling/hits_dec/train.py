@@ -318,12 +318,15 @@ def train_hits_decoder(
     # Final eval
     evals.append(
         evaluate_hits_decoder(
+            train_loader=train_loader,
             val_loader=val_loader,
             model=model,
             config=config,
             epoch=epoch,
+            loss_fn=loss_fn,
             model_name=model_name,
             model_dir=model_dir,
+            device=device,
         )
     )
 
@@ -332,6 +335,7 @@ def train_hits_decoder(
 
 def train(config, model_name, datasets_dir, model_dir):
     dataset = PartDatasetSequential(**config["data"], datasets_dir=datasets_dir)
+
     splits = config["splits"]
     train_data, val_data, test_data = random_split(dataset, list(splits.values()))
     for k, v in {"train": train_data, "val": val_data, "test": test_data}.items():
@@ -345,7 +349,7 @@ def train(config, model_name, datasets_dir, model_dir):
     hits_vocab = get_hits_vocab()
     pad_ix = {v: k for k, v in hits_vocab.items()}["pad"]
 
-    config["model"]["vocab_size"] = 5
+    config["model"]["vocab_size"] = len(hits_vocab)
     config["model"]["context_len"] = config["sequence_len"]
     config["model"]["pad_ix"] = pad_ix
 

@@ -579,7 +579,7 @@ class PartPairDatasetSequential(Dataset):
         src, tgt = get_pair_sequences(
             p1_tokenized,
             p2_tokenized,
-            self.context_len,
+            context_len=self.context_len,
             pad_ix=self.pad_ix,
         )
         return torch.LongTensor(src), torch.LongTensor(tgt)
