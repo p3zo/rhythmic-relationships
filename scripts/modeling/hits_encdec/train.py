@@ -241,38 +241,59 @@ def evaluate_hits_encdec(
     part_1 = config["data"]["part_1"]
     part_2 = config["data"]["part_2"]
 
-    print(f"Evaluating for {n_eval_iters} iters")
+    print(f"Evaluating train loss for {n_eval_iters} iters")
 
     evals_train_loss = []
-    for k in range(n_eval_iters):
+    for _ in range(n_eval_iters):
         src, tgt = parse_sequential_batch(next(iter(train_loader)), device)
         with torch.no_grad():
             logits = model(src, tgt)
             loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
             evals_train_loss.append(loss.item())
 
+    print(f"Evaluating val loss for {n_eval_iters} iters")
+
     evals_val_loss = []
-    for k in range(n_eval_iters):
+    for _ in range(n_eval_iters):
         src, tgt = parse_sequential_batch(next(iter(val_loader)), device)
         with torch.no_grad():
             logits = model(src, tgt)
             loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
             evals_val_loss.append(loss.item())
 
-    sampler_stats = {}
-
     # Generate sequences using different samplers
     n_eval_seqs = config["n_eval_seqs"]
+    print(f"Generating {n_eval_seqs} eval sequences")
+    sampler_stats = {}
+    temperature = 1.0
+    nucleus_p = 0.92
+    part_1_pitch = 55
+    part_2_pitch = 72
+    resolution = 4
 
-    gen_srcs, gen_tgts = parse_sequential_batch(next(iter(val_loader)), device)
+    ctx_len = config["sequence_len"]
+    max_gen_seq_ix = ctx_len * n_eval_seqs + 1
+    gen_srcs, gen_tgts = [], []
+    while len(gen_srcs) < max_gen_seq_ix:
+        gs, gt = parse_sequential_batch(next(iter(val_loader)), device=device)
+        gen_srcs.extend(gs)
+        gen_tgts.extend(gt)
+    gen_srcs = torch.stack(gen_srcs)
+    gen_tgts = torch.stack(gen_tgts)
 
-    # TODO: this indexing logic fails if n_eval_seqs > batch_size. generalize
-    ctx_len = config["data"]["context_len"]
-    gen_seq_ixs = range(ctx_len, ctx_len * n_eval_seqs + 1, ctx_len)
-    gen_srcs = gen_srcs[gen_seq_ixs]
-    gen_tgts = gen_tgts[gen_seq_ixs]
+    gen_seq_ixs = torch.tensor(
+        range(ctx_len - 1, max_gen_seq_ix, ctx_len), device=device
+    )
+    assert max(gen_seq_ixs) < len(gen_srcs) and max(gen_seq_ixs) < len(gen_tgts)
+    gen_srcs = torch.index_select(input=gen_srcs, dim=0, index=gen_seq_ixs)
+    gen_tgts = torch.index_select(input=gen_tgts, dim=0, index=gen_seq_ixs)
+    assert len((gen_tgts == 0).nonzero()) == 0
 
     for sampler in ["multinomial", "nucleus"]:
+        generated_rolls = []
+        generated_descs = []
+        target_descs = []
+
         # Track stats for each sampler
         all_zeros = 0
         all_same = 0
