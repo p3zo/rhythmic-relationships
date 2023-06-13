@@ -1,4 +1,5 @@
 import numpy as np
+from rhythmic_relationships.flatten import flat_from_patt
 
 REPRESENTATIONS = [
     "roll",
@@ -10,6 +11,7 @@ REPRESENTATIONS = [
     "onset_chroma",
     "pattern",
     "hits",
+    "drum_hits",
     "descriptors",
 ]
 
@@ -111,6 +113,14 @@ def get_multitrack_roll(tracks, drums=False):
     return multitrack_roll.T
 
 
+def pianoroll_to_pattlist(roll):
+    """Convert a piano roll array to a pattern list for rhythmtoolbox"""
+    pattlist = []
+    for t in roll:
+        pattlist.append([ix for ix, i in enumerate(t) if i > 0])
+    return pattlist
+
+
 def get_representations(pmid, subdivisions):
     """Compute all representations from a PrettyMIDI object.
 
@@ -147,7 +157,6 @@ def get_representations(pmid, subdivisions):
         onset_chroma = np.zeros((n_ticks, 12), np.uint8)
         pattern = np.zeros(n_ticks, np.uint8)
         hits = np.zeros(n_ticks, np.uint8)
-        # TODO: add drum_hits repr using poly drum flattening algorithm
 
         onsets_unquantized = [note.start for note in instrument.notes]
         onsets = [np.argmin(np.abs(t - subdivisions)) for t in onsets_unquantized]
@@ -218,12 +227,24 @@ def get_representations(pmid, subdivisions):
         # TODO: uncomment when io code handles non-128-voiced rolls without transposing
         # roll = roll[:, MIDI_PITCH_RANGE[0] : MIDI_PITCH_RANGE[1] + 1]
 
+        # Flatten polyphonic drums
+        algo_ix = 3
+        drum_hits = np.zeros(n_ticks, np.uint8)
+        if n_ticks % 16 == 0:
+            for ix, subroll in enumerate(np.split(onset_roll, n_ticks / 16)):
+                sub_drum_hits = np.zeros(16, np.float16)
+                if subroll.max() > 0:
+                    pattlist_16 = pianoroll_to_pattlist(subroll)
+                    sub_drum_hits = flat_from_patt(pattlist_16)[algo_ix]
+                drum_hits[ix * 16 : (ix + 1) * 16] = sub_drum_hits
+
         # Convert MIDI velocities to real numbers in [0, 1]
         roll = roll / 127.0
         drum_roll = drum_roll / 127.0
         onset_roll = onset_roll / 127.0
         onset_roll_3_octave = onset_roll_3_octave / 127.0
         hits = hits / 127.0
+        drum_hits = drum_hits / 127.0
 
         binary_onset_roll = (onset_roll > 0).astype(np.uint8)
 
@@ -243,6 +264,7 @@ def get_representations(pmid, subdivisions):
                 "onset_chroma": onset_chroma,
                 "pattern": pattern,
                 "hits": hits,
+                "drum_hits": drum_hits,
             }
         )
 
