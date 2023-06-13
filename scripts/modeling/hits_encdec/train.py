@@ -4,15 +4,21 @@ import os
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import torch
 import wandb
 import yaml
+from rhythmtoolbox import pianoroll2descriptors
 from rhythmic_relationships import DATASETS_DIR, MODELS_DIR
 from rhythmic_relationships.data import (
     PartPairDatasetSequential,
     get_hits_from_hits_seq,
 )
-from rhythmic_relationships.io import write_midi_from_hits
+from rhythmic_relationships.evaluate import (
+    compute_oa_and_kld,
+    get_flat_nonzero_dissimilarity_matrix,
+)
+from rhythmic_relationships.io import write_midi_from_hits, get_roll_from_hits
 from rhythmic_relationships.model_utils import (
     get_loss_fn,
     get_model_name,
@@ -133,6 +139,81 @@ def pct_diff(x, y):
     return 100 * np.abs(x - y) / ((x + y) / 2)
 
 
+def plot_desc_comparison(
+    g_descs,
+    ref_descs,
+    sampler,
+    temperature,
+    nucleus_p,
+    eval_dir,
+    model_name,
+):
+    drop_cols = ["noi", "polyDensity"]
+
+    gen_df = pd.DataFrame(g_descs)
+    ref_df = pd.DataFrame(ref_descs)
+
+    for df in [gen_df, ref_df]:
+        df.dropna(how="all", axis=1, inplace=True)
+        df.drop(drop_cols, axis=1, inplace=True)
+
+    # Combine the generated with the ground truth
+    id_col = "Generated"
+    gen_df[id_col] = f"Generated (n={len(gen_df)})"
+    ref_df[id_col] = f"Target (n={len(ref_df)})"
+    compare_df = pd.concat([gen_df, ref_df])
+
+    # Scale the feature columns to [0, 1]
+    feature_cols = [c for c in ref_df.columns if c != id_col]
+    compare_df_scaled = (compare_df[feature_cols] - compare_df[feature_cols].min()) / (
+        compare_df[feature_cols].max() - compare_df[feature_cols].min()
+    )
+    compare_df_scaled[id_col] = compare_df[id_col]
+
+    # Plot a comparison of distributions for all descriptors
+    sns.boxplot(
+        x="variable",
+        y="value",
+        hue=id_col,
+        data=pd.melt(compare_df_scaled, id_vars=id_col),
+    )
+    plt.ylabel("")
+    plt.xlabel("")
+    plt.yticks([])
+    title = f"{model_name}\n{sampler=} @ {temperature=}"
+    if sampler == "nucleus":
+        title += f", {nucleus_p=}"
+    plt.title(title)
+    plt.legend(
+        loc="upper center",
+        bbox_to_anchor=(0.5, -0.08),
+        fancybox=True,
+        shadow=False,
+        ncol=2,
+    )
+    plt.tight_layout()
+    plt.savefig(os.path.join(eval_dir, f"dist-comparison-{sampler}.png"))
+    plt.clf()
+
+    # Descriptors from reference dataset
+    ref = ref_df[feature_cols].values
+
+    # Descriptors from generated dataset
+    gen = gen_df[feature_cols].values
+
+    ref_dist = get_flat_nonzero_dissimilarity_matrix(ref)
+
+    # Stack reference and generation
+    ref_gen = np.concatenate((ref, gen))
+    ref_gen_dist = get_flat_nonzero_dissimilarity_matrix(ref_gen)
+
+    # Compute distribution comparison metrics
+    oa, kld = compute_oa_and_kld(ref_dist, ref_gen_dist)
+
+    print(f"  {oa=}, {kld=}")
+    return oa, kld
+
+
 def evaluate_hits_encdec(
     train_loader,
     val_loader,
@@ -203,14 +284,18 @@ def evaluate_hits_encdec(
                 model=model,
                 src=src,
                 n_tokens=32,
-                temperature=1.2,
-                sampler=sampler,
+                temperature=temperature,
                 device=device,
+                sampler=sampler,
+                nucleus_p=nucleus_p,
             )
 
             gen_hits = get_hits_from_hits_seq(
-                seq.cpu().numpy(), part=part_2, verbose=True
+                seq.cpu().numpy(),
+                part=part_2,
+                verbose=True,
             )
+            gen_hits = [i * 127.0 for i in gen_hits]
 
             if max(gen_hits) == 0:
                 all_zeros += 1
@@ -219,33 +304,73 @@ def evaluate_hits_encdec(
                 all_same += 1
                 continue
 
+            gen_roll = get_roll_from_hits(
+                gen_hits,
+                pitch=part_2_pitch,
+                resolution=resolution,
+            )
+            generated_rolls.append(gen_roll)
+
+            gen_descs = pianoroll2descriptors(
+                gen_roll,
+                resolution,
+                drums=part_2 == "Drums",
+            )
+            generated_descs.append(gen_descs)
+
             write_midi_from_hits(
-                [i * 127 for i in gen_hits],
+                gen_hits,
                 outpath=os.path.join(eval_dir, f"{ix}_{sampler}_gen.mid"),
                 part=part_2,
-                pitch=72,
+                pitch=part_2_pitch,
             )
 
             tgt = gen_tgts[ix]
             tgt_hits = get_hits_from_hits_seq(tgt.cpu().numpy(), part=part_2)
+            tgt_hits = [i * 127.0 for i in tgt_hits]
             write_midi_from_hits(
-                [i * 127 for i in tgt_hits],
+                tgt_hits,
                 outpath=os.path.join(eval_dir, f"{ix}_{sampler}_tgt.mid"),
                 part=part_2,
-                pitch=72,
+                pitch=part_2_pitch,
             )
+
+            tgt_roll = get_roll_from_hits(
+                tgt_hits,
+                pitch=part_2_pitch,
+                resolution=resolution,
+            )
+            tgt_descs = pianoroll2descriptors(
+                tgt_roll,
+                resolution,
+                drums=part_2 == "Drums",
+            )
+            target_descs.append(tgt_descs)
 
             src_hits = get_hits_from_hits_seq(src.squeeze(0).cpu().numpy(), part=part_1)
+            src_hits = [i * 127.0 for i in src_hits]
             write_midi_from_hits(
-                [i * 127 for i in src_hits],
+                src_hits,
                 outpath=os.path.join(eval_dir, f"{ix}_{sampler}_src.mid"),
                 part=part_1,
-                pitch=55,
+                pitch=part_1_pitch,
             )
 
+        oa, kld = plot_desc_comparison(
+            g_descs=generated_descs,
+            ref_descs=target_descs,
+            sampler=sampler,
+            temperature=temperature,
+            nucleus_p=nucleus_p,
+            eval_dir=eval_dir,
+            model_name=model_name,
+        )
+
         sample_stats = {
-            "pct_all_zeros": 100 * round(all_zeros / n_eval_seqs, 2),
+            "pct_all_zero": 100 * round(all_zeros / n_eval_seqs, 2),
             "pct_all_same": 100 * round(all_same / n_eval_seqs, 2),
+            "oa": oa,
+            "kld": kld,
         }
         sampler_stats[sampler] = sample_stats
 
@@ -378,7 +503,14 @@ def train_hits_encdec(
     return evals
 
 
-def train(config, model_name, datasets_dir, model_dir):
+def train(config, model_name, datasets_dir, model_dir, sweep=False):
+    if config["wandb"]:
+        wandb.init(project=WANDB_PROJECT_NAME, config=config, name=model_name)
+        wandb.config.update(config)
+        if sweep:
+            config = wandb.config
+
+    config["data"]["context_len"] = config["sequence_len"]
     dataset = PartPairDatasetSequential(**config["data"], datasets_dir=datasets_dir)
 
     splits = config["splits"]
@@ -408,11 +540,8 @@ def train(config, model_name, datasets_dir, model_dir):
     )
     loss_fn = get_loss_fn(config, pad_ix=pad_ix)
 
-    if config["wandb"]:
-        wandb.init(project=WANDB_PROJECT_NAME, config=config, name=model_name)
-        wandb.config.update(config)
-
     print(yaml.dump(config))
+
     evals = train_hits_encdec(
         model=model,
         train_loader=train_loader,

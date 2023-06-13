@@ -2,7 +2,6 @@
 import os
 
 import numpy as np
-from scipy.spatial import distance_matrix
 import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
@@ -11,7 +10,10 @@ from tqdm import tqdm
 
 from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
 from rhythmic_relationships.data import PartDataset, get_hits_from_hits_seq
-from rhythmic_relationships.evaluate import compute_oa_and_kld
+from rhythmic_relationships.evaluate import (
+    compute_oa_and_kld,
+    get_flat_nonzero_dissimilarity_matrix,
+)
 from rhythmic_relationships.io import write_midi_from_hits, get_roll_from_hits
 from rhythmic_relationships.model_utils import load_model
 from rhythmic_relationships.models.hits_decoder import TransformerDecoder
@@ -28,16 +30,10 @@ DEVICE = torch.device(
 )
 
 
-def get_flat_nonzero_dissimilarity_matrix(x):
-    dists = distance_matrix(x, x, p=2)
-    flat = dists.flatten()
-    return np.delete(flat, np.arange(0, len(flat), len(x) + 1))
-
-
 if __name__ == "__main__":
     model_name = "multiovulate_2306112040"
+
     checkpoint_num = 13
-    write_generations = True
     n_training_obs = 1000
     pitch = 72
     resolution = 4
@@ -45,6 +41,14 @@ if __name__ == "__main__":
     temperature = 1
     nucleus_p = 0.92
     samplers = ["multinomial", "nucleus"]
+
+    plots_dir = os.path.join(MODELS_DIR, model_name, "eval_plots")
+    if not os.path.isdir(plots_dir):
+        os.makedirs(plots_dir)
+
+    gen_dir = os.path.join(MODELS_DIR, model_name, "inference")
+    if not os.path.isdir(gen_dir):
+        os.makedirs(gen_dir)
 
     device = DEVICE
 
@@ -72,20 +76,10 @@ if __name__ == "__main__":
         axis=1,
     ).dropna(how="all", axis=1)
 
-    plots_dir = os.path.join(MODELS_DIR, model_name, "eval_plots")
-    if not os.path.isdir(plots_dir):
-        os.makedirs(plots_dir)
-
     # Use the model to generate new sequences
-    gen_dir = os.path.join(MODELS_DIR, model_name, "inference")
-    if write_generations:
-        if not os.path.isdir(gen_dir):
-            os.makedirs(gen_dir)
-
     generated_rolls = []
     generated_descs = []
 
-    n_generated = 0
     all_zeros = 0
     all_same = 0
 
@@ -107,7 +101,6 @@ if __name__ == "__main__":
                 verbose=False,
             )
 
-            n_generated += 1
             if max(gen_hits) == 0:
                 all_zeros += 1
                 continue
@@ -115,13 +108,12 @@ if __name__ == "__main__":
                 all_same += 1
                 continue
 
-            if write_generations:
-                write_midi_from_hits(
-                    [i * 127 for i in gen_hits],
-                    outpath=os.path.join(gen_dir, f"{ix}.mid"),
-                    part=part,
-                    pitch=pitch,
-                )
+            write_midi_from_hits(
+                [i * 127 for i in gen_hits],
+                outpath=os.path.join(gen_dir, f"{ix}.mid"),
+                part=part,
+                pitch=pitch,
+            )
 
             roll = get_roll_from_hits(
                 [i * 127 for i in gen_hits], pitch=pitch, resolution=resolution
@@ -135,9 +127,9 @@ if __name__ == "__main__":
             )
             generated_descs.append(gen_descs)
 
-        print(f"{n_generated=}")
-        print(f"  {all_zeros=} ({100*round(all_zeros/n_generated, 2)}%)")
-        print(f"  {all_same=} ({100*round(all_same/n_generated, 2)}%)")
+        print(f"{n_seqs=}")
+        print(f"  {all_zeros=} ({100*round(all_zeros/n_seqs, 2)}%)")
+        print(f"  {all_same=} ({100*round(all_same/n_seqs, 2)}%)")
 
         gen_df = pd.DataFrame(generated_descs).dropna(how="all", axis=1)
         gen_df.drop(drop_features, axis=1, inplace=True)

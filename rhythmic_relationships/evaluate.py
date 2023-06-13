@@ -1,5 +1,12 @@
 import numpy as np
 from scipy import stats, integrate
+from scipy.spatial import distance_matrix
+
+
+def get_flat_nonzero_dissimilarity_matrix(x):
+    dists = distance_matrix(x, x, p=2)
+    flat = dists.flatten()
+    return np.delete(flat, np.arange(0, len(flat), len(x) + 1))
 
 
 def compute_oa(A, B):
