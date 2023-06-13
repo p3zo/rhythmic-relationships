@@ -37,4 +37,5 @@ wandb: True
 bento: False
 checkpoints: True
 
-val_interval: 50
+n_eval_seqs: 10
+eval_interval: 1

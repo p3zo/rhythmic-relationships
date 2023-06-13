@@ -180,17 +180,23 @@ def evaluate_hits_encdec(
 
     sampler_stats = {}
 
-    n_seqs = 10
+    # Generate sequences using different samplers
+    n_eval_seqs = config["n_eval_seqs"]
+
     gen_srcs, gen_tgts = parse_sequential_batch(next(iter(val_loader)), device)
+
+    # TODO: this indexing logic fails if n_eval_seqs > batch_size. generalize
+    ctx_len = config["data"]["context_len"]
+    gen_seq_ixs = range(ctx_len, ctx_len * n_eval_seqs + 1, ctx_len)
+    gen_srcs = gen_srcs[gen_seq_ixs]
+    gen_tgts = gen_tgts[gen_seq_ixs]
+
     for sampler in ["multinomial", "nucleus"]:
+        # Track stats for each sampler
+        all_zeros = 0
+        all_same = 0
 
-        sample_stats = {
-            "n_generated": 0,
-            "all_zeros": 0,
-            "all_same": 0,
-        }
-
-        for ix in range(n_seqs):
+        for ix in range(n_eval_seqs):
             src = gen_srcs[ix].unsqueeze(0)
 
             seq = inference(
@@ -206,12 +212,11 @@ def evaluate_hits_encdec(
                 seq.cpu().numpy(), part=part_2, verbose=True
             )
 
-            sample_stats["n_generated"] += 1
             if max(gen_hits) == 0:
-                sample_stats["all_zeros"] += 1
+                all_zeros += 1
                 continue
             if len(set(gen_hits)) == 1:
-                sample_stats["all_same"] += 1
+                all_same += 1
                 continue
 
             write_midi_from_hits(
@@ -235,17 +240,13 @@ def evaluate_hits_encdec(
                 [i * 127 for i in src_hits],
                 outpath=os.path.join(eval_dir, f"{ix}_{sampler}_src.mid"),
                 part=part_1,
-                pitch=72,
+                pitch=55,
             )
 
-        sample_stats["pct_all_zeros"] = 100 * round(
-            sample_stats["all_zeros"] / sample_stats["n_generated"],
-            2,
-        )
-        sample_stats["pct_all_same"] = 100 * round(
-            sample_stats["all_same"] / sample_stats["n_generated"],
-            2,
-        )
+        sample_stats = {
+            "pct_all_zeros": 100 * round(all_zeros / n_eval_seqs, 2),
+            "pct_all_same": 100 * round(all_same / n_eval_seqs, 2),
+        }
         sampler_stats[sampler] = sample_stats
 
     print(sampler_stats)
@@ -282,7 +283,7 @@ def train_hits_encdec(
     device,
 ):
     n_epochs = config["n_epochs"]
-    val_interval = config["val_interval"]
+    eval_interval = config["eval_interval"]
 
     evals = []
     train_losses = []
@@ -318,7 +319,7 @@ def train_hits_encdec(
 
             ix += 1
 
-            if ix % val_interval == 0:
+            if ix % eval_interval == 0:
                 val = evaluate_hits_encdec(
                     train_loader=train_loader,
                     val_loader=val_loader,
