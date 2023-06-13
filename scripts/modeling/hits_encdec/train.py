@@ -59,18 +59,18 @@ def temperatured_softmax(logits, temperature):
 def nucleus(probs, p):
     probs /= sum(probs)
     sorted_probs = np.sort(probs)[::-1]
-    sorted_index = np.argsort(probs)[::-1]
+    sorted_ixs = np.argsort(probs)[::-1]
     cumsum_sorted_probs = np.cumsum(sorted_probs)
-    after_threshold = cumsum_sorted_probs > p
-    if sum(after_threshold) > 0:
-        last_index = np.where(after_threshold)[0][1]
-        candi_index = sorted_index[:last_index]
+    after_thresh = cumsum_sorted_probs > p
+    if after_thresh.sum() > 0:
+        last_index = np.where(after_thresh)[0][-1]
+        candidate_ixs = sorted_ixs[:last_index]
     else:
-        candi_index = sorted_index[:3]  # just assign a value
-    candi_probs = np.array([probs[i] for i in candi_index], dtype=np.float64)
-    candi_probs /= sum(candi_probs)
-    word = np.random.choice(candi_index, size=1, p=candi_probs)[0]
-    return word
+        # just assign a value
+        candidate_ixs = sorted_ixs[:3]
+    candidate_probs = np.array([probs[i] for i in candidate_ixs], dtype=np.float64)
+    candidate_probs /= sum(candidate_probs)
+    return np.random.choice(candidate_ixs, size=1, p=candidate_probs)[0]
 
 
 def compute_loss(logits, y, loss_fn):
@@ -115,7 +115,7 @@ def inference(
         if sampler == "nucleus":
             y_next = []
             for j in range(probs.shape[0]):
-                yn = nucleus(probs[j], nucleus_p)
+                yn = nucleus(probs[j], p=nucleus_p)
                 y_next.append(yn)
             y_next = torch.tensor(y_next, dtype=torch.long, device=DEVICE).unsqueeze(1)
         else:
@@ -178,12 +178,17 @@ def evaluate_hits_encdec(
             loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
             evals_val_loss.append(loss.item())
 
-    n_seqs = 5
+    sampler_stats = {}
+
+    n_seqs = 10
     gen_srcs, gen_tgts = parse_sequential_batch(next(iter(val_loader)), device)
     for sampler in ["multinomial", "nucleus"]:
-        n_generated = 0
-        all_zeros = 0
-        all_same = 0
+
+        sample_stats = {
+            "n_generated": 0,
+            "all_zeros": 0,
+            "all_same": 0,
+        }
 
         for ix in range(n_seqs):
             src = gen_srcs[ix].unsqueeze(0)
@@ -201,12 +206,12 @@ def evaluate_hits_encdec(
                 seq.cpu().numpy(), part=part_2, verbose=True
             )
 
-            n_generated += 1
+            sample_stats["n_generated"] += 1
             if max(gen_hits) == 0:
-                all_zeros += 1
+                sample_stats["all_zeros"] += 1
                 continue
             if len(set(gen_hits)) == 1:
-                all_same += 1
+                sample_stats["all_same"] += 1
                 continue
 
             write_midi_from_hits(
@@ -233,9 +238,17 @@ def evaluate_hits_encdec(
                 pitch=72,
             )
 
-        print(f"{n_generated=}")
-        print(f"  {all_zeros=} ({100*round(all_zeros/n_generated, 2)}%)")
-        print(f"  {all_same=} ({100*round(all_same/n_generated, 2)}%)")
+        sample_stats["pct_all_zeros"] = 100 * round(
+            sample_stats["all_zeros"] / sample_stats["n_generated"],
+            2,
+        )
+        sample_stats["pct_all_same"] = 100 * round(
+            sample_stats["all_same"] / sample_stats["n_generated"],
+            2,
+        )
+        sampler_stats[sampler] = sample_stats
+
+    print(sampler_stats)
 
     val_loss_mean = np.mean(evals_val_loss)
     train_loss_mean = np.mean(evals_train_loss)
@@ -243,6 +256,7 @@ def evaluate_hits_encdec(
         "val_loss": val_loss_mean,
         "train_loss": train_loss_mean,
         "val_train_loss_pct_diff": pct_diff(val_loss_mean, train_loss_mean),
+        "sampler_stats": sampler_stats,
     }
     print(f"{curr_eval=}")
 
