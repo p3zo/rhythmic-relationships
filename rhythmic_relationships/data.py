@@ -164,7 +164,7 @@ def get_hits_from_hits_seq(seq, part, pitch=60, verbose=False):
         if i == 'pad':
             n_pads += 1
             n_rests += 1
-            out[ix] = 0.
+            out[ix] = 0
             continue
         if i == 0:
             n_rests += 1
@@ -429,7 +429,7 @@ def get_sequences(tokenized, context_len, pad_ix):
     """Partitions a tokenized segment into a recurrent sequence and returns X, Y pairs."""
     ctx, tgt = [], []
 
-    for t in range(len(tokenized) - 1):
+    for t in range(len(tokenized)):
         from_ix = 0
         y_from_ix = from_ix
         to_ix = t

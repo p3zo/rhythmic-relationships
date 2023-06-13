@@ -4,7 +4,6 @@ data:
   part_2: "Melody"
   repr_1: "hits"
   repr_2: "hits"
-  context_len: 31
 
 model:
   enc_n_embed: 96
