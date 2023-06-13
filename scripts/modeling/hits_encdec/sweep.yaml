@@ -1,0 +1,41 @@
+program: train.py
+
+method: random
+
+metric:
+  goal: minimize
+  name: val_loss
+
+early_terminate:
+  type: hyperband
+  min_iter: 3
+
+parameters:
+  n_epochs:
+    value: 1
+  batch_size:
+    values: [8, 64, 128]
+  weight_decay:
+    values: [0.0, 0.0001]
+  lr:
+    values: [1e-3, 3e-4, 1e-5]
+  clip_gradients:
+    values: [False, True]
+  model:
+    parameters:
+      enc_n_embed:
+        values: [48, 96, 192]
+      enc_n_layer:
+        values: [3, 9]
+      enc_n_head:
+        values: [2, 4]
+      dec_n_embed:
+        values: [48, 96, 192]
+      dec_n_layer:
+        values: [3, 9]
+      dec_n_head:
+        values: [2, 4]
+      enc_dropout:
+        value: 0.2
+      dec_dropout:
+        value: 0.2
