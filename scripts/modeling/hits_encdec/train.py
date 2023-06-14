@@ -93,7 +93,7 @@ def inference(
     sampler="multinomial",
     nucleus_p=0.92,
 ):
-    if sampler not in ["multinomial", "nucleus"]:
+    if sampler not in ["multinomial", "nucleus", "greedy"]:
         raise ValueError(f"Unsupported {sampler}: sampler")
 
     hits_vocab = get_hits_vocab()
@@ -124,11 +124,15 @@ def inference(
                 yn = nucleus(probs[j], p=nucleus_p)
                 y_next.append(yn)
             y_next = torch.tensor(y_next, dtype=torch.long, device=DEVICE).unsqueeze(1)
-        else:
+        elif sampler == "multinomial":
             y_next = torch.multinomial(
                 torch.tensor(probs, dtype=torch.float32, device=DEVICE),
                 num_samples=1,
             )
+        else:
+            y_next = torch.tensor(
+                [probs.argmax()], dtype=torch.long, device=DEVICE
+            ).unsqueeze(1)
 
         y[:, ix] = y_next.item()
 
@@ -289,7 +293,8 @@ def evaluate_hits_encdec(
     gen_tgts = torch.index_select(input=gen_tgts, dim=0, index=gen_seq_ixs)
     assert len((gen_tgts == 0).nonzero()) == 0
 
-    for sampler in ["multinomial", "nucleus"]:
+    for sampler in ["multinomial", "nucleus", "greedy"]:
+        print(f"{sampler=}")
         generated_rolls = []
         generated_descs = []
         target_descs = []
@@ -386,15 +391,18 @@ def evaluate_hits_encdec(
                 pitch=part_1_pitch,
             )
 
-        oa, kld = plot_desc_comparison(
-            g_descs=generated_descs,
-            ref_descs=target_descs,
-            sampler=sampler,
-            temperature=temperature,
-            nucleus_p=nucleus_p,
-            eval_dir=eval_dir,
-            model_name=model_name,
-        )
+        oa = 0
+        kld = 1
+        if n_eval_seqs > all_zeros:
+            oa, kld = plot_desc_comparison(
+                g_descs=generated_descs,
+                ref_descs=target_descs,
+                sampler=sampler,
+                temperature=temperature,
+                nucleus_p=nucleus_p,
+                eval_dir=eval_dir,
+                model_name=model_name,
+            )
 
         sample_stats = {
             "pct_all_zero": 100 * round(all_zeros / n_eval_seqs, 2),
