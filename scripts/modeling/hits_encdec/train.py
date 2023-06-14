@@ -27,7 +27,7 @@ from rhythmic_relationships.model_utils import (
     save_model,
 )
 from rhythmic_relationships.models.hits_encdec import TransformerEncoderDecoder
-from rhythmic_relationships.vocab import get_hits_vocab
+from rhythmic_relationships.vocab import get_hits_vocab, get_hits_vocab_size
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
@@ -271,7 +271,7 @@ def evaluate_hits_encdec(
     part_2_pitch = 72
     resolution = 4
 
-    ctx_len = config["sequence_len"]
+    ctx_len = config["data"]["context_len"]
     max_gen_seq_ix = ctx_len * n_eval_seqs + 1
     gen_srcs, gen_tgts = [], []
     while len(gen_srcs) < max_gen_seq_ix:
@@ -304,7 +304,7 @@ def evaluate_hits_encdec(
             seq = inference(
                 model=model,
                 src=src,
-                n_tokens=32,
+                n_tokens=ctx_len,
                 temperature=temperature,
                 device=device,
                 sampler=sampler,
@@ -313,6 +313,7 @@ def evaluate_hits_encdec(
 
             gen_hits = get_hits_from_hits_seq(
                 seq.cpu().numpy(),
+                block_size=config["data"]["block_size"],
                 part=part_2,
                 verbose=True,
             )
@@ -347,7 +348,11 @@ def evaluate_hits_encdec(
             )
 
             tgt = gen_tgts[ix]
-            tgt_hits = get_hits_from_hits_seq(tgt.cpu().numpy(), part=part_2)
+            tgt_hits = get_hits_from_hits_seq(
+                tgt.cpu().numpy(),
+                block_size=config["data"]["block_size"],
+                part=part_2,
+            )
             tgt_hits = [i * 127.0 for i in tgt_hits]
             write_midi_from_hits(
                 tgt_hits,
@@ -368,7 +373,11 @@ def evaluate_hits_encdec(
             )
             target_descs.append(tgt_descs)
 
-            src_hits = get_hits_from_hits_seq(src.squeeze(0).cpu().numpy(), part=part_1)
+            src_hits = get_hits_from_hits_seq(
+                src.squeeze(0).cpu().numpy(),
+                block_size=config["data"]["block_size"],
+                part=part_1,
+            )
             src_hits = [i * 127.0 for i in src_hits]
             write_midi_from_hits(
                 src_hits,
@@ -531,7 +540,9 @@ def train(config, model_name, datasets_dir, model_dir, sweep=False):
         if sweep:
             config = wandb.config
 
-    config["data"]["context_len"] = config["sequence_len"]
+    config["data"]["context_len"] = int(
+        config["sequence_len"] / config["data"]["block_size"]
+    )
     dataset = PartPairDatasetSequential(**config["data"], datasets_dir=datasets_dir)
 
     splits = config["splits"]
@@ -546,10 +557,11 @@ def train(config, model_name, datasets_dir, model_dir, sweep=False):
 
     hits_vocab = get_hits_vocab()
     pad_ix = {v: k for k, v in hits_vocab.items()}["pad"]
+    hits_vocab_size = get_hits_vocab_size(block_size=config["data"]["block_size"])
 
-    config["model"]["src_vocab_size"] = len(hits_vocab)
-    config["model"]["tgt_vocab_size"] = len(hits_vocab)
-    config["model"]["context_len"] = config["sequence_len"]
+    config["model"]["src_vocab_size"] = hits_vocab_size
+    config["model"]["tgt_vocab_size"] = hits_vocab_size
+    config["model"]["context_len"] = config["data"]["context_len"]
     config["model"]["pad_ix"] = pad_ix
 
     model = TransformerEncoderDecoder(**config["model"]).to(DEVICE)

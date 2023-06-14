@@ -48,6 +48,12 @@ def get_hits_vocab():
     return {0: "pad", 1: 0, 2: 0.25, 3: 0.5, 4: 0.75, 5: 1.0}
 
 
+def get_hits_vocab_size(block_size):
+    # TODO: make programatically
+    sizes = {1: 6, 2: 31, 3: 1081, 4: 1399681}
+    return sizes[block_size]
+
+
 def encode_hits(hits, n_bins):
     vel_bins = np.linspace(0, 1, n_bins + 1)
     tokenized = np.digitize(hits, vel_bins, right=True).tolist()
@@ -55,13 +61,17 @@ def encode_hits(hits, n_bins):
     return [i + 1 for i in tokenized]
 
 
-def decode_hits(tokenized_hits):
-    itot = get_hits_vocab()
-    return [itot[i] for i in tokenized_hits]
+def decode_hits(tokenized_hits, block_size=1):
+    hits_vocab = get_hits_vocab()
+    if block_size == 1:
+        return [hits_vocab[i] for i in tokenized_hits]
 
-
-def get_hits_vocab_encoder_decoder():
-    return encode_hits, decode_hits
+    tokens = list(itertools.product(hits_vocab.keys(), repeat=block_size))
+    tokens = ["".join([str(j) for j in i]) for i in tokens if i[0] != 0]
+    tokens.insert(0, "0" * block_size)
+    decoded = [tokens[i] for i in tokenized_hits]
+    decoded_flat = list(itertools.chain(*[[int(i) for i in list(j)] for j in decoded]))
+    return [hits_vocab[i] for i in decoded_flat]
 
 
 def get_vocab_encoder_decoder(part):

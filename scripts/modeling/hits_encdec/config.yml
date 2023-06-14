@@ -4,6 +4,7 @@ data:
   part_2: "Melody"
   repr_1: "hits"
   repr_2: "hits"
+  block_size: 2
 
 model:
   enc_n_embed: 96
@@ -22,7 +23,7 @@ splits:
 
 seed: 13
 sequence_len: 32
-n_epochs: 5
+n_epochs: 6
 batch_size: 64
 
 lr: 3e-4
@@ -37,4 +38,4 @@ bento: False
 checkpoints: True
 
 n_eval_seqs: 100
-eval_interval: 500
+eval_interval: 1000

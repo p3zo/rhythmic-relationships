@@ -32,12 +32,17 @@ def get_expected_velocity_from_bin(vel_bin, n_bins):
 
 
 def test_tokenize_hits():
-    # TODO: account for padding token
-    n_bins = 4
-    hits = [0.0, 0.1, 0.3, 0.6, 1.0]
-    assert tokenize_hits(hits, n_bins) == [0, 1, 2, 3, 4]
-    hits = [0.0, 0.25, 0.5, 0.75, 1.0]
-    assert tokenize_hits(hits, n_bins) == [0, 1, 2, 3, 4]
+    # # TODO: account for padding token
+    # n_bins = 4
+    # hits = [0.0, 0.1, 0.3, 0.6, 1.0]
+    # assert tokenize_hits(hits, n_bins) == [0, 1, 2, 3, 4]
+    # hits = [0.0, 0.25, 0.5, 0.75, 1.0]
+    # assert tokenize_hits(hits, n_bins) == [0, 1, 2, 3, 4]
+
+    hits = [1, 0, 0.25, 0, 0.5, 0, 0.5, 0]
+    assert tokenize_hits(hits, block_size=1) == [5, 1, 2, 1, 3, 1, 3, 1]
+    assert tokenize_hits(hits, block_size=2) == [26, 8, 14, 14]
+    assert tokenize_hits(hits, block_size=4) == [914, 488]
 
 
 def test_get_roll_from_sequence():

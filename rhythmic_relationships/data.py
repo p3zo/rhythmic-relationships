@@ -1,3 +1,4 @@
+import itertools
 import os
 
 import numpy as np
@@ -15,7 +16,9 @@ from rhythmic_relationships.parts import PARTS, get_part_pairs
 from rhythmic_relationships.representations import DRUM_ROLL_VOICES, REPRESENTATIONS
 from rhythmic_relationships.vocab import (
     get_vocab_encoder_decoder,
-    get_hits_vocab_encoder_decoder,
+    get_hits_vocab,
+    encode_hits,
+    decode_hits,
 )
 from torch.utils.data import Dataset
 from tqdm import tqdm
@@ -45,14 +48,26 @@ def get_seg_fname(filepath, dataset_dir):
     )[0].strip("/")
 
 
-def tokenize_hits(hits, n_bins=4):
-    encode, _ = get_hits_vocab_encoder_decoder()
-    return encode(hits, n_bins=n_bins)
+def tokenize_hits(hits, block_size=1):
+    assert block_size in [1, 2, 4, 8]
 
+    encoded = encode_hits(hits, n_bins=4)
 
-def decode_hits(tokenized_hits):
-    _, decode = get_hits_vocab_encoder_decoder()
-    return decode(tokenized_hits)
+    if block_size == 1:
+        return encoded
+
+    vocab = get_hits_vocab()
+    tokens = list(itertools.product(vocab.keys(), repeat=block_size))
+    tokens = ["".join([str(j) for j in i]) for i in tokens if i[0] != 0]
+    tokens.insert(0, "0" * block_size)
+
+    tokenized = []
+    for i in range(0, len(encoded) - block_size + 1, block_size):
+        window = encoded[i : i + block_size]
+        tok = "".join([str(i) for i in window])
+        tokenized.append(tokens.index(tok))
+
+    return tokenized
 
 
 def tokenize_roll(roll, part):
@@ -147,7 +162,7 @@ def get_roll_from_sequence(seq, part):
     return roll
 
 
-def get_hits_from_hits_seq(seq, part, pitch=60, verbose=False):
+def get_hits_from_hits_seq(seq, part, block_size=1, pitch=60, verbose=False):
     """Same as get_roll_from_sequence but for hits sequences
     TODO: specify hits vocabulary and use get_roll_from_sequence instead of this"""
 
@@ -156,12 +171,12 @@ def get_hits_from_hits_seq(seq, part, pitch=60, verbose=False):
 
     roll = np.zeros((len(seq), 128), np.uint8)
 
-    out = decode_hits(seq.copy())
+    out = decode_hits(seq.copy(), block_size=block_size)
 
     n_rests = 0
     n_pads = 0
     for ix, i in enumerate(out):
-        if i == 'pad':
+        if i == "pad":
             n_pads += 1
             n_rests += 1
             out[ix] = 0
@@ -171,7 +186,7 @@ def get_hits_from_hits_seq(seq, part, pitch=60, verbose=False):
 
     # Log percentage of output rests that were padding predictions
     if verbose:
-        print(f'  pct rests: {n_rests / len(out) * 100:.2f}')
+        print(f"  pct rests: {n_rests / len(out) * 100:.2f}")
         if n_rests > 0:
             print(f"  rests from pads: {n_pads / n_rests * 100:.2f}")
 
@@ -346,7 +361,14 @@ class PartDataset(Dataset):
             The representation to use. See the list of representations in `representations.py`
     """
 
-    def __init__(self, dataset_name, part, representation, datasets_dir=DATASETS_DIR):
+    def __init__(
+        self,
+        dataset_name,
+        part,
+        representation,
+        datasets_dir=DATASETS_DIR,
+        block_size=1,
+    ):
         if part not in PARTS:
             raise ValueError(f"Part must be one of: {PARTS}")
 
@@ -370,6 +392,8 @@ class PartDataset(Dataset):
 
         self.loaded_segments = []
 
+        self.block_size = block_size
+
     def __len__(self):
         return len(self.part_df)
 
@@ -384,7 +408,7 @@ class PartDataset(Dataset):
 
         # TODO: parameterize if hits should be binned
         if self.representation == "hits":
-            tokenized = tokenize_hits(seg_repr)
+            tokenized = tokenize_hits(seg_repr, block_size=self.block_size)
             return torch.LongTensor(tokenized)
 
         return torch.from_numpy(seg_repr).to(torch.float32)
@@ -505,6 +529,7 @@ class PartPairDatasetSequential(Dataset):
         context_len,
         datasets_dir=DATASETS_DIR,
         with_ctx=False,
+        block_size=1,
     ):
         if part_1 not in PARTS or part_2 not in PARTS:
             raise ValueError(f"Part names must be one of: {PARTS}")
@@ -548,6 +573,7 @@ class PartPairDatasetSequential(Dataset):
         self.pad_ix = encode(["pad"])[0]
 
         self.with_ctx = with_ctx
+        self.block_size = block_size
 
     def __len__(self):
         return len(self.p1_pairs)
@@ -561,12 +587,12 @@ class PartPairDatasetSequential(Dataset):
 
         # TODO: parameterize if hits should be binned
         p1_tokenized = (
-            tokenize_hits(p1_seg_repr)
+            tokenize_hits(p1_seg_repr, block_size=self.block_size)
             if self.repr_1 == "hits"
             else tokenize_roll(p1_seg_repr, self.part_1)
         )
         p2_tokenized = (
-            tokenize_hits(p2_seg_repr)
+            tokenize_hits(p2_seg_repr, block_size=self.block_size)
             if self.repr_2 == "hits"
             else tokenize_roll(p2_seg_repr, self.part_2)
         )
@@ -607,7 +633,13 @@ class PartDatasetSequential(Dataset):
     """
 
     def __init__(
-        self, dataset_name, part, representation, context_len, datasets_dir=DATASETS_DIR
+        self,
+        dataset_name,
+        part,
+        representation,
+        context_len,
+        datasets_dir=DATASETS_DIR,
+        block_size=1,
     ):
         if part not in PARTS:
             raise ValueError(f"Part must be one of: {PARTS}")
@@ -638,6 +670,8 @@ class PartDatasetSequential(Dataset):
             encode, _ = get_vocab_encoder_decoder(part)
             self.pad_ix = encode(["pad"])[0]
 
+        self.block_size = block_size
+
     def __len__(self):
         return len(self.part_df)
 
@@ -646,7 +680,7 @@ class PartDatasetSequential(Dataset):
         seg_repr = load_repr(seg, self.representation_ix)
 
         tokenized = (
-            tokenize_hits(seg_repr)
+            tokenize_hits(seg_repr, block_size=self.block_size)
             if self.representation == "hits"
             else tokenize_roll(seg_repr, self.part)
         )
