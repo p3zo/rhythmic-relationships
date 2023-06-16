@@ -14,6 +14,7 @@ INFERENCE_DIR = os.path.join(DATASETS_DIR, "inference")
 CHECKPOINTS_DIRNAME = "checkpoints"
 REPRESENTATIONS_FILENAME = "representations.txt"
 
+WANDB_PROJECT_NAME = "rhythmic-relationships"
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("rhythmic-relationships")

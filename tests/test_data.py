@@ -6,6 +6,7 @@ from rhythmic_relationships.data import (
     get_roll_from_sequence,
     tokenize_hits,
     get_sequences,
+    get_pair_sequences,
 )
 from rhythmic_relationships.vocab import get_vocab_encoder_decoder
 from rhythmtoolbox import DESCRIPTOR_NAMES
@@ -17,6 +18,16 @@ PART_1 = "Drums"
 PART_2 = "Bass"
 
 N_DESCRIPTORS = len(DESCRIPTOR_NAMES)
+
+
+def test_get_pair_sequences():
+    pad_ix = 0
+    p1 = [1, 3, 4]
+    p2 = [1, 2, 2]
+    context_len = 3
+    X, Y = get_pair_sequences(p1, p2, context_len)
+    assert X == [[pad_ix, pad_ix, 1], [pad_ix, 1, 3], [1, 3, 4]]
+    assert Y == [[pad_ix, pad_ix, 1], [pad_ix, 1, 2], [1, 2, 2]]
 
 
 def test_get_sequences():

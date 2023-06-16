@@ -16,7 +16,6 @@ INPUT_WIDTH = 96
 INPUT_HEIGHT = 88
 INPUT_DIM = INPUT_WIDTH * INPUT_HEIGHT
 
-
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument(
