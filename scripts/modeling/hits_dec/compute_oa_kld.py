@@ -32,12 +32,12 @@ DEVICE = torch.device(
 
 if __name__ == "__main__":
     model_name = "multiovulate_2306112040"
+    checkpoint_num = 15
 
-    checkpoint_num = 13
-    n_training_obs = 1000
+    n_seqs = 500
+    n_training_obs = 500
     pitch = 72
     resolution = 4
-    n_seqs = 1000
     temperature = 1
     nucleus_p = 0.92
     samplers = ["multinomial", "nucleus"]
@@ -77,13 +77,17 @@ if __name__ == "__main__":
     ).dropna(how="all", axis=1)
 
     # Use the model to generate new sequences
-    generated_rolls = []
-    generated_descs = []
-
-    all_zeros = 0
-    all_same = 0
-
     for sampler in samplers:
+        generated_rolls = []
+        generated_descs = []
+
+        all_zeros = 0
+        all_same = 0
+
+        sample_gen_dir = os.path.join(gen_dir, sampler)
+        if not os.path.isdir(sample_gen_dir):
+            os.makedirs(sample_gen_dir)
+
         print(f"{sampler=}")
         for ix in tqdm(range(n_seqs)):
             seq = inference(
@@ -101,19 +105,20 @@ if __name__ == "__main__":
                 verbose=False,
             )
 
+            write_gen = True
             if max(gen_hits) == 0:
                 all_zeros += 1
-                continue
+                write_gen = False
             if len(set(gen_hits)) == 1:
                 all_same += 1
-                continue
 
-            write_midi_from_hits(
-                [i * 127 for i in gen_hits],
-                outpath=os.path.join(gen_dir, f"{ix}.mid"),
-                part=part,
-                pitch=pitch,
-            )
+            if write_gen:
+                write_midi_from_hits(
+                    [i * 127 for i in gen_hits],
+                    outpath=os.path.join(sample_gen_dir, f"{ix}.mid"),
+                    part=part,
+                    pitch=pitch,
+                )
 
             roll = get_roll_from_hits(
                 [i * 127 for i in gen_hits], pitch=pitch, resolution=resolution
