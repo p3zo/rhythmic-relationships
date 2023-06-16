@@ -29,31 +29,31 @@ class TransformerEncoderDecoder(nn.Module):
         self.encoder = TransformerWrapper(
             num_tokens=src_vocab_size,
             max_seq_len=context_len,
-            # l2norm_embed=True,
+            l2norm_embed=True,
             attn_layers=Encoder(
                 dim=enc_n_embed,
                 depth=enc_n_layer,
                 heads=enc_n_head,
                 layer_dropout=enc_dropout,
-                # rotary_pos_emb=True,
-                # ff_glu=True,
-                # ff_no_bias=True,
+                rotary_pos_emb=True,
+                ff_glu=True,
+                ff_no_bias=True,
             ),
         )
 
         self.decoder = TransformerWrapper(
             num_tokens=tgt_vocab_size,
             max_seq_len=context_len,
-            # l2norm_embed=True,
+            l2norm_embed=True,
             attn_layers=Decoder(
                 dim=dec_n_embed,
                 depth=dec_n_layer,
                 heads=dec_n_head,
                 layer_dropout=dec_dropout,
                 cross_attend=True,
-                # rotary_pos_emb=True,
-                # ff_glu=True,
-                # ff_no_bias=True,
+                rotary_pos_emb=True,
+                ff_glu=True,
+                ff_no_bias=True,
             ),
         )
 
