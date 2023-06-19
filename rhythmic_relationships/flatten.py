@@ -1,4 +1,4 @@
-"""Adapted from https://github.com/peter-clark/monophonic-flattening"""
+"""From https://github.com/peter-clark/monophonic-flattening"""
 
 import numpy as np
 from rhythmtoolbox.midi_mapping import low_instruments, mid_instruments
@@ -8,8 +8,8 @@ def is_max(current_max_num, num):
     return num if (num > current_max_num) else current_max_num
 
 
-## Normalize a 4x16-step pattern of velocity values
 def normalize_velocity(patterns, max_in_pattern):
+    """Normalize a 4x16-step pattern of velocity values"""
     for i in range(2):
         for j in range(len(patterns[i])):
             patterns[i][j] = patterns[i][j] / max_in_pattern[0]
@@ -21,8 +21,8 @@ def normalize_velocity(patterns, max_in_pattern):
     return patterns, means
 
 
-## Finds approriate frequency channel for midi note
 def find_LMH(note):
+    """Finds appropriate frequency channel for midi note"""
     note = int(note)
     if note == 0:
         return []
@@ -34,7 +34,6 @@ def find_LMH(note):
     return n
 
 
-## Used in flat_from_patt
 def get_LMH(pattern):
     pattern_LMH = []
     for step in range(len(pattern)):
@@ -82,7 +81,8 @@ def flat_from_patt(pattern_16_step):
         salience[i] = 0.0 if density[i] <= 0.0 else float(1 / density[i])
         salience[3] += salience[i]
     for i in range(3):
-        norm_salience[i] = salience[i] / salience[3]
+        if salience[3] != 0:
+            norm_salience[i] = salience[i] / salience[3]
 
     # Loop through pattern
     for i in range(len(pattern_LMH)):
