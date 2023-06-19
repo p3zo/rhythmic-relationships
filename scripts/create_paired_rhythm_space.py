@@ -6,7 +6,7 @@ The "transparent glue".
 - Interpolate in the input domain to treat the embedding spaces as continuous.
 
 Example usage:
-    python scripts/pairspace.py --subset=2000
+    python scripts/create_paired_rhythm_space.py --subset=2000
 """
 import argparse
 import os
@@ -26,8 +26,7 @@ from rhythmic_relationships.io import (
 from rhythmic_relationships.parts import PARTS
 from rhythmic_relationships.representations import get_representations
 from scipy.spatial import Delaunay
-from sklearn.manifold import MDS, TSNE
-from utils import save_fig
+from utils import get_embeddings
 
 sns.set_style("white")
 sns.set_context("paper")
@@ -36,49 +35,6 @@ sns.set_context("paper")
 def get_distance(point1, point2):
     """Compute the Euclidean distance between two points"""
     return np.sqrt((point2[0] - point1[0]) ** 2 + (point2[1] - point1[1]) ** 2)
-
-
-def get_embeddings(X, filenames, segment_ids, method="t-SNE", title="", outdir="."):
-    """Create a 2D embedding space of the data, plot it, and save it to a csv"""
-    reducer = TSNE(n_components=2, init="pca", learning_rate="auto", random_state=42)
-    if method == "MDS":
-        reducer = MDS(n_components=2, n_init=1, random_state=42)
-
-    # Make the pair space using t-SNE
-    X_transform = reducer.fit_transform(X)
-
-    emb = pd.DataFrame(X_transform, columns=["x", "y"])
-    emb["filename"] = filenames
-    emb["segment_id"] = segment_ids
-    outname = f"{method}_{title}"
-    emb.to_csv(os.path.join(outdir, f"{outname}.csv"), index=False)
-    sns.relplot(
-        data=emb,
-        x="x",
-        y="y",
-        hue="filename",
-        height=8,
-        aspect=1.25,
-        legend=False,
-    )
-    if len(emb) < 100:
-        for ix, row in emb.iterrows():
-            plt.text(
-                row["x"],
-                row["y"] + 1,
-                str(ix),
-                ha="center",
-                va="center",
-                color="gray",
-            )
-    plt.grid("minor")
-
-    save_fig(
-        os.path.join(outdir, f"{outname}.png"),
-        title=f"Paired {method} embeddings ({title})\n{dataset_name}\nColored by file",
-    )
-
-    return emb
 
 
 def get_triangles(coords):
@@ -287,7 +243,7 @@ if __name__ == "__main__":
         outdir=output_dir,
     )
 
-    # Part 1 space
+    # Create individual embedding spaces
     p1_emb = get_embeddings(
         fdf[[c for c in fdf.columns if p1 in c]],
         filenames,
@@ -296,7 +252,6 @@ if __name__ == "__main__":
         method=method,
         outdir=output_dir,
     )
-    # Part 2 space
     p2_emb = get_embeddings(
         fdf[[c for c in fdf.columns if p2 in c]],
         filenames,
@@ -306,7 +261,7 @@ if __name__ == "__main__":
         outdir=output_dir,
     )
 
-    # Paired embedding space
+    # Create a paired embedding space
     emb_emb = get_embeddings(
         pd.concat(
             [
@@ -322,7 +277,7 @@ if __name__ == "__main__":
         outdir=output_dir,
     )
 
-    # Coord should be a value between 0 and 1 because the coords have been normalized
+    # Coord values are between 0 and 1 because the embedding spaces have been normalized
     input_coord = (0.4, 0.4)
 
     selection_dir = os.path.join(output_dir, str(input_coord))

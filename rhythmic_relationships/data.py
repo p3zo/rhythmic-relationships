@@ -51,6 +51,7 @@ def get_seg_fname(filepath, dataset_dir):
 def tokenize_hits(hits, block_size=1):
     assert block_size in [1, 2, 4, 8]
 
+    # TODO: paramaterize n_bins
     encoded = encode_hits(hits, n_bins=4)
 
     if block_size == 1:
@@ -238,7 +239,7 @@ class PartPairDataset(Dataset):
 
         pair_id = "_".join(get_part_pairs([part_1, part_2])[0])
         pair_lookup_path = os.path.join(
-            DATASETS_DIR, dataset_name, PAIR_LOOKUPS_DIRNAME, f"{pair_id}.csv"
+            self.dataset_dir, PAIR_LOOKUPS_DIRNAME, f"{pair_id}.csv"
         )
         pairs_df = pd.read_csv(pair_lookup_path)
 
@@ -346,6 +347,119 @@ class PartPairDataset(Dataset):
             return pair_df.sample(frac=1), stacked_df.sample(frac=1)
 
         return pair_df, stacked_df
+
+
+class PartPairDatasetRSP(Dataset):
+    """Same as PartPairDataset but gives access to RSP repr.
+    TODO: merge into PartPairDataset"""
+
+    def __init__(
+        self, dataset_name, part_1, part_2, repr_1, repr_2, datasets_dir=DATASETS_DIR, tokenize_hits=False
+    ):
+        if part_1 not in PARTS or part_2 not in PARTS:
+            raise ValueError(f"Part names must be one of: {PARTS}")
+
+        # Disable to include 'rhythm space point' representation
+        # if repr_1 not in REPRESENTATIONS or repr_2 not in REPRESENTATIONS:
+        #     raise ValueError(f"Representation names must be one of: {REPRESENTATIONS}")
+
+        self.dataset_dir = os.path.join(datasets_dir, dataset_name)
+
+        # Load the list of available representations
+        with open(os.path.join(self.dataset_dir, REPRESENTATIONS_FILENAME), "r") as f:
+            self.representations = f.readline().split(",")
+
+        self.repr_1 = repr_1
+        self.repr_2 = repr_2
+
+        # NOTE: To get RSP representations, run `create_rhythm_space.py`
+        self.repr_1_ix = None
+        self.repr_2_ix = None
+        if repr_1 != "rsp":
+            self.repr_1_ix = self.representations.index(repr_1)
+        if repr_2 != "rsp":
+            self.repr_2_ix = self.representations.index(repr_2)
+
+        # Load the part pair metadata
+        self.part_1 = part_1
+        self.part_2 = part_2
+
+        pair_id = "_".join(get_part_pairs([part_1, part_2])[0])
+        pair_lookup_path = os.path.join(
+            self.dataset_dir, PAIR_LOOKUPS_DIRNAME, f"{pair_id}.csv"
+        )
+        pairs_df = pd.read_csv(pair_lookup_path)
+
+        df = load_dataset_annotations(self.dataset_dir)
+
+        self.p1_pairs = pairs_df.merge(
+            df, how="left", left_on=part_1, right_on="roll_id"
+        )
+        self.p2_pairs = pairs_df.merge(
+            df, how="left", left_on=part_2, right_on="roll_id"
+        )
+
+        self.p1_rsps = None
+        self.p2_rsps = None
+        if repr_1 == "rsp":
+            self.p1_rsps = pd.read_csv(
+                os.path.join(self.dataset_dir, "plots", part_1, f"t-SNE_{part_1}.csv")
+            )
+        if repr_2 == "rsp":
+            self.p2_rsps = pd.read_csv(
+                os.path.join(self.dataset_dir, "plots", part_2, f"t-SNE_{part_2}.csv")
+            )
+
+        self.loaded_segments = []
+        self.tokenize_hits = tokenize_hits
+
+    def __len__(self):
+        return len(self.p1_pairs)
+
+    def __getitem__(self, idx):
+        p1_seg = self.p1_pairs.iloc[idx]
+        p2_seg = self.p2_pairs.iloc[idx]
+
+        seg_id = (p1_seg["filepath"], p1_seg["segment_id"])
+        self.loaded_segments.append(seg_id)
+
+        if self.repr_1 == "rsp":
+            fname = (
+                p1_seg.filepath.split(self.dataset_dir)[1]
+                .split("representations/")[1]
+                .split(".npz")[0]
+            )
+            sdf = self.p1_rsps.set_index(["filename", "segment_id"]).loc[
+                fname, p1_seg.segment_id
+            ]
+            p1_seg_repr = sdf.values
+        else:
+            p1_seg_repr = load_repr(p1_seg, self.repr_1_ix)
+        if self.repr_2 == "rsp":
+            fname = (
+                p2_seg.filepath.split(self.dataset_dir)[1]
+                .split("representations/")[1]
+                .split(".npz")[0]
+            )
+            sdf = self.p1_rsps.set_index(["filename", "segment_id"]).loc[
+                fname, p1_seg.segment_id
+            ]
+            p2_seg_repr = sdf.values
+        else:
+            p2_seg_repr = load_repr(p2_seg, self.repr_2_ix)
+
+        if self.repr_1 == "hits" and self.tokenize_hits:
+            tokenized = tokenize_hits(p1_seg_repr)
+            x = torch.LongTensor(tokenized)
+        else:
+            x = torch.from_numpy(p1_seg_repr).to(torch.float32)
+        if self.repr_2 == "hits" and self.tokenize_hits:
+            p2_seg_repr = tokenize_hits(p2_seg_repr)
+            y = torch.LongTensor(p2_seg_repr)
+        else:
+            y = torch.from_numpy(p2_seg_repr).to(torch.float32)
+
+        return x, y
 
 
 class PartDataset(Dataset):

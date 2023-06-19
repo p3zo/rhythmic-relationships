@@ -139,5 +139,7 @@ def get_loss_fn(config, pad_ix=-100):
         return torch.nn.CrossEntropyLoss(reduction=reduction, ignore_index=pad_ix)
     elif config["loss_fn"] == "mse":
         return torch.nn.MSELoss(reduction=reduction)
+    elif config["loss_fn"] == "mae":
+        return torch.nn.L1Loss(reduction=reduction)
     else:
         raise ValueError(f"`{config['loss_fn']}` is not a valid loss function")

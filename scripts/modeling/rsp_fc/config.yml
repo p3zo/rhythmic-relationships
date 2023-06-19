@@ -1,0 +1,29 @@
+data:
+  dataset_name: "lmdc_3000_1bar_4res"
+  part_1: "Melody"
+  part_2: "Bass"
+  repr_1: "rsp"
+  repr_2: "hits"
+  tokenize_hits: False
+
+model:
+  input_dim: 2
+  output_dim: 16
+
+splits:
+  train: 0.8
+  val: 0.1
+  test: 0.1
+
+n_epochs: 2
+batch_size: 128
+seed: 13
+lr: 3e-4
+loss_fn: "mae"
+loss_reduction: "mean"
+clip_gradients: False
+weight_decay: 0
+
+wandb: True
+checkpoints: True
+eval_interval: 1000

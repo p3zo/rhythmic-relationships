@@ -106,3 +106,11 @@ One `.npz` file is created for each MIDI file in the dataset. Each `.npz` file c
 │   └── plot2.png
 └── segments.csv
 ```
+
+## Models
+
+To train a model:
+
+    python scripts/modeling/run_train.py --model hits_encdec
+
+The possible model names are the names of directories in `scripts/modeling`. See `scripts/modeling/README.md` for a catalog.

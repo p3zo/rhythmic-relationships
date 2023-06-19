@@ -10,6 +10,8 @@ def get_flat_nonzero_dissimilarity_matrix(x):
 
 
 def compute_oa(A, B):
+    print("Computing OA")
+
     # obtain density functions from data series
     pdf_A = stats.gaussian_kde(A)
     pdf_B = stats.gaussian_kde(B)
@@ -23,6 +25,8 @@ def compute_oa(A, B):
 
 
 def compute_kld(A, B, num_sample=1000):
+    print("Computing KLD")
+
     pdf_A = stats.gaussian_kde(A)
     pdf_B = stats.gaussian_kde(B)
 

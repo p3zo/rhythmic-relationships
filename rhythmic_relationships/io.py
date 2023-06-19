@@ -627,7 +627,7 @@ def write_image_from_roll(roll, outpath, im_size=None, binary=False):
     logger.debug(f"  Saved {outpath}")
 
 
-def get_pmid_from_hits(hits, pitch=48, part="", resolution=4):
+def get_pmid_from_hits(hits, pitch=48, part="", resolution=4, name=""):
     program = 0
     is_drum = False
     if part:
@@ -635,8 +635,11 @@ def get_pmid_from_hits(hits, pitch=48, part="", resolution=4):
         if part == "Drums":
             is_drum = True
 
+    if not name:
+        name = part
+
     pmid = pm.PrettyMIDI()
-    instrument = pm.Instrument(program=program, is_drum=is_drum, name=part)
+    instrument = pm.Instrument(program=program, is_drum=is_drum, name=name)
 
     fs = resolution * 2
 
@@ -663,8 +666,9 @@ def get_roll_from_hits(hits, pitch=48, resolution=4):
         roll = padded
     return roll
 
-def write_midi_from_hits(hits, outpath, pitch=48, part="", resolution=4):
-    pmid = get_pmid_from_hits(hits, pitch=pitch, part=part, resolution=resolution)
+
+def write_midi_from_hits(hits, outpath, pitch=48, part="", resolution=4, name=""):
+    pmid = get_pmid_from_hits(hits, pitch=pitch, part=part, resolution=resolution, name=name)
     pmid.write(outpath)
     logger.debug(f"Saved {outpath}")
 
