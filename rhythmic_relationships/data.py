@@ -176,9 +176,15 @@ def get_hits_from_hits_seq(seq, part, block_size=1, pitch=60, verbose=False):
 
     n_rests = 0
     n_pads = 0
+    n_starts = 0
     for ix, i in enumerate(out):
         if i == "pad":
             n_pads += 1
+            n_rests += 1
+            out[ix] = 0
+            continue
+        if i == "start":
+            n_starts += 1
             n_rests += 1
             out[ix] = 0
             continue
@@ -187,9 +193,9 @@ def get_hits_from_hits_seq(seq, part, block_size=1, pitch=60, verbose=False):
 
     # Log percentage of output rests that were padding predictions
     if verbose:
-        print(f"  pct rests: {n_rests / len(out) * 100:.2f}")
-        if n_rests > 0:
-            print(f"  rests from pads: {n_pads / n_rests * 100:.2f}")
+        print(
+            f"  pct rests: {n_rests / len(out) * 100:.2f} (from pads,starts: ({n_pads / n_rests * 100:.2f}, {{n_pads / n_starts * 100:.2f}})"
+        )
 
     return out
 
@@ -214,7 +220,14 @@ class PartPairDataset(Dataset):
     """
 
     def __init__(
-        self, dataset_name, part_1, part_2, repr_1, repr_2, datasets_dir=DATASETS_DIR
+        self,
+        dataset_name,
+        part_1,
+        part_2,
+        repr_1,
+        repr_2,
+        datasets_dir=DATASETS_DIR,
+        block_size=1,
     ):
         if part_1 not in PARTS or part_2 not in PARTS:
             raise ValueError(f"Part names must be one of: {PARTS}")
@@ -253,6 +266,7 @@ class PartPairDataset(Dataset):
         )
 
         self.loaded_segments = []
+        self.block_size = block_size
 
     def __len__(self):
         return len(self.p1_pairs)
@@ -268,13 +282,14 @@ class PartPairDataset(Dataset):
         p2_seg_repr = load_repr(p2_seg, self.repr_2_ix)
 
         # TODO: parameterize if hits should be binned
+        # TODO: parameterize block size
         if self.repr_1 == "hits":
-            tokenized = tokenize_hits(p1_seg_repr)
+            tokenized = tokenize_hits(p1_seg_repr, block_size=self.block_size)
             x = torch.LongTensor(tokenized)
         else:
             x = torch.from_numpy(p1_seg_repr).to(torch.float32)
         if self.repr_2 == "hits":
-            p2_seg_repr = tokenize_hits(p2_seg_repr)
+            p2_seg_repr = tokenize_hits(p2_seg_repr, block_size=self.block_size)
             y = torch.LongTensor(p2_seg_repr)
         else:
             y = torch.from_numpy(p2_seg_repr).to(torch.float32)
@@ -354,7 +369,15 @@ class PartPairDatasetRSP(Dataset):
     TODO: merge into PartPairDataset"""
 
     def __init__(
-        self, dataset_name, part_1, part_2, repr_1, repr_2, datasets_dir=DATASETS_DIR, tokenize_hits=False
+        self,
+        dataset_name,
+        part_1,
+        part_2,
+        repr_1,
+        repr_2,
+        datasets_dir=DATASETS_DIR,
+        tokenize_hits=False,
+        embedding_method="t-SNE",
     ):
         if part_1 not in PARTS or part_2 not in PARTS:
             raise ValueError(f"Part names must be one of: {PARTS}")

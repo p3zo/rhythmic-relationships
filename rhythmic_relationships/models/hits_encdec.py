@@ -19,12 +19,10 @@ class TransformerEncoderDecoder(nn.Module):
         dec_n_layer,
         dec_n_head,
         dec_dropout,
-        pad_ix,
     ):
         super().__init__()
 
         self.context_len = context_len
-        self.pad_ix = pad_ix
 
         self.encoder = TransformerWrapper(
             num_tokens=src_vocab_size,
@@ -68,15 +66,8 @@ class TransformerEncoderDecoder(nn.Module):
             torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, src, tgt):
-        # TODO: src_key_padding_mask needed for both encoder and decoder?
-        src_key_padding_mask = src == self.pad_ix
-        enc = self.encoder(src, mask=src_key_padding_mask, return_embeddings=True)
+        enc = self.encoder(src, return_embeddings=True)
 
         attn_mask = get_causal_mask(tgt.size(1), device=tgt.device, boolean=True)
-        out = self.decoder(
-            tgt,
-            attn_mask=attn_mask,
-            context=enc,
-            context_mask=src_key_padding_mask,
-        )
+        out = self.decoder(tgt, attn_mask=attn_mask, context=enc)
         return out

@@ -9,9 +9,9 @@ import torch
 import wandb
 import yaml
 from rhythmtoolbox import pianoroll2descriptors
-from rhythmic_relationships import DATASETS_DIR, MODELS_DIR
+from rhythmic_relationships import DATASETS_DIR, MODELS_DIR, WANDB_PROJECT_NAME
 from rhythmic_relationships.data import (
-    PartPairDatasetSequential,
+    PartPairDataset,
     get_hits_from_hits_seq,
 )
 from rhythmic_relationships.evaluate import (
@@ -32,7 +32,6 @@ from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
 DEFAULT_CONFIG_FILEPATH = "config.yml"
-WANDB_PROJECT_NAME = "rhythmic-relationships"
 
 DEVICE = torch.device(
     "mps"
@@ -43,11 +42,11 @@ DEVICE = torch.device(
 )
 
 
-def parse_sequential_batch(batch, device):
+def parse_batch(batch, device):
     xb, yb = batch
-    x = xb.to(device).view(xb.shape[0] * xb.shape[1], xb.shape[2])
-    y = yb.to(device).view(yb.shape[0] * yb.shape[1], yb.shape[2])
-    return x, y
+    yb_shifted = torch.roll(yb, 1)
+    yb_shifted[:, 0] = torch.zeros((yb.shape[0],))
+    return xb.to(device), yb_shifted.to(device), yb.to(device)
 
 
 def temperatured_softmax(logits, temperature):
@@ -98,10 +97,10 @@ def inference(
 
     hits_vocab = get_hits_vocab()
     ttoi = {v: k for k, v in hits_vocab.items()}
-    pad_ix = ttoi["pad"]
+    start_ix = ttoi["start"]
 
     y = torch.tensor(
-        [[pad_ix] * n_tokens],
+        [[start_ix] * n_tokens],
         dtype=torch.long,
         requires_grad=False,
         device=device,
@@ -152,6 +151,10 @@ def plot_desc_comparison(
     eval_dir,
     model_name,
 ):
+    if len(ref_descs) <= 2:
+        print("WARNING: n_eval_seqs must be > 1 for oa and kld computation")
+        return 0, 1
+
     drop_cols = ["noi", "polyDensity"]
 
     gen_df = pd.DataFrame(g_descs)
@@ -159,7 +162,8 @@ def plot_desc_comparison(
 
     for df in [gen_df, ref_df]:
         df.dropna(how="all", axis=1, inplace=True)
-        df.drop(drop_cols, axis=1, inplace=True)
+        if [c in df.columns for c in drop_cols]:
+            df.drop(drop_cols, axis=1, inplace=True)
 
     # Combine the generated with the ground truth
     id_col = "Generated"
@@ -249,9 +253,9 @@ def evaluate_hits_encdec(
 
     evals_train_loss = []
     for _ in range(n_eval_iters):
-        src, tgt = parse_sequential_batch(next(iter(train_loader)), device)
+        src, ctx, tgt = parse_batch(next(iter(train_loader)), device)
         with torch.no_grad():
-            logits = model(src, tgt)
+            logits = model(src, ctx)
             loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
             evals_train_loss.append(loss.item())
 
@@ -259,9 +263,9 @@ def evaluate_hits_encdec(
 
     evals_val_loss = []
     for _ in range(n_eval_iters):
-        src, tgt = parse_sequential_batch(next(iter(val_loader)), device)
+        src, ctx, tgt = parse_batch(next(iter(val_loader)), device)
         with torch.no_grad():
-            logits = model(src, tgt)
+            logits = model(src, ctx)
             loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
             evals_val_loss.append(loss.item())
 
@@ -275,11 +279,11 @@ def evaluate_hits_encdec(
     part_2_pitch = 72
     resolution = 4
 
-    ctx_len = config["data"]["context_len"]
+    ctx_len = config["model"]["context_len"]
     max_gen_seq_ix = ctx_len * n_eval_seqs + 1
-    gen_srcs, gen_tgts = [], []
+    gen_srcs, _, gen_tgts = [], [], []
     while len(gen_srcs) < max_gen_seq_ix:
-        gs, gt = parse_sequential_batch(next(iter(val_loader)), device=device)
+        gs, gx, gt = parse_batch(next(iter(val_loader)), device=device)
         gen_srcs.extend(gs)
         gen_tgts.extend(gt)
     gen_srcs = torch.stack(gen_srcs)
@@ -457,8 +461,8 @@ def train_hits_encdec(
     for epoch in range(1, n_epochs + 1):
         batches = tqdm(train_loader)
         for batch in batches:
-            src, tgt = parse_sequential_batch(batch, device)
-            logits = model(src, tgt)
+            src, ctx, tgt = parse_batch(batch, device)
+            logits = model(src, ctx)
             loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
 
             train_losses.append(loss.item())
@@ -469,7 +473,7 @@ def train_hits_encdec(
             # Backprop
             optimizer.zero_grad(set_to_none=True)
             if config["clip_gradients"]:
-                torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
+                torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
             loss.backward()
             optimizer.step()
 
@@ -548,10 +552,7 @@ def train(config, model_name, datasets_dir, model_dir, sweep=False):
         if sweep:
             config = wandb.config
 
-    config["data"]["context_len"] = int(
-        config["sequence_len"] / config["data"]["block_size"]
-    )
-    dataset = PartPairDatasetSequential(**config["data"], datasets_dir=datasets_dir)
+    dataset = PartPairDataset(**config["data"], datasets_dir=datasets_dir)
 
     splits = config["splits"]
     train_data, val_data, test_data = random_split(dataset, list(splits.values()))
@@ -563,14 +564,16 @@ def train(config, model_name, datasets_dir, model_dir, sweep=False):
     train_loader = DataLoader(train_data, batch_size=config["batch_size"], shuffle=True)
     val_loader = DataLoader(val_data, batch_size=config["batch_size"], shuffle=True)
 
-    hits_vocab = get_hits_vocab()
-    pad_ix = {v: k for k, v in hits_vocab.items()}["pad"]
+    # hits_vocab = get_hits_vocab()
+    # ttoi = {v: k for k, v in hits_vocab.items()}
+    # start_ix = ttoi["start"]
     hits_vocab_size = get_hits_vocab_size(block_size=config["data"]["block_size"])
 
     config["model"]["src_vocab_size"] = hits_vocab_size
     config["model"]["tgt_vocab_size"] = hits_vocab_size
-    config["model"]["context_len"] = config["data"]["context_len"]
-    config["model"]["pad_ix"] = pad_ix
+    config["model"]["context_len"] = int(
+        config["sequence_len"] / config["data"]["block_size"]
+    )
 
     model = TransformerEncoderDecoder(**config["model"]).to(DEVICE)
 
@@ -579,7 +582,7 @@ def train(config, model_name, datasets_dir, model_dir, sweep=False):
         lr=config["lr"],
         weight_decay=config["weight_decay"],
     )
-    loss_fn = get_loss_fn(config, pad_ix=pad_ix)
+    loss_fn = get_loss_fn(config)
 
     print(yaml.dump(config))
 

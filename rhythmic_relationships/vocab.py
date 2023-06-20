@@ -45,7 +45,7 @@ def get_vocab_sizes():
 
 
 def get_hits_vocab():
-    return {0: "pad", 1: 0, 2: 0.25, 3: 0.5, 4: 0.75, 5: 1.0}
+    return {0: "start", 1: 0, 2: 0.25, 3: 0.5, 4: 0.75, 5: 1.0}
 
 
 def get_hits_vocab_size(block_size):
@@ -57,7 +57,7 @@ def get_hits_vocab_size(block_size):
 def encode_hits(hits, n_bins):
     vel_bins = np.linspace(0, 1, n_bins + 1)
     tokenized = np.digitize(hits, vel_bins, right=True).tolist()
-    # Add 1 to account for padding token at ix 0
+    # Add 1 to account for start token at ix 0
     return [i + 1 for i in tokenized]
 
 
