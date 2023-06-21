@@ -31,7 +31,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--method",
         type=str,
-        default="t-SNE",
+        default="mds",
         help="Dimensionality reduction method to use. MDS or t-SNE.",
     )
     args = parser.parse_args()

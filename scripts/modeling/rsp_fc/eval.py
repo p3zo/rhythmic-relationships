@@ -36,7 +36,7 @@ DEVICE = torch.device(
 
 if __name__ == "__main__":
     model_type = "rsp_fc"
-    model_name = "undeterminate_2306192352"
+    model_name = "pharmacomaniac_2306200028"
 
     checkpoint_num = None
     n_training_obs = 1000
@@ -85,6 +85,8 @@ if __name__ == "__main__":
     feature_cols = [c for c in dataset_df.columns if c != id_col]
     train = dataset_df[feature_cols].values
 
+    train_dist = get_flat_nonzero_dissimilarity_matrix(train)
+
     tenths = [i / 10 for i in range(11)]
     xys = list(itertools.product(tenths, repeat=2))
     n_seqs = len(xys)
@@ -97,7 +99,7 @@ if __name__ == "__main__":
             xy_gen_hits[f"({x},{y})"] = gen_hits
 
     # Threshold and make velocity bins
-    zero_threshes = [0.1, 0.2, 0.3, 0.4, 0.5]
+    zero_threshes = [0.0001, 0.0005, 0.001, 0.005, 0.01, 0.05, 0.1]
     thresh_list = []
     for zt in zero_threshes:
         tl = [zt + i * ((1 - zt) / 4) for i in range(4)]
@@ -178,11 +180,20 @@ if __name__ == "__main__":
         # Descriptors from generated dataset
         gen = gen_df[feature_cols].values
 
-        train_dist = get_flat_nonzero_dissimilarity_matrix(train)
-
         # Stack training and generation
         train_gen = np.concatenate((train, gen))
         train_gen_dist = get_flat_nonzero_dissimilarity_matrix(train_gen)
+
+        # Plot train_dist vs train_gen_dist
+        sns.kdeplot(train_dist, color="blue", label="dataset", bw_adjust=5, cut=0)
+        sns.kdeplot(
+            train_gen_dist, color="orange", label="dataset + gen", bw_adjust=5, cut=0
+        )
+        plt.ylabel("")
+        plt.legend()
+        plt.tight_layout()
+        plt.savefig(os.path.join(eval_dir, f"oa-kde-dists-{threshes[0]}.png"))
+        plt.clf()
 
         # Compute distribution comparison metrics
         oa, kld = compute_oa_and_kld(train_dist, train_gen_dist)

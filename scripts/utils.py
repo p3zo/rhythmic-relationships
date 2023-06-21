@@ -46,7 +46,7 @@ def get_embeddings(
 ):
     """Create a 2D embedding space of the data, plot it, and save it to a csv"""
     reducer = TSNE(n_components=2, init="pca", learning_rate="auto", random_state=42)
-    if method == "MDS":
+    if method.lower() == "mds":
         reducer = MDS(n_components=2, n_init=1, random_state=42)
 
     # Make the embedding space
