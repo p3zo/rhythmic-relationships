@@ -24,7 +24,7 @@ splits:
 seed: 13
 sequence_len: 32
 n_epochs: 5
-batch_size: 16
+batch_size: 64
 
 lr: 1e-5
 loss_fn: "cross-entropy"
@@ -38,4 +38,4 @@ bento: False
 checkpoints: True
 
 n_eval_seqs: 100
-eval_interval: 2500
+eval_interval: 2000

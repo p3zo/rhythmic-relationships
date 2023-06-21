@@ -100,7 +100,7 @@ def inference(
     start_ix = ttoi["start"]
 
     y = torch.tensor(
-        [[start_ix] * n_tokens],
+        [[start_ix]],
         dtype=torch.long,
         requires_grad=False,
         device=device,
@@ -133,9 +133,9 @@ def inference(
                 [probs.argmax()], dtype=torch.long, device=DEVICE
             ).unsqueeze(1)
 
-        y[:, ix] = y_next.item()
+        y = torch.cat([y, y_next], dim=1)
 
-    return y.squeeze(0)
+    return y.squeeze(0)[1:]
 
 
 def pct_diff(x, y):

@@ -15,8 +15,8 @@ DEVICE = torch.device(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    # parser.add_argument("--model", type=str, default="hits_encdec")
-    parser.add_argument("--model", type=str, default="rsp_fc")
+    parser.add_argument("--model", type=str, default="hits_encdec")
+    # parser.add_argument("--model", type=str, default="rsp_fc")
     parser.add_argument("--datasets_dir", type=str, default=DATASETS_DIR)
     parser.add_argument("--config_path", type=str, default=None)
     args = parser.parse_args()

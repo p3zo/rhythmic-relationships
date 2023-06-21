@@ -191,11 +191,13 @@ def get_hits_from_hits_seq(seq, part, block_size=1, pitch=60, verbose=False):
         if i == 0:
             n_rests += 1
 
-    # Log percentage of output rests that were padding predictions
+    # Log pct of output rests that were rest tokens or special tokens
     if verbose:
-        print(
-            f"  pct rests: {n_rests / len(out) * 100:.2f} (from pads,starts: ({n_pads / n_rests * 100:.2f}, {{n_pads / n_starts * 100:.2f}})"
-        )
+        print(f"  pct rests: {n_rests / len(out) * 100:.2f}")
+        if n_rests > 0:
+            print(f"  rests from pads: {n_pads / n_rests * 100:.2f}")
+        if n_starts > 0:
+            print(f"  rests from starts: {n_pads / n_starts * 100:.2f}")
 
     return out
 

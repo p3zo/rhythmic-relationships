@@ -65,7 +65,7 @@ if __name__ == "__main__":
     part_1 = config["data"]["part_1"]
     part_2 = config["data"]["part_2"]
 
-    drop_features = ["noi", "polyDensity"]
+    drop_features = ["noi", "polyDensity", "syness"]
 
     # Get distribution from training set
     full_df = PartDataset(
