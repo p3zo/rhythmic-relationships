@@ -193,11 +193,12 @@ def get_hits_from_hits_seq(seq, part, block_size=1, pitch=60, verbose=False):
 
     # Log pct of output rests that were rest tokens or special tokens
     if verbose:
-        print(f"  pct rests: {n_rests / len(out) * 100:.2f}")
-        if n_rests > 0:
-            print(f"  rests from pads: {n_pads / n_rests * 100:.2f}")
+        st = f"  pct rests: {n_rests / len(out) * 100:.2f}"
+        if n_pads > 0:
+            st += f" (from pads: {(n_pads / n_rests) * 100:.2f})"
         if n_starts > 0:
-            print(f"  rests from starts: {n_pads / n_starts * 100:.2f}")
+            st += f" (from starts: {(n_starts / n_rests) * 100:.2f})"
+        print(st)
 
     return out
 

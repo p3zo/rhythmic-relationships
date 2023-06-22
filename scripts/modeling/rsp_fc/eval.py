@@ -1,16 +1,10 @@
 """Compare training set descriptors to generated after each epoch"""
 
-"""
-coda_2306180418
-
-"""
 import itertools
 import os
 
 import numpy as np
-import matplotlib.pyplot as plt
 import pandas as pd
-import seaborn as sns
 import torch
 
 from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
@@ -18,6 +12,8 @@ from rhythmic_relationships.data import PartDataset
 from rhythmic_relationships.evaluate import (
     compute_oa_and_kld,
     get_flat_nonzero_dissimilarity_matrix,
+    make_oa_kld_plot,
+    mk_descriptor_dist_plot,
 )
 from rhythmic_relationships.io import write_midi_from_hits, get_roll_from_hits
 from rhythmic_relationships.model_utils import load_model
@@ -37,8 +33,8 @@ DEVICE = torch.device(
 if __name__ == "__main__":
     model_type = "rsp_fc"
     model_name = "pharmacomaniac_2306200028"
-
     checkpoint_num = None
+
     n_training_obs = 1000
     pitch = 72
     resolution = 4
@@ -65,7 +61,6 @@ if __name__ == "__main__":
     model = model.to(DEVICE)
     part_1 = config["data"]["part_1"]
     part_2 = config["data"]["part_2"]
-
     drop_features = ["noi", "polyDensity"]
 
     # Get distribution from training set
@@ -79,13 +74,7 @@ if __name__ == "__main__":
         axis=1,
     ).dropna(how="all", axis=1)
 
-    # Descriptors from training dataset
-    id_col = "Generated"
-    dataset_df[id_col] = f"Dataset (n={len(dataset_df)})"
-    feature_cols = [c for c in dataset_df.columns if c != id_col]
-    train = dataset_df[feature_cols].values
-
-    train_dist = get_flat_nonzero_dissimilarity_matrix(train)
+    train_dist = get_flat_nonzero_dissimilarity_matrix(dataset_df.values)
 
     tenths = [i / 10 for i in range(11)]
     xys = list(itertools.product(tenths, repeat=2))
@@ -167,63 +156,32 @@ if __name__ == "__main__":
         gen_df = pd.DataFrame(threshed_descs).dropna(how="all", axis=1)
         gen_df.drop(drop_features, axis=1, inplace=True)
 
-        # Combine the generated with the ground truth
-        gen_df[id_col] = f"Generated (n={len(gen_df)})"
-        compare_df = pd.concat([gen_df, dataset_df])
-
-        # Scale the feature columns to [0, 1]
-        compare_df_scaled = (
-            compare_df[feature_cols] - compare_df[feature_cols].min()
-        ) / (compare_df[feature_cols].max() - compare_df[feature_cols].min())
-        compare_df_scaled[id_col] = compare_df[id_col]
-
-        # Descriptors from generated dataset
-        gen = gen_df[feature_cols].values
-
-        # Stack training and generation
-        train_gen = np.concatenate((train, gen))
-        train_gen_dist = get_flat_nonzero_dissimilarity_matrix(train_gen)
-
-        # Plot train_dist vs train_gen_dist
-        sns.kdeplot(train_dist, color="blue", label="dataset", bw_adjust=5, cut=0)
-        sns.kdeplot(
-            train_gen_dist, color="orange", label="dataset + gen", bw_adjust=5, cut=0
+        mk_descriptor_dist_plot(
+            gen_df=gen_df,
+            ref_df=dataset_df,
+            outdir=eval_dir,
+            model_name=model_name,
+            checkpoint_num=checkpoint_num,
+            title_suffix=f" zero_thresh={threshes[0]}",
+            filename_suffix=str(threshes[0]),
         )
-        plt.ylabel("")
-        plt.legend()
-        plt.tight_layout()
-        plt.savefig(os.path.join(eval_dir, f"oa-kde-dists-{threshes[0]}.png"))
-        plt.clf()
+
+        # Stack training and generation descriptors
+        train_gen = np.concatenate((dataset_df.values, gen_df.values))
+        train_gen_dist = get_flat_nonzero_dissimilarity_matrix(train_gen)
 
         # Compute distribution comparison metrics
         oa, kld = compute_oa_and_kld(train_dist, train_gen_dist)
-
         print(f"  oa={round(oa, 3)}, kld={round(kld, 3)}")
 
-        # Plot a comparison of distributions for all descriptors
-        sns.boxplot(
-            x="variable",
-            y="value",
-            hue=id_col,
-            data=pd.melt(compare_df_scaled, id_vars=id_col),
+        make_oa_kld_plot(
+            train_dist=train_dist,
+            train_gen_dist=train_gen_dist,
+            oa=oa,
+            kld=kld,
+            model_name=model_name,
+            outdir=eval_dir,
+            suffix=str(threshes[0]),
         )
-        plt.ylabel("")
-        plt.xlabel("")
-        plt.yticks([])
-        title = f"{model_name}"
-        if checkpoint_num:
-            title += f" checkpoint {checkpoint_num}"
-        title += f" zero_thresh={threshes[0]}\noa={round(oa, 3)}, kld={round(kld, 3)}"
-        plt.title(title)
-        plt.legend(
-            loc="upper center",
-            bbox_to_anchor=(0.5, -0.08),
-            fancybox=True,
-            shadow=False,
-            ncol=2,
-        )
-        plt.tight_layout()
-        plt.savefig(os.path.join(eval_dir, f"dist-comparison-{threshes[0]}.png"))
-        plt.clf()
 
         # TODO: save stats somewhere. Back into model obj?
