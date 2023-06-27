@@ -72,9 +72,13 @@ def load_model(model_path, model_class):
     return model, config
 
 
-def get_model_catalog():
-    model_files = glob.glob(os.path.join(MODELS_DIR, "*/*.pt"))
-    model_files = [fp for fp in model_files if "exclude_from_catalog" not in fp]
+def get_model_catalog(model_type=None):
+    models_dir = os.path.join(MODELS_DIR)
+    if model_type:
+        models_dir = os.path.join(MODELS_DIR, model_type)
+    model_files = glob.glob(os.path.join(models_dir, "*/*.pt"))
+    model_files = [i for i in model_files if "exclude_from_catalog" not in i]
+
     catalog = defaultdict(dict)
     for fp in model_files:
         model_obj = torch.load(fp)
