@@ -10,6 +10,7 @@ import yaml
 from rhythmic_relationships import DATASETS_DIR, MODELS_DIR, WANDB_PROJECT_NAME
 from rhythmic_relationships.data import PartPairDataset, get_hits_from_hits_seq
 from rhythmic_relationships.evaluate import (
+    compute_oa_kld_dists,
     compute_oa_and_kld,
     get_flat_nonzero_dissimilarity_matrix,
     make_oa_kld_plot,
@@ -155,6 +156,8 @@ def get_sampler_eval(
     part_1_pitch=55,
     part_2_pitch=72,
     resolution=4,
+    train_df=None,
+    train_dist=None,
 ):
     gen_dir = os.path.join(eval_dir, "inference")
     if not os.path.isdir(gen_dir):
@@ -162,7 +165,7 @@ def get_sampler_eval(
 
     print(f"{sampler=}")
 
-    drop_cols = ["noi", "polyDensity"]
+    drop_cols = ["noi", "polyDensity", "syness"]
 
     part_1 = config["data"]["part_1"]
     part_2 = config["data"]["part_2"]
@@ -263,12 +266,10 @@ def get_sampler_eval(
             pitch=part_1_pitch,
         )
 
-    ref_df = pd.DataFrame(target_descs).dropna(how="all", axis=1)
-    ref_df.drop(drop_cols, axis=1, inplace=True)
-    train_dist = get_flat_nonzero_dissimilarity_matrix(ref_df.values)
+    target_df = pd.DataFrame(target_descs).dropna(how="all", axis=1)
+    target_df.drop(drop_cols, axis=1, inplace=True)
 
-    oa = 0
-    kld = 1
+    oa_klds = {}
     if n_seqs > all_zeros:
         gen_df = pd.DataFrame(generated_descs).dropna(how="all", axis=1)
         gen_df.drop(drop_cols, axis=1, inplace=True)
@@ -277,45 +278,63 @@ def get_sampler_eval(
         if sampler == "nucleus":
             title_suffix += f" {nucleus_p=}"
 
+        labels = ["ref"]
+        if train_df is not None:
+            labels.append("train")
+            mk_descriptor_dist_plot(
+                gen_df=gen_df,
+                ref_df=train_df,
+                model_name=model_name,
+                outdir=eval_dir,
+                label="Train",
+                title_suffix=title_suffix,
+                filename_suffix=f"{sampler}_train_gen",
+            )
+
         mk_descriptor_dist_plot(
             gen_df=gen_df,
-            ref_df=ref_df,
+            ref_df=target_df,
             model_name=model_name,
             outdir=eval_dir,
+            label="Target",
             title_suffix=title_suffix,
-            filename_suffix=sampler,
+            filename_suffix=f"{sampler}_ref_gen",
         )
-
-        # Stack training and generation descriptors
-        train_gen = np.concatenate((ref_df.values, gen_df.values))
-        train_gen_dist = get_flat_nonzero_dissimilarity_matrix(train_gen)
 
         # Compute distribution comparison metrics
-        oa, kld = compute_oa_and_kld(train_dist, train_gen_dist)
-        print(f"  oa={round(oa, 3)}, kld={round(kld, 3)}")
-
-        make_oa_kld_plot(
+        oa_kld_dists = compute_oa_kld_dists(
+            gen_df=gen_df,
+            ref_df=target_df,
+            train_df=train_df,
             train_dist=train_dist,
-            train_gen_dist=train_gen_dist,
-            oa=oa,
-            kld=kld,
-            model_name=model_name,
-            outdir=eval_dir,
-            suffix=sampler,
         )
+
+        oa_klds = compute_oa_and_kld(oa_kld_dists)
+        print(oa_klds)
+
+        for label in labels:
+            make_oa_kld_plot(
+                dist_1=oa_kld_dists[f"{label}_dist"],
+                dist_2=oa_kld_dists[f"{label}_gen_dist"],
+                oa=oa_klds[f"{label}_gen_oa"],
+                kld=oa_klds[f"{label}_gen_kld"],
+                label=f"{label}",
+                model_name=model_name,
+                outdir=eval_dir,
+                suffix=sampler,
+            )
 
     sample_stats = {
         "pct_all_zero": 100 * round(all_zeros / n_seqs, 2),
         "pct_all_same": 100 * round(all_same / n_seqs, 2),
-        "oa": oa,
-        "kld": kld,
+        "oa_klds": oa_klds,
     }
     print(sample_stats)
 
     sampler_eval["sampler_stats"] = sample_stats
-    sampler_eval["generated_rolls"] = generated_rolls
-    sampler_eval["generated_descs"] = generated_descs
-    sampler_eval["target_descs"] = target_descs
+    # sampler_eval["generated_rolls"] = generated_rolls
+    # sampler_eval["generated_descs"] = generated_descs
+    # sampler_eval["target_descs"] = target_descs
 
     return sampler_eval
 
@@ -334,6 +353,8 @@ def eval_gen_hits_encdec(
     part_2_pitch=72,
     resolution=4,
     samplers=("multinomial", "nucleus", "greedy"),
+    train_df=None,
+    train_dist=None,
 ):
     print(f"Generating {n_seqs} eval sequences")
 
@@ -349,7 +370,8 @@ def eval_gen_hits_encdec(
     gen_tgts = torch.stack(gen_tgts)
 
     for sampler in samplers:
-        gen_eval[sampler] = get_sampler_eval(
+        gen_eval["sampler_stats"] = {}
+        gen_eval["sampler_stats"][sampler] = get_sampler_eval(
             srcs=gen_srcs,
             tgts=gen_tgts,
             sampler=sampler,
@@ -364,6 +386,8 @@ def eval_gen_hits_encdec(
             part_1_pitch=part_1_pitch,
             part_2_pitch=part_2_pitch,
             resolution=resolution,
+            train_df=train_df,
+            train_dist=train_dist,
         )
 
     return gen_eval
@@ -422,6 +446,7 @@ def evaluate_hits_encdec(
         n_seqs=config["n_eval_seqs"],
         model_name=model_name,
         device=device,
+        samplers=["nucleus", "multinomial"],
     )
 
     val_loss_mean = np.mean(evals_val_loss)
@@ -557,6 +582,8 @@ def train(config, model_name, datasets_dir, model_dir, sweep=False):
         wandb.config.update(config)
         if sweep:
             config = wandb.config
+
+    assert config["n_eval_seqs"] >= 3
 
     dataset = PartPairDataset(**config["data"], datasets_dir=datasets_dir)
 

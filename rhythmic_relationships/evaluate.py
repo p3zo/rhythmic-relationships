@@ -8,15 +8,15 @@ from scipy import integrate, stats
 from scipy.spatial import distance_matrix
 
 
-def get_flat_nonzero_dissimilarity_matrix(x):
+def get_flat_nonzero_dissimilarity_matrix(x, y=None):
+    if y is not None:
+        x = np.concatenate((x, y))
     dists = distance_matrix(x, x, p=2)
     flat = dists.flatten()
     return np.delete(flat, np.arange(0, len(flat), len(x) + 1))
 
 
 def compute_oa(A, B):
-    print("Computing OA")
-
     # obtain density functions from data series
     pdf_A = stats.gaussian_kde(A)
     pdf_B = stats.gaussian_kde(B)
@@ -30,8 +30,6 @@ def compute_oa(A, B):
 
 
 def compute_kld(A, B, num_sample=1000):
-    print("Computing KLD")
-
     pdf_A = stats.gaussian_kde(A)
     pdf_B = stats.gaussian_kde(B)
 
@@ -41,25 +39,63 @@ def compute_kld(A, B, num_sample=1000):
     return stats.entropy(pdf_A(sample_A), pdf_B(sample_B))
 
 
-def compute_oa_and_kld(train_dist, train_gen_dist):
-    oa = compute_oa(train_dist, train_gen_dist)
-    kld = compute_kld(train_dist, train_gen_dist)
-    return oa, kld
+def compute_oa_kld_dists(gen_df, ref_df, train_df=None, train_dist=None):
+    results = {}
+    results["ref_dist"] = get_flat_nonzero_dissimilarity_matrix(ref_df.values)
+
+    ref_gen_dist = get_flat_nonzero_dissimilarity_matrix(ref_df.values, gen_df.values)
+    results["ref_gen_dist"] = ref_gen_dist
+
+    if train_df is not None:
+        if train_dist is None:
+            train_dist = get_flat_nonzero_dissimilarity_matrix(train_df.values)
+
+        train_gen_dist = get_flat_nonzero_dissimilarity_matrix(
+            train_df.values,
+            gen_df.values,
+        )
+        results["train_dist"] = train_dist
+        results["train_gen_dist"] = train_gen_dist
+
+    return results
+
+
+def compute_oa_and_kld(oa_kld_dists):
+    results = {}
+
+    print("Computing OA and KLD for ref_gen")
+    ref_dist = oa_kld_dists["ref_dist"]
+    ref_gen_dist = oa_kld_dists["ref_gen_dist"]
+    results["ref_gen_oa"] = compute_oa(ref_dist, ref_gen_dist)
+    results["ref_gen_kld"] = compute_kld(ref_dist, ref_gen_dist)
+
+    if "train_dist" in oa_kld_dists:
+        print("Computing OA and KLD for train_gen")
+        train_dist = oa_kld_dists["train_dist"]
+        train_gen_dist = oa_kld_dists["train_gen_dist"]
+        results["train_gen_oa"] = compute_oa(train_dist, train_gen_dist)
+        results["train_gen_kld"] = compute_kld(train_dist, train_gen_dist)
+
+    return results
 
 
 def make_oa_kld_plot(
-    train_dist, train_gen_dist, oa, kld, outdir, model_name, suffix=None
+    dist_1,
+    dist_2,
+    oa,
+    kld,
+    outdir,
+    model_name,
+    suffix=None,
+    label="train",
 ):
-    # Plot train_dist vs train_gen_dist
-    sns.kdeplot(train_dist, color="blue", label="dataset", bw_adjust=5, cut=0)
-    sns.kdeplot(
-        train_gen_dist, color="orange", label="dataset + gen", bw_adjust=5, cut=0
-    )
+    sns.kdeplot(dist_1, color="blue", label=label, bw_adjust=5, cut=0)
+    sns.kdeplot(dist_2, color="orange", label=f"{label} + gen", bw_adjust=5, cut=0)
     plt.ylabel("")
     plt.legend()
     plt.title(f"{model_name}\nOA={round(oa, 3)}, KLD={round(kld, 3)}")
     plt.tight_layout()
-    outname = os.path.join(outdir, "oa-kde-dists")
+    outname = os.path.join(outdir, f"oa-kde-dists-{label}")
     if suffix:
         outname += f"-{suffix}"
     outpath = f"{outname}.png"
@@ -73,6 +109,7 @@ def mk_descriptor_dist_plot(
     ref_df,
     model_name,
     outdir,
+    label="Train",
     checkpoint_num=None,
     id_col="Generated",
     title_suffix=None,
@@ -83,7 +120,7 @@ def mk_descriptor_dist_plot(
         return 0, 1
 
     id_col = "Generated"
-    ref_df[id_col] = f"Dataset (n={len(ref_df)})"
+    ref_df[id_col] = f"{label} (n={len(ref_df)})"
     gen_df[id_col] = f"Generated (n={len(gen_df)})"
     feature_cols = [c for c in ref_df.columns if c != id_col]
 

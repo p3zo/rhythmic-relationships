@@ -24,7 +24,7 @@ if __name__ == "__main__":
     model_name = "fragmental_2306210056"
     checkpoint_num = None
 
-    n_training_obs = 1000
+    n_training_obs = 500
     n_eval_seqs = 100
     pitch = 72
     resolution = 4
@@ -54,7 +54,7 @@ if __name__ == "__main__":
     model = model.to(DEVICE)
     part_1 = config["data"]["part_1"]
     part_2 = config["data"]["part_2"]
-    drop_features = ["noi", "polyDensity", "syness"]
+    drop_cols = ["noi", "polyDensity", "syness"]
 
     # Get distribution from training set
     full_df = PartDataset(
@@ -63,7 +63,7 @@ if __name__ == "__main__":
         representation="descriptors",
     ).as_df(subset=n_training_obs)
     dataset_df = full_df.drop(
-        ["filename", "segment_id"] + drop_features,
+        ["filename", "segment_id"] + drop_cols,
         axis=1,
     ).dropna(how="all", axis=1)
 
@@ -82,4 +82,7 @@ if __name__ == "__main__":
         eval_dir=eval_dir,
         model_name=model_name,
         device=device,
+        train_df=dataset_df,
+        train_dist=train_dist,
+        samplers=samplers,
     )
