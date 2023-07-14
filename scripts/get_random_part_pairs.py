@@ -21,17 +21,16 @@ def get_random_part_pairs(dataset_name, part_1, part_2, n_samples):
     return batch, dataset.loaded_segments
 
 
-dataset_name = "lmdc_3000_2bar_4res"
+dataset_name = "lmdc_17243_2bar_4res"
 part_1 = "Melody"
-part_2 = "Drums"
+part_2 = "Bass"
 n_samples = 25
 batch, loaded_segments = get_random_part_pairs(dataset_name, part_1, part_2, n_samples)
+srcs, tgts = batch
 
 samples_dir = os.path.join(DATASETS_DIR, dataset_name, "samples")
 if not os.path.isdir(samples_dir):
     os.makedirs(samples_dir)
-
-srcs, tgts = batch
 
 for ix in range(n_samples):
     src = srcs[ix]
@@ -47,6 +46,7 @@ for ix in range(n_samples):
         src.numpy(),
         outpath=src_outpath,
         part=part_1,
+        scaled=True,
         binary=False,
         onset_roll=True,
     )
@@ -58,6 +58,7 @@ for ix in range(n_samples):
         tgt.numpy(),
         outpath=tgt_outpath,
         part=part_2,
+        scaled=True,
         binary=False,
         onset_roll=True,
     )
