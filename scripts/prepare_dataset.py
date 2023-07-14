@@ -36,7 +36,7 @@ def plot_segments_by_part(annotations_df, dataset_name, plots_dir):
     n_segments = part_counts.sum()
     part_pcts = part_counts / n_segments
 
-    fig, ax = plt.subplots(figsize=(20, 8))
+    fig, ax = plt.subplots()
     part_pcts.sort_values(ascending=False).plot(kind="bar")
     plt.setp(ax.get_xticklabels(), ha="right", rotation=45)
     plt.title(f"Distribution of parts in {dataset_name}\n{n_segments} segments total")
@@ -55,7 +55,7 @@ def plot_segments_by_part_pair(pair_lookups, dataset_name, plots_dir):
     n_pairs = pair_counts.sum()
     pair_pcts = pair_counts / n_pairs
 
-    fig, ax = plt.subplots(figsize=(20, 8))
+    fig, ax = plt.subplots()
     pair_pcts.sort_values(ascending=False).plot(kind="bar")
     plt.setp(ax.get_xticklabels(), ha="right", rotation=45)
     plt.title(f"Distribution of part pairs in {dataset_name}\n{n_pairs} pairs total")

@@ -4,12 +4,14 @@ import numpy as np
 from rhythmic_relationships.parts import PARTS
 
 
-def get_vocab(part):
+def get_vocab(part, use_padding=False):
     if part not in PARTS:
         raise ValueError(f"part must be one of {PARTS}")
 
     # Create a mapping from token to integer, including first any special tokens
-    itot = {0: "pad", 1: "start"}
+    itot = {0: "start"}
+    if use_padding:
+        itot = {0: "pad", 1: "start"}
 
     if part == "Drums":
         patterns = [
@@ -29,7 +31,10 @@ def get_vocab(part):
     pitches = list(range(pitch_min, pitch_max + 1))
     velocity_bins = list(range(n_velocity_bins))
 
-    itot.update({2: "rest"})
+    if use_padding:
+        itot.update({2: "rest"})
+    else:
+        itot.update({1: "rest"})
     itot.update(
         {
             ix + len(itot): i

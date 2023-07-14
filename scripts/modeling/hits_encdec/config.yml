@@ -1,5 +1,5 @@
 data:
-  dataset_name: "lmdc_3000_2bar_4res"
+  dataset_name: "lmdc_17243_2bar_4res"
   part_1: "Melody"
   part_2: "Bass"
   repr_1: "hits"
@@ -10,11 +10,11 @@ model:
   enc_n_embed: 144
   enc_n_layer: 4
   enc_n_head: 3
-  enc_dropout: 0.2
+  enc_dropout: 0.4
   dec_n_embed: 144
   dec_n_layer: 4
   dec_n_head: 3
-  dec_dropout: 0.2
+  dec_dropout: 0.4
 
 splits:
   train: 0.9
@@ -24,18 +24,18 @@ splits:
 seed: 13
 sequence_len: 32
 n_epochs: 5
-batch_size: 64
+batch_size: 128
 
 lr: 1e-5
 loss_fn: "cross-entropy"
 loss_reduction: "mean"
 clip_gradients: False
-weight_decay: .0001
+weight_decay: 0
 
-n_eval_iters: 20
-wandb: True
+n_eval_iters: 100
+wandb: False
 bento: False
 checkpoints: True
 
-n_eval_seqs: 100
-eval_interval: 2000
+n_eval_seqs: 50
+eval_interval: 2500

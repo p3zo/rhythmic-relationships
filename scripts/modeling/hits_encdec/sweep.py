@@ -1,14 +1,14 @@
 import os
-import torch
-from rhythmic_relationships import DATASETS_DIR, MODELS_DIR
-from rhythmic_relationships.model_utils import get_model_name, load_config
-import wandb
-import yaml
-
-from train import WANDB_PROJECT_NAME, train
 
 import matplotlib.pyplot as plt
-plt.switch_backend('Agg')
+import torch
+import wandb
+import yaml
+from rhythmic_relationships import DATASETS_DIR, MODELS_DIR
+from rhythmic_relationships.model_utils import get_model_name, load_config
+from train import WANDB_PROJECT_NAME, train
+
+plt.switch_backend("Agg")
 
 SWEEP_CONFIG_FILEPATH = "sweep.yaml"
 

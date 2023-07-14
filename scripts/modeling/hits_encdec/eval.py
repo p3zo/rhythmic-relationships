@@ -21,16 +21,23 @@ DEVICE = torch.device(
 
 if __name__ == "__main__":
     model_type = "hits_encdec"
-    model_name = "fragmental_2306210056"
+
+    # Melody -> Bass
+    # model_name = "fragmental_2306210056"
+
+    # Bass -> Melody
+    model_name = "literation_2307011858"
+    # model_name = "dematerialize_2307012124"
+
     checkpoint_num = None
 
-    n_training_obs = 500
+    n_training_obs = 10000
     n_eval_seqs = 100
     pitch = 72
     resolution = 4
     temperature = 1
     nucleus_p = 0.92
-    samplers = ["multinomial", "nucleus"]
+    samplers = ["nucleus"]
 
     model_dir = os.path.join(MODELS_DIR, model_type, model_name)
 
@@ -67,13 +74,12 @@ if __name__ == "__main__":
         axis=1,
     ).dropna(how="all", axis=1)
 
-    train_dist = get_flat_nonzero_dissimilarity_matrix(dataset_df.values)
-
     # Load data for inference
     # TODO: load only data from val split
     dataset = PartPairDataset(**config["data"])
     loader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
 
+    # TODO: option to load previous samples
     sampled = eval_gen_hits_encdec(
         model=model,
         config=config,
@@ -83,6 +89,5 @@ if __name__ == "__main__":
         model_name=model_name,
         device=device,
         train_df=dataset_df,
-        train_dist=train_dist,
         samplers=samplers,
     )

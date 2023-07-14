@@ -71,7 +71,7 @@ def tokenize_hits(hits, block_size=1):
     return tokenized
 
 
-def tokenize_roll(roll, part):
+def tokenize_roll(roll, part, add_start=False):
     encode, _ = get_vocab_encoder_decoder(part)
 
     if part == "Drums":
@@ -79,7 +79,9 @@ def tokenize_roll(roll, part):
             raise Exception("Representation must be drum roll for Drums part")
         binarized = (roll > 0).astype(int)
         patterns = ["".join(i.astype(str)) for i in binarized]
-        return encode(["start"]) + encode(patterns)
+        if add_start:
+            return encode(["start"]) + encode(patterns)
+        return encode(patterns)
 
     # Will select the higher note in the case of polyphony
     pitches = roll.argmax(axis=1)
@@ -104,7 +106,9 @@ def tokenize_roll(roll, part):
             continue
         tokens.append((p, v))
 
-    return encode(["start"]) + encode(tokens)
+    if add_start:
+        return encode(["start"]) + encode(tokens)
+    return encode(tokens)
 
 
 def get_roll_from_sequence(seq, part):
@@ -231,6 +235,7 @@ class PartPairDataset(Dataset):
         repr_2,
         datasets_dir=DATASETS_DIR,
         block_size=1,
+        tokenize_rolls=False,
     ):
         if part_1 not in PARTS or part_2 not in PARTS:
             raise ValueError(f"Part names must be one of: {PARTS}")
@@ -259,17 +264,24 @@ class PartPairDataset(Dataset):
         )
         pairs_df = pd.read_csv(pair_lookup_path)
 
-        df = load_dataset_annotations(self.dataset_dir)
+        self.annotations = load_dataset_annotations(self.dataset_dir)
 
         self.p1_pairs = pairs_df.merge(
-            df, how="left", left_on=part_1, right_on="roll_id"
+            self.annotations,
+            how="left",
+            left_on=part_1,
+            right_on="roll_id",
         )
         self.p2_pairs = pairs_df.merge(
-            df, how="left", left_on=part_2, right_on="roll_id"
+            self.annotations,
+            how="left",
+            left_on=part_2,
+            right_on="roll_id",
         )
 
         self.loaded_segments = []
         self.block_size = block_size
+        self.tokenize_rolls = tokenize_rolls
 
     def __len__(self):
         return len(self.p1_pairs)
@@ -290,12 +302,20 @@ class PartPairDataset(Dataset):
             tokenized = tokenize_hits(p1_seg_repr, block_size=self.block_size)
             x = torch.LongTensor(tokenized)
         else:
-            x = torch.from_numpy(p1_seg_repr).to(torch.float32)
+            if self.tokenize_rolls:
+                p1_seg_repr = tokenize_roll(p1_seg_repr, part=self.part_1)
+                x = torch.LongTensor(p1_seg_repr)
+            else:
+                x = torch.from_numpy(p1_seg_repr).to(torch.float32)
         if self.repr_2 == "hits":
             p2_seg_repr = tokenize_hits(p2_seg_repr, block_size=self.block_size)
             y = torch.LongTensor(p2_seg_repr)
         else:
-            y = torch.from_numpy(p2_seg_repr).to(torch.float32)
+            if self.tokenize_rolls:
+                p2_seg_repr = tokenize_roll(p2_seg_repr, part=self.part_2)
+                y = torch.LongTensor(p2_seg_repr)
+            else:
+                y = torch.from_numpy(p2_seg_repr).to(torch.float32)
 
         return x, y
 

@@ -10,8 +10,9 @@ import yaml
 from rhythmic_relationships import DATASETS_DIR, MODELS_DIR, WANDB_PROJECT_NAME
 from rhythmic_relationships.data import PartPairDataset, get_hits_from_hits_seq
 from rhythmic_relationships.evaluate import (
-    compute_oa_kld_dists,
-    compute_oa_and_kld,
+    get_oa_kld_dists,
+    compute_oa,
+    compute_kld,
     get_flat_nonzero_dissimilarity_matrix,
     make_oa_kld_plot,
     mk_descriptor_dist_plot,
@@ -141,6 +142,38 @@ def pct_diff(x, y):
     return 100 * np.abs(x - y) / ((x + y) / 2)
 
 
+def mk_oa_kld_plots(
+    descriptor_dists,
+    label,
+    model_name,
+    eval_dir,
+    sampler,
+):
+    print(f"{label} oa_kld_dists")
+    for descriptor in descriptor_dists:
+        if descriptor != "all_descriptors":
+            print('TODO remove this. skipping', descriptor)
+            continue
+        print(f"{descriptor=}")
+        dist_1 = descriptor_dists[descriptor]["ref_dist"]
+        dist_2 = descriptor_dists[descriptor]["ref_gen_dist"]
+
+        oa = compute_oa(dist_1, dist_2)
+        kld = compute_kld(dist_1, dist_2)
+
+        make_oa_kld_plot(
+            dist_1=dist_1,
+            dist_2=dist_2,
+            oa=oa,
+            kld=kld,
+            label=f"{label}_{descriptor}",
+            model_name=model_name,
+            outdir=eval_dir,
+            suffix=sampler,
+            descriptor=descriptor,
+        )
+
+
 def get_sampler_eval(
     srcs,
     tgts,
@@ -157,7 +190,6 @@ def get_sampler_eval(
     part_2_pitch=72,
     resolution=4,
     train_df=None,
-    train_dist=None,
 ):
     gen_dir = os.path.join(eval_dir, "inference")
     if not os.path.isdir(gen_dir):
@@ -270,59 +302,97 @@ def get_sampler_eval(
     target_df.drop(drop_cols, axis=1, inplace=True)
 
     oa_klds = {}
-    if n_seqs > all_zeros:
-        gen_df = pd.DataFrame(generated_descs).dropna(how="all", axis=1)
-        gen_df.drop(drop_cols, axis=1, inplace=True)
+    if n_seqs == all_zeros:
+        return sampler_eval
 
-        title_suffix = f"\n{temperature=}"
-        if sampler == "nucleus":
-            title_suffix += f" {nucleus_p=}"
+    gen_df = pd.DataFrame(generated_descs).dropna(how="all", axis=1)
+    gen_df.drop(drop_cols, axis=1, inplace=True)
 
-        labels = ["ref"]
-        if train_df is not None:
-            labels.append("train")
-            mk_descriptor_dist_plot(
-                gen_df=gen_df,
-                ref_df=train_df,
-                model_name=model_name,
-                outdir=eval_dir,
-                label="Train",
-                title_suffix=title_suffix,
-                filename_suffix=f"{sampler}_train_gen",
-            )
+    title_suffix = f"\n{temperature=}"
+    if sampler == "nucleus":
+        title_suffix += f" {nucleus_p=}"
 
+    ## START
+    train_gen_df = pd.concat((train_df, gen_df))
+    target_gen_df = pd.concat((target_df, gen_df))
+
+    train_oa_kld_dists = get_oa_kld_dists(gen_df=gen_df, ref_df=train_df)
+    tgt_oa_kld_dists = get_oa_kld_dists(gen_df=gen_df, ref_df=target_df)
+
+    for col in list(target_df.columns):
+        print('target', col, target_df[col].mean().round(3), target_df[col].std().round(3))
+        print('target gen', col, target_gen_df[col].mean().round(3), target_gen_df[col].std().round(3))
+        print('train', col, train_df[col].mean().round(3), train_df[col].std().round(3))
+        print('train_gen', col, train_gen_df[col].mean().round(3), train_gen_df[col].std().round(3))
+
+    mk_descriptor_dist_plot(
+        gen_df=train_df,
+        ref_df=gen_df,
+        model_name=model_name,
+        outdir=eval_dir,
+        # label="Target",
+        label="Train",
+        title_suffix=title_suffix,
+        filename_suffix=f"rel_{sampler}_train_vs_gen",
+    )
+
+    mk_descriptor_dist_plot(
+        gen_df=target_df,
+        ref_df=gen_df,
+        model_name=model_name,
+        outdir=eval_dir,
+        label="Target",
+        # label="Train",
+        title_suffix=title_suffix,
+        filename_suffix=f"rel_{sampler}_target_vs_gen",
+    )
+
+    ## END
+
+
+    # # Target
+    # # TODO: change labels back to target
+    # mk_descriptor_dist_plot(
+    #     gen_df=gen_df,
+    #     ref_df=target_df,
+    #     model_name=model_name,
+    #     outdir=eval_dir,
+    #     # label="Target",
+    #     label="Train",
+    #     title_suffix=title_suffix,
+    #     filename_suffix=f"{sampler}_tgt_gen",
+    # )
+
+    # Compute distribution comparison metrics
+    # tgt_oa_kld_dists = get_oa_kld_dists(gen_df=gen_df, ref_df=target_df)
+    # mk_oa_kld_plots(
+    #     tgt_oa_kld_dists,
+    #     # label="target",
+    #     label="Train",
+    #     model_name=model_name,
+    #     eval_dir=eval_dir,
+    #     sampler=sampler,
+    # )
+
+    if train_df is not None:
         mk_descriptor_dist_plot(
             gen_df=gen_df,
-            ref_df=target_df,
+            ref_df=train_df,
             model_name=model_name,
             outdir=eval_dir,
-            label="Target",
+            label="Train",
             title_suffix=title_suffix,
-            filename_suffix=f"{sampler}_ref_gen",
+            filename_suffix=f"{sampler}_train_gen",
         )
 
-        # Compute distribution comparison metrics
-        oa_kld_dists = compute_oa_kld_dists(
-            gen_df=gen_df,
-            ref_df=target_df,
-            train_df=train_df,
-            train_dist=train_dist,
+        train_oa_kld_dists = get_oa_kld_dists(gen_df=gen_df, ref_df=train_df)
+        mk_oa_kld_plots(
+            train_oa_kld_dists,
+            label="train",
+            model_name=model_name,
+            eval_dir=eval_dir,
+            sampler=sampler,
         )
-
-        oa_klds = compute_oa_and_kld(oa_kld_dists)
-        print(oa_klds)
-
-        for label in labels:
-            make_oa_kld_plot(
-                dist_1=oa_kld_dists[f"{label}_dist"],
-                dist_2=oa_kld_dists[f"{label}_gen_dist"],
-                oa=oa_klds[f"{label}_gen_oa"],
-                kld=oa_klds[f"{label}_gen_kld"],
-                label=f"{label}",
-                model_name=model_name,
-                outdir=eval_dir,
-                suffix=sampler,
-            )
 
     sample_stats = {
         "pct_all_zero": 100 * round(all_zeros / n_seqs, 2),
@@ -354,13 +424,12 @@ def eval_gen_hits_encdec(
     resolution=4,
     samplers=("multinomial", "nucleus", "greedy"),
     train_df=None,
-    train_dist=None,
 ):
     print(f"Generating {n_seqs} eval sequences")
 
     gen_eval = {}
 
-    print(f"Loading {n_seqs} inference sequences...")
+    print(f"Loading {n_seqs} sequences for inference...")
     gen_srcs, _, gen_tgts = [], [], []
     while len(gen_srcs) < n_seqs:
         gs, gx, gt = parse_batch(next(iter(loader)), device=device)
@@ -387,7 +456,6 @@ def eval_gen_hits_encdec(
             part_2_pitch=part_2_pitch,
             resolution=resolution,
             train_df=train_df,
-            train_dist=train_dist,
         )
 
     return gen_eval
