@@ -1,7 +1,3 @@
-"""
-tokenizing hits in blocks of 2, 4 ticks. Think i'm done, just double-check and commit
-then look at distribution of 2, 4 block tokens
-"""
 import os
 import numpy as np
 import matplotlib.pyplot as plt

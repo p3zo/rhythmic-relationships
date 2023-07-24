@@ -7,7 +7,7 @@ import numpy as np
 import seaborn as sns
 from rhythmic_relationships import DATASETS_DIR, PLOTS_DIRNAME
 from rhythmic_relationships.data import PartPairDataset
-from rhythmic_relationships.parts import get_part_pairs
+from rhythmic_relationships.parts import PARTS, get_part_pairs
 from utils import save_fig
 
 sns.set_style("white")
@@ -35,7 +35,7 @@ if __name__ == "__main__":
     parser.add_argument(
         "--parts_to_analyze",
         nargs="+",
-        default=["Drums", "Piano", "Guitar", "Bass"],
+        default=PARTS,
         help="Names of the parts to analyze",
     )
     parser.add_argument(
