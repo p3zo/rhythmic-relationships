@@ -1,3 +1,4 @@
+import itertools
 import sys
 import warnings
 from collections import defaultdict
@@ -201,11 +202,11 @@ def slice_midi(
         n_beat_bars=n_beat_bars,
     )
 
-    max_melody_rest_ticks = max_melody_rests * resolution
+    n_ticks_seg = resolution * n_beat_bars * seg_size
+    n_ticks_max_melody_rest = max_melody_rests * resolution
 
-    # Initialize output objects
-    n_seg_ticks = resolution * n_beat_bars * seg_size
-    seg_part_reprs = defaultdict(list)
+    # Initialize output object
+    segments = defaultdict(list)
 
     for track in tracks:
         part = get_part_from_program(track["program"])
@@ -225,11 +226,11 @@ def slice_midi(
             seg_onset_roll = track["onset_roll"][start:end]
 
             # Skip segments that don't have the target number of beats
-            if len(seg_onset_roll) != n_seg_ticks:
+            if len(seg_onset_roll) != n_ticks_seg:
                 continue
 
             if part != "Drums" and not onset_chroma_is_monpohonic(
-                seg_onset_chroma, min_melody_pitches, max_melody_rest_ticks
+                seg_onset_chroma, min_melody_pitches, n_ticks_max_melody_rest
             ):
                 continue
 
@@ -259,9 +260,9 @@ def slice_midi(
 
                 seg_reprs.append(track[representation][start:end])
 
-            seg_part_reprs[f"{seg_ix}_{part}"].append(np.array(seg_reprs, dtype=object))
+            segments[f"{seg_ix}_{part}"].append(np.array(seg_reprs, dtype=object))
 
-    return seg_part_reprs
+    return segments
 
 
 def get_pmid_segment_reprs(pmid, segment_id, parts):
@@ -582,7 +583,10 @@ def write_midi_from_roll_list(
 ):
     """Combines a list of piano rolls into a single multi-track MIDI file"""
     pmid = get_pretty_midi_from_roll_list(
-        roll_list, resolution=resolution, binary=binary, parts=parts
+        roll_list,
+        resolution=resolution,
+        binary=binary,
+        parts=parts,
     )
     pmid.write(outpath)
     logger.info(f"Saved {outpath}")
@@ -670,7 +674,9 @@ def get_roll_from_hits(hits, pitch=48, resolution=4):
 
 
 def write_midi_from_hits(hits, outpath, pitch=48, part="", resolution=4, name=""):
-    pmid = get_pmid_from_hits(hits, pitch=pitch, part=part, resolution=resolution, name=name)
+    pmid = get_pmid_from_hits(
+        hits, pitch=pitch, part=part, resolution=resolution, name=name
+    )
     pmid.write(outpath)
     logger.debug(f"Saved {outpath}")
 

@@ -3,6 +3,8 @@ import numpy as np
 
 from rhythmic_relationships.parts import PARTS
 
+## ROLLS
+
 
 def get_vocab(part, use_padding=False):
     if part not in PARTS:
@@ -45,8 +47,27 @@ def get_vocab(part, use_padding=False):
     return itot
 
 
+def get_vocab_encoder_decoder(part):
+    if part not in PARTS:
+        raise ValueError(f"part must be one of {PARTS}")
+
+    itot = get_vocab(part)
+    ttoi = {v: k for k, v in itot.items()}
+
+    # encoder: takes a list of tokens, output a list of integers
+    encode = lambda s: [ttoi[c] for c in s]
+
+    # decoder: takes a list of integers, output a list of tokens
+    decode = lambda l: [itot[i] for i in l]
+
+    return encode, decode
+
+
 def get_vocab_sizes():
     return {part: len(get_vocab(part)) for part in PARTS}
+
+
+## HITS
 
 
 def get_hits_vocab():
@@ -77,19 +98,3 @@ def decode_hits(tokenized_hits, block_size=1):
     decoded = [tokens[i] for i in tokenized_hits]
     decoded_flat = list(itertools.chain(*[[int(i) for i in list(j)] for j in decoded]))
     return [hits_vocab[i] for i in decoded_flat]
-
-
-def get_vocab_encoder_decoder(part):
-    if part not in PARTS:
-        raise ValueError(f"part must be one of {PARTS}")
-
-    itot = get_vocab(part)
-    ttoi = {v: k for k, v in itot.items()}
-
-    # encoder: takes a list of tokens, output a list of integers
-    encode = lambda s: [ttoi[c] for c in s]
-
-    # decoder: takes a list of integers, output a list of tokens
-    decode = lambda l: [itot[i] for i in l]
-
-    return encode, decode

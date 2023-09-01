@@ -127,6 +127,8 @@ def get_roll_from_sequence(seq, part):
     roll : np.array
         A piano roll representation of the sequence.
     """
+    # TODO: add block_size param
+
     if not isinstance(seq, np.ndarray):
         raise ValueError("Sequence must be a numpy array")
 
@@ -147,8 +149,7 @@ def get_roll_from_sequence(seq, part):
         return roll
 
     # Replace padding with rests
-    pad_ix = encode(["pad"])[0]
-    seq[seq == pad_ix] = encode(["rest"])[0]
+    seq[seq == encode(["start"])[0]] = encode(["rest"])[0]
 
     decoded = decode(seq)
 
@@ -235,7 +236,7 @@ class PartPairDataset(Dataset):
         repr_2,
         datasets_dir=DATASETS_DIR,
         block_size=1,
-        tokenize_rolls=False,
+        tokenize_rolls=True,
     ):
         if part_1 not in PARTS or part_2 not in PARTS:
             raise ValueError(f"Part names must be one of: {PARTS}")
@@ -326,6 +327,10 @@ class PartPairDataset(Dataset):
             pair_df, in which each row is a p1_p2 pair with all descriptors for both parts
             stacked_df: in which the part dfs are vertically stacked
         """
+        if self.repr_1 != "descriptors" or self.repr_2 != "descriptors":
+            raise ValueError(
+                "This method is only implemented for descriptor representations"
+            )
 
         n_segments = self.__len__()
 
@@ -360,10 +365,8 @@ class PartPairDataset(Dataset):
         xdf = pd.DataFrame(x_reprs)
         ydf = pd.DataFrame(y_reprs)
 
-        if self.repr_1 == "descriptors":
-            xdf.columns = rtb.DESCRIPTOR_NAMES
-        if self.repr_2 == "descriptors":
-            ydf.columns = rtb.DESCRIPTOR_NAMES
+        xdf.columns = rtb.DESCRIPTOR_NAMES
+        ydf.columns = rtb.DESCRIPTOR_NAMES
 
         # Each row is a p1_p2 pair with all descriptors for both parts
         pair_df = xdf.join(ydf, lsuffix=f"_{self.part_1}", rsuffix=f"_{self.part_2}")
@@ -385,6 +388,9 @@ class PartPairDataset(Dataset):
             return pair_df.sample(frac=1), stacked_df.sample(frac=1)
 
         return pair_df, stacked_df
+
+    def get_pair_descriptor_df(self):
+        return pd.DataFrame()
 
 
 class PartPairDatasetRSP(Dataset):

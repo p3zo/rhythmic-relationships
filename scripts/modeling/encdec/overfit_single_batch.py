@@ -6,19 +6,18 @@ import pandas as pd
 import seaborn as sns
 import torch
 import yaml
-from torch.utils.data import DataLoader, random_split
-from tqdm import tqdm
-
-from rhythmic_relationships.model_utils import get_model_name, load_config, save_model
 from rhythmic_relationships import DATASETS_DIR, MODELS_DIR
 from rhythmic_relationships.data import (
     PartPairDatasetSequential,
     get_roll_from_sequence,
 )
-from rhythmic_relationships.models.encdec import TransformerEncoderDecoder
 from rhythmic_relationships.io import write_midi_from_roll
-from rhythmic_relationships.vocab import get_vocab_sizes, get_vocab_encoder_decoder
+from rhythmic_relationships.model_utils import get_model_name, load_config, save_model
+from rhythmic_relationships.models.encdec import TransformerEncoderDecoder
+from rhythmic_relationships.vocab import get_vocab_encoder_decoder, get_vocab_sizes
 from rhythmtoolbox import pianoroll2descriptors
+from torch.utils.data import DataLoader, random_split
+from tqdm import tqdm
 
 DEFAULT_CONFIG_FILEPATH = "config.yml"
 

@@ -1,38 +1,41 @@
 data:
-  dataset_name: "lmdc_17243_2bar_4res"
-  part_1: "Melody"
-  part_2: "Bass"
+  dataset_name: "lmdf_178561_2bar_4res"
+  part_1: "Bass"
+  part_2: "Melody"
   repr_1: "onset_roll"
   repr_2: "onset_roll"
-  context_len: 33
+  block_size: 1
+
+model:
+  enc_n_embed: 144
+  enc_n_layer: 8
+  enc_n_head: 4
+  enc_dropout: 0.1
+  dec_n_embed: 144
+  dec_n_layer: 8
+  dec_n_head: 4
+  dec_dropout: 0.1
 
 splits:
   train: 0.8
   val: 0.1
   test: 0.1
 
-model:
-  enc_n_embed: 132
-  enc_n_layer: 15
-  enc_n_head: 5
-  enc_d_ff: 480
-  enc_dropout: 0.1
-  dec_n_embed: 132
-  dec_n_layer: 15
-  dec_n_head: 3
-  dec_d_ff: 480
-  dec_dropout: 0.1
-
-sequence_len: 32
-resolution: 4
-loss_reduction: 'mean'
-clip_gradients: False
-num_epochs: 5
-batch_size: 8
-lr: 1e-4
-weight_decay: 0.0001
-n_eval_iters: 25
 seed: 13
+sequence_len: 32
+n_epochs: 1
+batch_size: 16
+
+lr: 1e-5
+loss_fn: "cross-entropy"
+loss_reduction: "mean"
+clip_gradients: False
+weight_decay: 0
+
+n_eval_iters: 100
 wandb: True
-bento: True
+bento: False
 checkpoints: True
+
+n_eval_seqs: 100
+eval_interval: 5000

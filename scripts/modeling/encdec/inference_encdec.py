@@ -4,8 +4,7 @@ import matplotlib.pyplot as plt
 import pandas as pd
 import seaborn as sns
 import torch
-from rhythmic_relationships.model_utils import load_model
-from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
+from rhythmic_relationships import CHECKPOINTS_DIRNAME, MODELS_DIR
 from rhythmic_relationships.data import (
     PartDataset,
     PartPairDataset,
@@ -13,6 +12,7 @@ from rhythmic_relationships.data import (
     tokenize_roll,
 )
 from rhythmic_relationships.io import write_midi_from_roll
+from rhythmic_relationships.model_utils import load_model
 from rhythmic_relationships.models.encdec import TransformerEncoderDecoder
 from rhythmic_relationships.vocab import get_vocab_encoder_decoder
 from rhythmtoolbox import pianoroll2descriptors
