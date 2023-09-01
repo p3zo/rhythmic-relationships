@@ -226,6 +226,34 @@ if __name__ == "__main__":
             os.makedirs(outdir)
         np.savez_compressed(outpath, **seg_part_reprs)
 
+        # # LEFT OFF: computing paired descriptors on onset_roll reprs.
+        # # Then add ability to load them in pairdataset class
+        # # Then compute a new dataset with them
+        # # Then use them in eval script
+        # pair_descs = {}
+        # for seg_ix in range(len(seg_iter)):
+        #     pair_descs[seg_ix] = {}
+        #
+        #     seg_part_keys = [i for i in segments if i.startswith(f'{seg_ix}_')]
+        #     ors = [
+        #         segments[i][0][representations.index("onset_roll")] for i in seg_part_keys
+        #     ]
+        #     or_pair_ixs = list(itertools.combinations(range(len(ors)), 2))
+        #     aa = (np.array(ors).sum(axis=2) > 1).astype(int)
+        #     for x, y in or_pair_ixs:
+        #         # a = (ors[x].sum(axis=1) > 1).astype(int)
+        #         # b = (ors[y].sum(axis=1) > 1).astype(int)
+        #         a = aa[x]
+        #         b = aa[y]
+        #         a = a[np.newaxis, ...]
+        #         b = b[np.newaxis, ...]
+        #         onset_balance = get_onset_balance(aa[x], aa[y])
+        #         antiphony = get_antiphony(aa[x], aa[y])
+        #         pair_descs[f"{x}_{y}"] = [onset_balance, antiphony]
+        #
+        #     pair_descs[seg_ix]["pair_descriptors"] = pair_descs
+
+
     # Save a file indicating which representations are included in the dataset
     with open(os.path.join(output_dir, REPRESENTATIONS_FILENAME), "w") as f:
         f.write(",".join(representations))

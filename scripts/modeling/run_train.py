@@ -15,9 +15,8 @@ DEVICE = torch.device(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    # parser.add_argument("--model", type=str, default="hits_encdec_polydrums")
-    parser.add_argument("--model", type=str, default="hits_encdec")
-    # parser.add_argument("--model", type=str, default="rsp_fc")
+    # parser.add_argument("--model", type=str, default="hits_encdec")
+    parser.add_argument("--model", type=str, default="encdec")
     parser.add_argument("--datasets_dir", type=str, default=DATASETS_DIR)
     parser.add_argument("--config_path", type=str, default=None)
     args = parser.parse_args()
@@ -32,13 +31,22 @@ if __name__ == "__main__":
     model_name = get_model_name()
     print(f"{model_name=}")
 
+    config = load_config(args.config_path)
+
     model_dir = os.path.join(MODELS_DIR, model_type, model_name)
+    if model_type in ["encdec", "hits_encdec"]:
+        model_dir = os.path.join(
+            MODELS_DIR,
+            model_type,
+            f"{config['data']['part_1']}_{config['data']['part_2']}",
+            model_name,
+        )
     if not os.path.isdir(model_dir):
         os.makedirs(model_dir)
 
     model_module = importlib.import_module(args.model)
     model_module.train(
-        config=load_config(args.config_path),
+        config=config,
         model_name=model_name,
         datasets_dir=args.datasets_dir,
         model_dir=model_dir,

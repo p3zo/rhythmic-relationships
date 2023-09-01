@@ -1,5 +1,7 @@
-"""Compare training set descriptors to generated after each epoch"""
+"""Generate samples and compare them to the training set"""
+import glob
 import os
+import sys
 
 import numpy as np
 import pandas as pd
@@ -24,7 +26,7 @@ from rhythmic_relationships.models.hits_encdec import TransformerEncoderDecoder
 from rhythmic_relationships.vocab import get_hits_vocab
 from rhythmtoolbox import pianoroll2descriptors
 from torch.utils.data import DataLoader
-from train import compute_loss, parse_batch
+from utils import compute_loss, parse_batch
 
 DEVICE = torch.device(
     "mps"
@@ -293,12 +295,8 @@ def get_sampler_eval(
     if sampler == "nucleus":
         title_suffix += f" {nucleus_p=}"
 
-    ## START
     train_gen_df = pd.concat((train_df, gen_df))
     target_gen_df = pd.concat((target_df, gen_df))
-
-    train_oa_kld_dists = get_oa_kld_dists(gen_df=gen_df, ref_df=train_df)
-    # tgt_oa_kld_dists = get_oa_kld_dists(gen_df=gen_df, ref_df=target_df)
 
     for col in list(target_df.columns):
         print(
@@ -323,7 +321,6 @@ def get_sampler_eval(
         ref_df=gen_df,
         model_name=model_name,
         outdir=eval_dir,
-        # label="Target",
         label="Train",
         title_suffix=title_suffix,
         filename_suffix=f"rel_{sampler}_train_vs_gen",
@@ -335,36 +332,9 @@ def get_sampler_eval(
         model_name=model_name,
         outdir=eval_dir,
         label="Target",
-        # label="Train",
         title_suffix=title_suffix,
         filename_suffix=f"rel_{sampler}_target_vs_gen",
     )
-
-    ## END
-
-    # # Target
-    # # TODO: change labels back to target
-    # mk_descriptor_dist_plot(
-    #     gen_df=gen_df,
-    #     ref_df=target_df,
-    #     model_name=model_name,
-    #     outdir=eval_dir,
-    #     # label="Target",
-    #     label="Train",
-    #     title_suffix=title_suffix,
-    #     filename_suffix=f"{sampler}_tgt_gen",
-    # )
-
-    # Compute distribution comparison metrics
-    # tgt_oa_kld_dists = get_oa_kld_dists(gen_df=gen_df, ref_df=target_df)
-    # mk_oa_kld_plots(
-    #     tgt_oa_kld_dists,
-    #     # label="target",
-    #     label="Train",
-    #     model_name=model_name,
-    #     eval_dir=eval_dir,
-    #     sampler=sampler,
-    # )
 
     if train_df is not None:
         mk_descriptor_dist_plot(
@@ -541,9 +511,15 @@ if __name__ == "__main__":
 
     checkpoint_num = None
 
-    n_training_obs = 10000
-    n_eval_seqs = 100
-    pitch = 72
+    # Option to load existing samples rather than generate new ones
+    # existing_sample_dir will default to the model's gen dir if None
+    load_existing = False
+    existing_sample_dir = None
+
+    # n_training_obs = 10000
+    # n_eval_seqs = 100
+    n_training_obs = 500
+    n_eval_seqs = 10
     resolution = 4
     temperature = 1
     nucleus_p = 0.92
@@ -555,9 +531,11 @@ if __name__ == "__main__":
     if not os.path.isdir(eval_dir):
         os.makedirs(eval_dir)
 
-    gen_dir = os.path.join(model_dir, "inference")
+    gen_dir = os.path.join(eval_dir, "inference")
     if not os.path.isdir(gen_dir):
         os.makedirs(gen_dir)
+
+    existing_sample_dir = existing_sample_dir or gen_dir
 
     device = DEVICE
 
@@ -584,20 +562,26 @@ if __name__ == "__main__":
         axis=1,
     ).dropna(how="all", axis=1)
 
-    # Load data for inference
-    # TODO: load only data from val split
-    dataset = PartPairDataset(**config["data"])
-    loader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
+    if not load_existing:
+        # Load data for inference
+        # TODO: load only data from val split
+        dataset = PartPairDataset(**config["data"])
+        loader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
 
-    # TODO: option to load previous samples
-    sampled = eval_gen_hits_encdec(
-        model=model,
-        config=config,
-        loader=loader,
-        n_seqs=n_eval_seqs,
-        eval_dir=eval_dir,
-        model_name=model_name,
-        device=device,
-        train_df=dataset_df,
-        samplers=samplers,
-    )
+        sampled = eval_gen_hits_encdec(
+            model=model,
+            config=config,
+            loader=loader,
+            n_seqs=n_eval_seqs,
+            eval_dir=eval_dir,
+            model_name=model_name,
+            device=device,
+            train_df=dataset_df,
+            samplers=samplers,
+        )
+        # sys.exit(0)
+
+    # # Load existing samples
+    # existing_sample_filepaths = glob.glob(os.path.join(existing_sample_dir, '*.mid'))
+    # nucleus_src_sample_filepaths = [i for i in existing_sample_filepaths if 'nucleus_src' in i]
+    # nucleus_gen_sample_filepaths = [i for i in existing_sample_filepaths if 'nucleus_gen' in i]

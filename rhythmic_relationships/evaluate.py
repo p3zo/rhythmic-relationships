@@ -6,6 +6,13 @@ import pandas as pd
 import seaborn as sns
 from scipy import integrate, stats
 from scipy.spatial import distance_matrix
+from matplotlib import rcParams
+
+
+sns.set_style("white")
+sns.set_context("paper")
+
+rcParams["figure.figsize"] = 11.7, 8.27  # fig size in inches
 
 
 def get_flat_nonzero_dissimilarity_matrix(x, y=None):
@@ -118,14 +125,14 @@ def mk_descriptor_dist_plot(
         return 0, 1
 
     id_col = "Gen"
-    ref_df[id_col] = f"Gen"
-    gen_df[id_col] = f"{label}"
+    ref_df[id_col] = "Train"
+    gen_df[id_col] = "Gen"
     # ref_df[id_col] = f"{label} (n={len(ref_df)})"
     # gen_df[id_col] = f"Gen (n={len(gen_df)})"
     feature_cols = [c for c in ref_df.columns if c != id_col]
 
     # Combine the generated with the ground truth
-    compare_df = pd.concat([gen_df, ref_df])
+    compare_df = pd.concat([ref_df, gen_df])
 
     # Scale the feature columns to [0, 1]
     compare_df_scaled = (compare_df[feature_cols] - compare_df[feature_cols].min()) / (
@@ -143,7 +150,7 @@ def mk_descriptor_dist_plot(
     plt.ylabel("")
     plt.xlabel("")
     plt.yticks([])
-    plt.xticks(rotation=90)
+    plt.xticks()
     title = f"{model_name}"
     if checkpoint_num:
         title += f" checkpoint {checkpoint_num}"
@@ -151,8 +158,8 @@ def mk_descriptor_dist_plot(
         title += title_suffix
     plt.title(title)
     plt.legend(
-        loc="upper center",
-        bbox_to_anchor=(0.92, 1.2),
+        loc="upper left",
+        # bbox_to_anchor=(0.92, 1.2),
         fancybox=True,
         shadow=False,
         ncol=1,
@@ -177,7 +184,7 @@ def mk_descriptor_dist_plot(
     plt.ylabel("")
     plt.xlabel("")
     plt.yticks([])
-    plt.xticks(rotation=90)
+    plt.xticks()
     title = f"{model_name}"
     if checkpoint_num:
         title += f" checkpoint {checkpoint_num}"
@@ -185,81 +192,14 @@ def mk_descriptor_dist_plot(
         title += title_suffix
     plt.title(title)
     plt.legend(
-        loc="upper center",
-        bbox_to_anchor=(0.92, 1.2),
+        loc="upper left",
+        #         bbox_to_anchor=(0.92, 1.2),
         fancybox=True,
         shadow=False,
         ncol=1,
     )
     plt.tight_layout()
     filename = "dist-comparison-violin"
-    if filename_suffix:
-        filename += f"-{filename_suffix}"
-    outpath = os.path.join(outdir, f"{filename}.png")
-    plt.savefig(outpath)
-    plt.clf()
-    print(f"Saved {outpath}")
-
-    ref_df.drop(id_col, axis=1, inplace=True)
-    gen_df.drop(id_col, axis=1, inplace=True)
-
-# LEFT OFF: write this
-def mk_descriptor_intra_inter_set_dist_plots(
-    gen_df,
-    ref_df,
-    model_name,
-    outdir,
-    label="Train",
-    checkpoint_num=None,
-    id_col="Gen",
-    title_suffix=None,
-    filename_suffix=None,
-):
-    if len(ref_df) <= 2:
-        print("WARNING: n_eval_seqs must be > 1 for oa and kld computation")
-        return 0, 1
-
-    id_col = "Gen"
-    ref_df[id_col] = f"{label} (n={len(ref_df)})"
-    gen_df[id_col] = f"Gen (n={len(gen_df)})"
-    feature_cols = [c for c in ref_df.columns if c != id_col]
-
-    # Combine the generated with the ground truth
-    compare_df = pd.concat([gen_df, ref_df])
-
-    # Scale the feature columns to [0, 1]
-    compare_df_scaled = (compare_df[feature_cols] - compare_df[feature_cols].min()) / (
-        compare_df[feature_cols].max() - compare_df[feature_cols].min()
-    )
-    compare_df_scaled[id_col] = compare_df[id_col]
-
-    # Asymmetrical violin plot of rel distributions for all descriptors
-    sns.violinplot(
-        data=pd.melt(compare_df_scaled, id_vars=id_col),
-        x="variable",
-        y="value",
-        hue=id_col,
-        split=True,
-    )
-    plt.ylabel("")
-    plt.xlabel("")
-    plt.yticks([])
-    plt.xticks(rotation=90)
-    title = f"{model_name}"
-    if checkpoint_num:
-        title += f" checkpoint {checkpoint_num}"
-    if title_suffix:
-        title += title_suffix
-    plt.title(title)
-    plt.legend(
-        loc="upper center",
-        bbox_to_anchor=(0.92, 1.2),
-        fancybox=True,
-        shadow=False,
-        ncol=1,
-    )
-    plt.tight_layout()
-    filename = "rel-dist-comparison-violin"
     if filename_suffix:
         filename += f"-{filename_suffix}"
     outpath = os.path.join(outdir, f"{filename}.png")

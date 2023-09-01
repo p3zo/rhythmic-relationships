@@ -6,7 +6,6 @@ import pandas as pd
 import torch
 import wandb
 import yaml
-from eval import evaluate_hits_encdec
 from rhythmic_relationships import DATASETS_DIR, MODELS_DIR, WANDB_PROJECT_NAME
 from rhythmic_relationships.data import PartPairDataset
 from rhythmic_relationships.model_utils import (
@@ -21,6 +20,9 @@ from rhythmic_relationships.vocab import get_hits_vocab_size
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
+from eval import evaluate_hits_encdec
+from utils import compute_loss, parse_batch
+
 DEFAULT_CONFIG_FILEPATH = "config.yml"
 
 DEVICE = torch.device(
@@ -30,18 +32,6 @@ DEVICE = torch.device(
     if torch.cuda.device_count() > 0
     else torch.device("cpu")
 )
-
-
-def parse_batch(batch, device):
-    xb, yb = batch
-    yb_shifted = torch.roll(yb, 1)
-    yb_shifted[:, 0] = torch.zeros((yb.shape[0],))
-    return xb.to(device), yb_shifted.to(device), yb.to(device)
-
-
-def compute_loss(logits, y, loss_fn):
-    B, T, C = logits.shape
-    return loss_fn(logits.view(B * T, C), y.view(y.shape[0] * y.shape[1]))
 
 
 def train_hits_encdec(
