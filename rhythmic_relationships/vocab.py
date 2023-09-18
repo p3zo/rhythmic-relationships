@@ -3,10 +3,8 @@ import numpy as np
 
 from rhythmic_relationships.parts import PARTS
 
-## ROLLS
-
-
 def get_vocab(part, use_padding=False):
+    """Build the vocabulary used for onset rolls of a given part"""
     if part not in PARTS:
         raise ValueError(f"part must be one of {PARTS}")
 
@@ -19,6 +17,16 @@ def get_vocab(part, use_padding=False):
         patterns = [
             "".join([str(j) for j in i])
             for i in list(itertools.product([0, 1], repeat=9))
+        ]
+
+        itot.update({ix + len(itot): p for ix, p in enumerate(patterns)})
+
+        return itot
+
+    if part == "Harmony":
+        patterns = [
+            "".join([str(j) for j in i])
+            for i in list(itertools.product([0, 1], repeat=12))
         ]
 
         itot.update({ix + len(itot): p for ix, p in enumerate(patterns)})
@@ -48,6 +56,7 @@ def get_vocab(part, use_padding=False):
 
 
 def get_vocab_encoder_decoder(part):
+    """Get an encoder/decoder for the vocabulary used for onset rolls of a given part"""
     if part not in PARTS:
         raise ValueError(f"part must be one of {PARTS}")
 
@@ -64,10 +73,8 @@ def get_vocab_encoder_decoder(part):
 
 
 def get_vocab_sizes():
+    """Get the sizes of the vocabularies used for onset rolls"""
     return {part: len(get_vocab(part)) for part in PARTS}
-
-
-## HITS
 
 
 def get_hits_vocab():
@@ -75,7 +82,7 @@ def get_hits_vocab():
 
 
 def get_hits_vocab_size(block_size):
-    # TODO: make programatically
+    # TODO: make programmatically
     sizes = {1: 6, 2: 31, 3: 1081, 4: 1399681}
     return sizes[block_size]
 

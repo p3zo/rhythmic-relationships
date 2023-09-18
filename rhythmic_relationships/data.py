@@ -74,9 +74,11 @@ def tokenize_hits(hits, block_size=1):
 def tokenize_roll(roll, part, add_start=False):
     encode, _ = get_vocab_encoder_decoder(part)
 
-    if part == "Drums":
-        if len(roll[0]) != 9:
+    if part in ["Drums", "Harmony"]:
+        if part == "Drums" and len(roll[0]) != 9:
             raise Exception("Representation must be drum roll for Drums part")
+        elif len(roll[0]) != 12:
+            raise Exception("Representation must be chroma for Harmony part")
         binarized = (roll > 0).astype(int)
         patterns = ["".join(i.astype(str)) for i in binarized]
         if add_start:
@@ -140,12 +142,16 @@ def get_roll_from_sequence(seq, part):
 
     roll = np.zeros((len(seq), 128), np.uint8)
 
-    if part == "Drums":
+    if part in ["Drums", "Harmony"]:
         decoded = decode(seq)
         for tick, token in enumerate(decoded):
             if token == "start":
                 continue
-            roll[tick, DRUM_ROLL_VOICES] = [int(i) for i in token]
+            if part == "Drums":
+                roll[tick, DRUM_ROLL_VOICES] = [int(i) for i in token]
+            elif part == "Harmony":
+                # Place notes in the octave C3-C4
+                roll[tick, list(range(48, 60))] = [int(i) for i in token]
         return roll
 
     # Replace padding with rests
@@ -206,6 +212,69 @@ def get_hits_from_hits_seq(seq, part, block_size=1, pitch=60, verbose=False):
         print(st)
 
     return out
+
+
+def get_sequences(tokenized, context_len, pad_ix):
+    """Partitions a tokenized segment into a recurrent sequence and returns X, Y pairs."""
+    ctx, tgt = [], []
+
+    for t in range(len(tokenized)):
+        from_ix = 0
+        y_from_ix = from_ix
+        to_ix = t
+
+        if t == context_len:
+            y_from_ix = from_ix + 1
+        if t > context_len:
+            from_ix = t - context_len
+            y_from_ix = from_ix + 1
+
+        context = tokenized[from_ix:to_ix]
+        target = tokenized[y_from_ix : to_ix + 1]
+
+        if len(context) < context_len:
+            c_pad_len = context_len - len(context)
+            context = context + [pad_ix] * c_pad_len
+
+        if len(target) < context_len:
+            t_pad_len = context_len - len(target)
+            target = target + [pad_ix] * t_pad_len
+
+        ctx.append(context)
+        tgt.append(target)
+
+    return ctx, tgt
+
+
+def get_pair_sequences(p1_tokenized, p2_tokenized, context_len, pad_ix=None):
+    """Partitions a pair of tokenized segments into recurrent sequences.
+
+    Returns X, Y pairs where X is always the full src sequence and Y is every shifted position of the tgt sequence.
+
+    Optionally pad target to create pairs that are always the same length.
+    """
+    X, Y = [], []
+
+    assert isinstance(p1_tokenized, list) and isinstance(p2_tokenized, list)
+
+    for t in range(len(p2_tokenized)):
+        from_ix = 0
+        to_ix = t + 1
+
+        if t >= context_len:
+            from_ix = to_ix - context_len
+
+        target = p2_tokenized[from_ix:to_ix]
+
+        # Pad target
+        if pad_ix is not None and len(target) < context_len:
+            t_pad_len = context_len - len(target)
+            target = target + [pad_ix] * t_pad_len
+
+        X.append(p1_tokenized)
+        Y.append(target)
+
+    return X, Y
 
 
 class PartPairDataset(Dataset):
@@ -534,6 +603,7 @@ class PartDataset(Dataset):
         representation,
         datasets_dir=DATASETS_DIR,
         block_size=1,
+        tokenize_rolls=True,
     ):
         if part not in PARTS:
             raise ValueError(f"Part must be one of: {PARTS}")
@@ -559,6 +629,7 @@ class PartDataset(Dataset):
         self.loaded_segments = []
 
         self.block_size = block_size
+        self.tokenize_rolls = tokenize_rolls
 
     def __len__(self):
         return len(self.part_df)
@@ -576,8 +647,12 @@ class PartDataset(Dataset):
         if self.representation == "hits":
             tokenized = tokenize_hits(seg_repr, block_size=self.block_size)
             return torch.LongTensor(tokenized)
+        else:
+            if self.tokenize_rolls:
+                seg_repr = tokenize_roll(seg_repr, part=self.part)
+                return torch.LongTensor(seg_repr)
 
-        return torch.from_numpy(seg_repr).to(torch.float32)
+        return torch.from_numpy(seg_repr.astype(np.float32))
 
     def as_df(self, shuffle=False, subset=None):
         """Returns the entire dataset in a dataframe. Useful for analysis."""
@@ -613,69 +688,6 @@ class PartDataset(Dataset):
             return df.sample(frac=1)
 
         return df
-
-
-def get_sequences(tokenized, context_len, pad_ix):
-    """Partitions a tokenized segment into a recurrent sequence and returns X, Y pairs."""
-    ctx, tgt = [], []
-
-    for t in range(len(tokenized)):
-        from_ix = 0
-        y_from_ix = from_ix
-        to_ix = t
-
-        if t == context_len:
-            y_from_ix = from_ix + 1
-        if t > context_len:
-            from_ix = t - context_len
-            y_from_ix = from_ix + 1
-
-        context = tokenized[from_ix:to_ix]
-        target = tokenized[y_from_ix : to_ix + 1]
-
-        if len(context) < context_len:
-            c_pad_len = context_len - len(context)
-            context = context + [pad_ix] * c_pad_len
-
-        if len(target) < context_len:
-            t_pad_len = context_len - len(target)
-            target = target + [pad_ix] * t_pad_len
-
-        ctx.append(context)
-        tgt.append(target)
-
-    return ctx, tgt
-
-
-def get_pair_sequences(p1_tokenized, p2_tokenized, context_len, pad_ix=None):
-    """Partitions a pair of tokenized segments into recurrent sequences.
-
-    Returns X, Y pairs where X is always the full src sequence and Y is every shifted position of the tgt sequence.
-
-    Optionally pad target to create pairs that are always the same length.
-    """
-    X, Y = [], []
-
-    assert isinstance(p1_tokenized, list) and isinstance(p2_tokenized, list)
-
-    for t in range(len(p2_tokenized)):
-        from_ix = 0
-        to_ix = t + 1
-
-        if t >= context_len:
-            from_ix = to_ix - context_len
-
-        target = p2_tokenized[from_ix:to_ix]
-
-        # Pad target
-        if pad_ix is not None and len(target) < context_len:
-            t_pad_len = context_len - len(target)
-            target = target + [pad_ix] * t_pad_len
-
-        X.append(p1_tokenized)
-        Y.append(target)
-
-    return X, Y
 
 
 class PartPairDatasetSequential(Dataset):

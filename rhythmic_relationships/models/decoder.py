@@ -11,18 +11,23 @@ class TransformerDecoder(nn.Module):
         n_embed,
         dropout,
         vocab_size,
-        sequence_len,
+        context_len,
     ):
         super().__init__()
 
         self.decoder = TransformerWrapper(
             num_tokens=vocab_size,
-            max_seq_len=sequence_len,
+            max_seq_len=context_len,
+            l2norm_embed=True,
             attn_layers=Decoder(
                 dim=n_embed,
                 depth=n_layer,
                 heads=n_head,
                 layer_dropout=dropout,
+                rotary_pos_emb=True,
+                ff_glu=True,
+                ff_no_bias=True,
+                attn_one_kv_head=True,  # only use one head for k/v, but multi-headed q
             ),
         )
 

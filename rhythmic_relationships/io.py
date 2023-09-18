@@ -6,11 +6,7 @@ from collections import defaultdict
 import numpy as np
 import pretty_midi as pm
 from rhythmic_relationships import logger
-from rhythmic_relationships.parts import (
-    PARTS,
-    get_part_from_program,
-    get_program_from_part,
-)
+from rhythmic_relationships.parts import get_part_from_program, get_program_from_part
 from rhythmic_relationships.representations import REPRESENTATIONS, get_representations
 from rhythmtoolbox import pianoroll2descriptors
 
@@ -153,6 +149,7 @@ def slice_midi(
     min_melody_pitches=2,
     max_melody_rests=4,
     representations=REPRESENTATIONS,
+    polyphonic=False,
 ):
     """Slice a midi file and compute several representations for each segment.
 
@@ -185,6 +182,9 @@ def slice_midi(
         representations: list
             A list of representations to compute for each segment.
 
+        polyphonic: bool
+            If true, use the Harmony part instead of the Melody part.
+
     Returns
 
         seg_part_reprs, defaultdict(list)
@@ -209,7 +209,7 @@ def slice_midi(
     segments = defaultdict(list)
 
     for track in tracks:
-        part = get_part_from_program(track["program"])
+        part = get_part_from_program(track["program"], polyphonic=polyphonic)
         if track["is_drum"]:
             part = "Drums"
         if not part:
@@ -229,7 +229,7 @@ def slice_midi(
             if len(seg_onset_roll) != n_ticks_seg:
                 continue
 
-            if part != "Drums" and not onset_chroma_is_monpohonic(
+            if part in ["Melody", "Bass"] and not onset_chroma_is_monpohonic(
                 seg_onset_chroma, min_melody_pitches, n_ticks_max_melody_rest
             ):
                 continue
@@ -238,7 +238,6 @@ def slice_midi(
             seg_reprs = []
 
             for representation in representations:
-
                 if representation == "descriptors":
                     descs = np.array(
                         list(
@@ -301,7 +300,13 @@ def get_pmid_segment_reprs(pmid, segment_id, parts):
 
 
 def get_pmid_segment(
-    pmid, segment_num, seg_size=1, resolution=4, n_beat_bars=4, parts=None
+    pmid,
+    segment_num,
+    seg_size=1,
+    resolution=4,
+    n_beat_bars=4,
+    parts=None,
+    polyphonic=False,
 ):
     """Get a segment of a midi file as a PrettyMIDI object.
 
@@ -334,8 +339,8 @@ def get_pmid_segment(
 
     seg_start, seg_end = seg_iter[segment_num]
 
-    # Sort instruments by part index for convenience
-    pmid.instruments.sort(key=lambda x: PARTS.index(get_part_from_program(x.program)))
+    # TODO: Sort instruments by part index for convenience
+    # pmid.instruments.sort(key=lambda x: PARTS.index(get_part_from_program(x.program)))
 
     pmid_segment = pm.PrettyMIDI()
 
@@ -344,8 +349,7 @@ def get_pmid_segment(
         if len(instrument.notes) == 0:
             continue
 
-        # Note: this swap may look redundant, but it keeps the program numbers consistent per part
-        part = get_part_from_program(instrument.program)
+        part = get_part_from_program(instrument.program, polyphonic=polyphonic)
         if instrument.is_drum:
             part = "Drums"
         program = get_program_from_part(part)
@@ -579,7 +583,7 @@ def write_midi_from_roll(
 
 
 def write_midi_from_roll_list(
-    roll_list, outpath, resolution=4, binary=False, parts=None
+    roll_list, outpath, resolution=4, binary=False, parts=None, onset_roll=False
 ):
     """Combines a list of piano rolls into a single multi-track MIDI file"""
     pmid = get_pretty_midi_from_roll_list(
@@ -587,6 +591,7 @@ def write_midi_from_roll_list(
         resolution=resolution,
         binary=binary,
         parts=parts,
+        onset_roll=onset_roll,
     )
     pmid.write(outpath)
     logger.info(f"Saved {outpath}")

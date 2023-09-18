@@ -3,7 +3,7 @@
 ## Environment
 
 - Install [PyTorch](https://pytorch.org/get-started/locally/) according to your OS and GPU.
-- Install this repo. Remove the `[experimental]` suffix if aren't planning to do any development.
+- Install this repo. Remove the `[experimental]` suffix if you aren't planning to do any development.
 
 ```bash
 pip install -e .[experimental]

@@ -24,13 +24,7 @@ PROGRAM_CATEGORIES = {
 # In the General MIDI spec, drums are on a separate MIDI channel (10)
 INSTRUMENTS = ["Drums"] + list(PROGRAM_CATEGORIES.values())
 
-"""
-We adopt the parts of MusicVAE [Roberts et al, 2018] which defines three parts to model multi-stream music. We also add Synth Lead [81, 88] to the Melody part. The three parts are:
-    1. Drums (channel 10)
-    2. Bass (programs [33, 40])
-    3. Melody (programs [1, 32], [81, 88])
-"""
-PARTS = ["Drums", "Bass", "Melody"]
+PARTS = ["Drums", "Bass", "Melody", "Harmony"]
 
 
 def get_instrument_from_program(program):
@@ -42,12 +36,27 @@ def get_instrument_from_program(program):
     return PROGRAM_CATEGORIES[[p for p in PROGRAM_CATEGORIES if p <= program + 1][-1]]
 
 
-def get_part_from_program(program):
+def get_part_from_program(program, polyphonic=False):
     """Returns the part name associated with a given program number"""
     instrument = get_instrument_from_program(program)
+
+    melody_instruments = [
+        "Piano",
+        "Chromatic Percussion",
+        "Organ",
+        "Guitar",
+        "Synth Lead",
+    ]
+    harmony_instruments = melody_instruments + ["Orchestra Ensemble", "Synth Pad"]
+    harmony_instruments.remove("Synth Lead")
+
     part = None
-    if instrument in ["Piano", "Chromatic Percussion", "Organ", "Guitar", "Synth Lead"]:
+    if instrument in melody_instruments and instrument in harmony_instruments:
+        part = "Harmony" if polyphonic else "Melody"
+    elif instrument in melody_instruments:
         part = "Melody"
+    elif instrument in harmony_instruments:
+        part = "Harmony"
     elif instrument == "Bass":
         part = "Bass"
     return part
@@ -55,7 +64,7 @@ def get_part_from_program(program):
 
 def get_program_from_part(part):
     """Returns the program number associated with a given part name"""
-    if part in ["Drums", "Melody"]:
+    if part in ["Drums", "Melody", "Harmony"]:
         return 0
     return list(PROGRAM_CATEGORIES)[list(PROGRAM_CATEGORIES.values()).index(part)]
 
