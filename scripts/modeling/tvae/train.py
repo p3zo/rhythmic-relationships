@@ -19,6 +19,7 @@ from rhythmic_relationships.model_utils import (
     save_model,
     save_checkpoint,
 )
+from rhythmic_relationships.evaluate import temperatured_softmax, nucleus
 from rhythmic_relationships import DATASETS_DIR, MODELS_DIR
 from rhythmic_relationships.data import (
     PartPairDatasetSequential,
@@ -38,35 +39,6 @@ DEVICE = torch.device(
     if torch.cuda.device_count() > 0
     else torch.device("cpu")
 )
-
-
-def temperatured_softmax(logits, temperature):
-    try:
-        probs = np.exp(logits / temperature) / np.sum(np.exp(logits / temperature))
-        assert np.count_nonzero(np.isnan(probs)) == 0
-    except:
-        print("overflow detected, use 128-bit")
-        logits = logits.astype(np.float128)
-        probs = np.exp(logits / temperature) / np.sum(np.exp(logits / temperature))
-        probs = probs.astype(float)
-    return probs
-
-
-def nucleus(probs, p):
-    probs /= sum(probs)
-    sorted_probs = np.sort(probs)[::-1]
-    sorted_index = np.argsort(probs)[::-1]
-    cumsum_sorted_probs = np.cumsum(sorted_probs)
-    after_threshold = cumsum_sorted_probs > p
-    if sum(after_threshold) > 0:
-        last_index = np.where(after_threshold)[0][1]
-        candi_index = sorted_index[:last_index]
-    else:
-        candi_index = sorted_index[:3]  # just assign a value
-    candi_probs = np.array([probs[i] for i in candi_index], dtype=np.float64)
-    candi_probs /= sum(candi_probs)
-    word = np.random.choice(candi_index, size=1, p=candi_probs)[0]
-    return word
 
 
 def inference_latent_vanilla_truncate(
@@ -358,7 +330,6 @@ def train_mma(
             )
 
     return evals
-
 
 
 if __name__ == "__main__":

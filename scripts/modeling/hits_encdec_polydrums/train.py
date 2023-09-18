@@ -18,6 +18,8 @@ from rhythmic_relationships.evaluate import (
     compute_oa_and_kld,
     make_oa_kld_plot,
     mk_descriptor_dist_plot,
+    temperatured_softmax,
+    nucleus,
 )
 from rhythmic_relationships.io import (
     get_roll_from_hits,
@@ -57,35 +59,6 @@ def parse_batch(batch, device):
     yb_shifted = torch.roll(yb, 1)
     yb_shifted[:, 0] = torch.zeros((yb.shape[0],))
     return xb.to(device), yb_shifted.to(device), yb.to(device)
-
-
-def temperatured_softmax(logits, temperature):
-    try:
-        probs = np.exp(logits / temperature) / np.sum(np.exp(logits / temperature))
-        assert np.count_nonzero(np.isnan(probs)) == 0
-    except:
-        print("overflow detected, use 128-bit")
-        logits = logits.astype(np.float128)
-        probs = np.exp(logits / temperature) / np.sum(np.exp(logits / temperature))
-        probs = probs.astype(float)
-    return probs
-
-
-def nucleus(probs, p):
-    probs /= sum(probs)
-    sorted_probs = np.sort(probs)[::-1]
-    sorted_ixs = np.argsort(probs)[::-1]
-    cumsum_sorted_probs = np.cumsum(sorted_probs)
-    after_thresh = cumsum_sorted_probs > p
-    if after_thresh.sum() > 0:
-        last_index = np.where(after_thresh)[0][-1]
-        candidate_ixs = sorted_ixs[:last_index]
-    else:
-        # just assign a value
-        candidate_ixs = sorted_ixs[:3]
-    candidate_probs = np.array([probs[i] for i in candidate_ixs], dtype=np.float64)
-    candidate_probs /= sum(candidate_probs)
-    return np.random.choice(candidate_ixs, size=1, p=candidate_probs)[0]
 
 
 def compute_loss(logits, y, loss_fn):

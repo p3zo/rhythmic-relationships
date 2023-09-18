@@ -1,7 +1,5 @@
 """Generate samples and compare them to the training set"""
-import glob
 import os
-import sys
 
 import numpy as np
 import pandas as pd
@@ -19,6 +17,8 @@ from rhythmic_relationships.evaluate import (
     get_oa_kld_dists,
     make_oa_kld_plot,
     mk_descriptor_dist_plot,
+    nucleus,
+    temperatured_softmax,
 )
 from rhythmic_relationships.io import get_roll_from_hits, write_midi_from_hits
 from rhythmic_relationships.model_utils import load_model
@@ -35,35 +35,6 @@ DEVICE = torch.device(
     if torch.cuda.device_count() > 0
     else torch.device("cpu")
 )
-
-
-def temperatured_softmax(logits, temperature):
-    try:
-        probs = np.exp(logits / temperature) / np.sum(np.exp(logits / temperature))
-        assert np.count_nonzero(np.isnan(probs)) == 0
-    except:
-        print("overflow detected, use 128-bit")
-        logits = logits.astype(np.float128)
-        probs = np.exp(logits / temperature) / np.sum(np.exp(logits / temperature))
-        probs = probs.astype(float)
-    return probs
-
-
-def nucleus(probs, p):
-    probs /= sum(probs)
-    sorted_probs = np.sort(probs)[::-1]
-    sorted_ixs = np.argsort(probs)[::-1]
-    cumsum_sorted_probs = np.cumsum(sorted_probs)
-    after_thresh = cumsum_sorted_probs > p
-    if after_thresh.sum() > 0:
-        last_index = np.where(after_thresh)[0][-1]
-        candidate_ixs = sorted_ixs[:last_index]
-    else:
-        # just assign a value
-        candidate_ixs = sorted_ixs[:3]
-    candidate_probs = np.array([probs[i] for i in candidate_ixs], dtype=np.float64)
-    candidate_probs /= sum(candidate_probs)
-    return np.random.choice(candidate_ixs, size=1, p=candidate_probs)[0]
 
 
 def inference(
@@ -579,9 +550,3 @@ if __name__ == "__main__":
             train_df=dataset_df,
             samplers=samplers,
         )
-        # sys.exit(0)
-
-    # # Load existing samples
-    # existing_sample_filepaths = glob.glob(os.path.join(existing_sample_dir, '*.mid'))
-    # nucleus_src_sample_filepaths = [i for i in existing_sample_filepaths if 'nucleus_src' in i]
-    # nucleus_gen_sample_filepaths = [i for i in existing_sample_filepaths if 'nucleus_gen' in i]

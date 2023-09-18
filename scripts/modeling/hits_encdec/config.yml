@@ -32,10 +32,10 @@ loss_reduction: "mean"
 clip_gradients: False
 weight_decay: 0
 
-n_eval_iters: 100
 wandb: False
 bento: False
 checkpoints: True
 
+n_eval_iters: 100
 n_eval_seqs: 50
 eval_interval: 2500

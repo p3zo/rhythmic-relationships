@@ -13,6 +13,7 @@ from rhythmtoolbox import pianoroll2descriptors
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
+from rhythmic_relationships.evaluate import temperatured_softmax
 from rhythmic_relationships.model_utils import (
     get_model_name,
     load_config,
@@ -47,35 +48,6 @@ def parse_sequential_batch(batch, device):
     x = xb.to(device).view(xb.shape[0] * xb.shape[1], xb.shape[2])
     y = yb.to(device).view(yb.shape[0] * yb.shape[1], yb.shape[2])
     return x, y
-
-
-def temperatured_softmax(logits, temperature):
-    try:
-        probs = np.exp(logits / temperature) / np.sum(np.exp(logits / temperature))
-        assert np.count_nonzero(np.isnan(probs)) == 0
-    except:
-        print("overflow detected, use 128-bit")
-        logits = logits.astype(np.float128)
-        probs = np.exp(logits / temperature) / np.sum(np.exp(logits / temperature))
-        probs = probs.astype(float)
-    return probs
-
-
-def nucleus(probs, p):
-    probs /= sum(probs)
-    sorted_probs = np.sort(probs)[::-1]
-    sorted_index = np.argsort(probs)[::-1]
-    cumsum_sorted_probs = np.cumsum(sorted_probs)
-    after_threshold = cumsum_sorted_probs > p
-    if sum(after_threshold) > 0:
-        last_index = np.where(after_threshold)[0][1]
-        candi_index = sorted_index[:last_index]
-    else:
-        candi_index = sorted_index[:3]  # just assign a value
-    candi_probs = np.array([probs[i] for i in candi_index], dtype=np.float64)
-    candi_probs /= sum(candi_probs)
-    word = np.random.choice(candi_index, size=1, p=candi_probs)[0]
-    return word
 
 
 def inference(model, n_samples, n_tokens, temperature, device):
