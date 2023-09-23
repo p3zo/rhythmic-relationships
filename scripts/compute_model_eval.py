@@ -165,10 +165,15 @@ for sampler in ["greedy", "multinomial", "nucleus"]:
 
     ref_df = ref_bass_df if config["data"]["part_1"] == "Melody" else ref_mel_df
 
+    # cols = ['Step Density', 'Syncopation', 'Balance', 'Evenness']
+    # ref_df.columns = cols
+    # gen_df_indiv.columns = cols
+
+    model_abbr = f'{config["data"]["part_1"]} to {config["data"]["part_2"]}'
     mk_descriptor_dist_plot(
         gen_df=gen_df_indiv,
         ref_df=ref_df,
-        model_name=sampler,
+        model_name=f'{model_abbr} (sampling={sampler})',
         outdir=model_eval_dir,
         title_suffix="",
         filename_suffix=f"{sampler}_bass_train_vs_gen",

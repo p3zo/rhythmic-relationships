@@ -155,8 +155,8 @@ def mk_descriptor_dist_plot(
         return 0, 1
 
     id_col = "Gen"
-    ref_df[id_col] = "Train"
-    gen_df[id_col] = "Gen"
+    ref_df[id_col] = "Training"
+    gen_df[id_col] = "Generated"
     # ref_df[id_col] = f"{label} (n={len(ref_df)})"
     # gen_df[id_col] = f"Gen (n={len(gen_df)})"
     feature_cols = [c for c in ref_df.columns if c != id_col]

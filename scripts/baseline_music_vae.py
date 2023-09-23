@@ -110,6 +110,12 @@ dataset_plots_path = os.path.join(DATASETS_DIR, "lmdc_3000_2bar_4res", PLOTS_DIR
 ref_bass_df = pd.read_csv(os.path.join(dataset_plots_path, "bass_descriptors.csv"))
 ref_mel_df = pd.read_csv(os.path.join(dataset_plots_path, "melody_descriptors.csv"))
 
+cols = ['Step Density', 'Syncopation', 'Balance', 'Evenness']
+ref_bass_df.columns = cols
+ref_mel_df.columns = cols
+bass_desc_df.columns = cols
+melody_desc_df.columns = cols
+
 mk_descriptor_dist_plot(
     gen_df=bass_desc_df,
     ref_df=ref_bass_df,

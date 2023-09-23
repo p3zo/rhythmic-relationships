@@ -26,7 +26,8 @@ def save_fig(filepath, title=None):
 
 
 def get_center(x):
-    print("Computing centers... (TODO: vectorize)")
+    # TODO: vectorize
+    print("Computing centers...")
     nz = x.nonzero()
     centers = []
     min_centers = []
