@@ -204,7 +204,7 @@ if __name__ == "__main__":
             failed_paths.append(filepath)
             continue
 
-        seg_part_reprs = slice_midi(
+        seg_part_reprs, key = slice_midi(
             pmid=pmid,
             seg_size=seg_size,
             resolution=resolution,
@@ -224,7 +224,7 @@ if __name__ == "__main__":
             continue
 
         file_id = os.path.splitext(filepath)[0].split(path)[1]
-        annotations_list.append([file_id, seg_list])
+        annotations_list.append([file_id, seg_list, key])
 
         # Save the segment-part representations
         outpath = os.path.join(data_dir, f"{file_id}.npz")
@@ -247,9 +247,12 @@ if __name__ == "__main__":
     )
     annotations_df["segment_id"] = annotations_df["segment_id"].astype(int)
     adf_files = []
+    keys = []
     for i in annotations_list:
         adf_files.extend([i[0]] * len(i[1]))
+        keys.extend([i[2]] * len(i[1]))
     annotations_df["file_id"] = adf_files
+    annotations_df["key"] = keys
     annotations_df.to_csv(annotations_path, index=False)
     logger.info(f"Saved {annotations_path}")
 

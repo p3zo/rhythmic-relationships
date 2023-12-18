@@ -24,6 +24,7 @@ from torch.utils.data import Dataset
 from tqdm import tqdm
 
 
+
 def load_dataset_annotations(dataset_dir):
     """Load the top-level annotations file for a given dataset"""
     df = pd.read_csv(os.path.join(dataset_dir, ANNOTATIONS_FILENAME))
@@ -349,7 +350,7 @@ class PartPairDataset(Dataset):
             right_on="roll_id",
         )
 
-        self.loaded_segments = []
+        self.loaded_segments = pd.DataFrame()
         self.block_size = block_size
         self.tokenize_rolls = tokenize_rolls
 
@@ -360,8 +361,7 @@ class PartPairDataset(Dataset):
         p1_seg = self.p1_pairs.iloc[idx]
         p2_seg = self.p2_pairs.iloc[idx]
 
-        seg_id = (p1_seg["filepath"], p1_seg["segment_id"])
-        self.loaded_segments.append(seg_id)
+        self.loaded_segments = pd.concat([self.loaded_segments, p1_seg.drop('part_id').to_frame().T])
 
         p1_seg_repr = load_repr(p1_seg, self.repr_1_ix)
         p2_seg_repr = load_repr(p2_seg, self.repr_2_ix)
@@ -464,7 +464,7 @@ class PartPairDataset(Dataset):
 
 class PartPairDatasetRSP(Dataset):
     """Same as PartPairDataset but gives access to RSP repr.
-    TODO: merge into PartPairDataset"""
+    TODO: merge into or inherit from PartPairDataset"""
 
     def __init__(
         self,
@@ -541,8 +541,7 @@ class PartPairDatasetRSP(Dataset):
         p1_seg = self.p1_pairs.iloc[idx]
         p2_seg = self.p2_pairs.iloc[idx]
 
-        seg_id = (p1_seg["filepath"], p1_seg["segment_id"])
-        self.loaded_segments.append(seg_id)
+        self.loaded_segments.append(idx)
 
         if self.repr_1 == "rsp":
             fname = (

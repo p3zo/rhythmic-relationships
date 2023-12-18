@@ -119,6 +119,95 @@ def pianoroll_to_pattlist(roll):
     return pattlist
 
 
+def get_pitch_class_distribution(pmid):
+    # Initialize pitch class distribution array
+    distribution = np.zeros(12)
+
+    # Sum the duration of each note in each pitch class
+    for instrument in pmid.instruments:
+        if instrument.is_drum:
+            continue
+
+        for note in instrument.notes:
+            pitch_class = note.pitch % 12
+            distribution[pitch_class] += note.end - note.start
+
+    # Normalize the distribution
+    total_duration = np.sum(distribution)
+    if total_duration > 0:
+        distribution /= total_duration
+
+    return distribution
+
+
+def infer_key(pmid):
+    """Uses the Krumhansl-Schmuckler key determination algorithm with Krumhansl-Kessler weights.
+    TODO: test this function
+    """
+
+    # Krumhansl-Kessler Key Profiles
+    major_profile = [
+        6.35,
+        2.23,
+        3.48,
+        2.33,
+        4.38,
+        4.09,
+        2.52,
+        5.19,
+        2.39,
+        3.66,
+        2.29,
+        2.88,
+    ]
+    minor_profile = [
+        6.33,
+        2.68,
+        3.52,
+        5.38,
+        2.60,
+        3.53,
+        2.54,
+        4.75,
+        3.98,
+        2.69,
+        3.34,
+        3.17,
+    ]
+
+    distribution = get_pitch_class_distribution(pmid)
+
+    # Calculate correlations with major and minor profiles
+    major_correlations = [
+        np.correlate(np.roll(distribution, shift), major_profile) for shift in range(12)
+    ]
+    minor_correlations = [
+        np.correlate(np.roll(distribution, shift), minor_profile) for shift in range(12)
+    ]
+
+    # Find the key with the maximum correlation
+    max_major = max(major_correlations)
+    max_minor = max(minor_correlations)
+
+    if max_major > max_minor:
+        key_ix = np.argmax(major_correlations)
+        key_number = key_ix
+    else:
+        key_ix = np.argmax(minor_correlations)
+        key_number = key_ix + 12
+
+    return key_number
+
+
+def get_key_number(pmid):
+    """Get key number according to pretty-midi: https://craffel.github.io/pretty-midi/#pretty-midi-keysignature
+       "[0, 11] Major, [12, 23] minor. For example, 0 is C Major, 12 is C minor."
+    """
+    if not pmid.key_signature_changes:
+        return infer_key(pmid)
+    return pmid.key_signature_changes[0].key_number
+
+
 def get_representations(pmid, subdivisions):
     """Compute all representations from a PrettyMIDI object.
 
@@ -143,6 +232,9 @@ def get_representations(pmid, subdivisions):
     n_ticks = len(subdivisions) - 1
 
     tracks = []
+
+    key_number = get_key_number(pmid)
+
     for instrument in pmid.instruments:
         if len(instrument.notes) == 0:
             continue
@@ -253,6 +345,7 @@ def get_representations(pmid, subdivisions):
                 "name": instrument.name,
                 "program": instrument.program,
                 "is_drum": instrument.is_drum,
+                "key": key_number,
                 "roll": roll,
                 "onset_roll": onset_roll,
                 "binary_onset_roll": binary_onset_roll,
