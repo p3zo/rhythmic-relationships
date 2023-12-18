@@ -10,7 +10,7 @@ import torch
 from rhythmic_relationships import DATASETS_DIR
 from rhythmic_relationships.data import get_roll_from_sequence, PartPairDataset
 from rhythmic_relationships.io import write_midi_from_roll_list
-from torch.utils.data import DataLoader
+from torch.utils.data import DataLoader, Subset
 
 import psycopg
 from dotenv import load_dotenv
@@ -20,6 +20,7 @@ from rhythmic_relationships.model_utils import load_model
 from rhythmic_relationships.models.hits_encdec import TransformerEncoderDecoder
 from rhythmic_relationships.evaluate import hits_inference
 
+load_dotenv()
 
 dataset_name = "lmdc_100_2bar_4res"
 part_1 = "Melody"
@@ -227,10 +228,9 @@ random_mashup_meta.to_csv(os.path.join(random_output_dir, "meta.csv"), index=Fal
 
 # Mashup method 2: Using rhythm Model
 
-load_dotenv()
-
-dataset_name = "lmdc_100_2bar_4res"
-output_dir = os.path.join(DATASETS_DIR, dataset_name, "mashups")
+rhythm_output_dir = os.path.join(output_dir, "rhythm")
+if not os.path.exists(rhythm_output_dir):
+    os.mkdir(rhythm_output_dir)
 
 # Load Melody -> Bass model
 model_path = os.path.join(
@@ -241,12 +241,11 @@ model = model.to("mps")
 
 n_dim = config["model"]["context_len"] * config["model"]["enc_n_embed"]
 
-
 mtb_embeddings = []
 for src in p1_seqs.to("mps"):
     seq = hits_inference(
         model=model,
-        src=src.unsqueeze(0),
+        src=(src > 1).to(int).unsqueeze(0),
         n_tokens=config["model"]["context_len"],
         temperature=1,
         device="mps",
@@ -263,18 +262,52 @@ for src in p1_seqs.to("mps"):
 
 connection_string = f"host=localhost dbname=pato user=postgres password={os.getenv('PGPASSWORD')} port=5432"
 
-emb_neighbors = []
+emb_neighbor_roll_ixs = []
 with psycopg.connect(connection_string) as conn:
     conn.execute("CREATE EXTENSION IF NOT EXISTS vector")
     register_vector(conn)
 
     for emb in mtb_embeddings:
         neighbors = conn.execute(
-            "SELECT * FROM segments_mtb ORDER BY embedding <-> %s LIMIT 1",
+            "SELECT roll_id FROM segments_mtb ORDER BY embedding <-> %s LIMIT 1",
             (emb,),
         ).fetchall()
-        emb_neighbors.append(neighbors)
+        emb_neighbor_roll_ixs.append(neighbors[0][0])
 
-for ix, en in enumerate(emb_neighbors):
-    for neighbor in en:
-        print(ix, neighbor[0])
+subset = Subset(dataset, emb_neighbor_roll_ixs)
+subset_loader = DataLoader(subset, batch_size=n_mixes)
+_, p2_neighbor_seqs = next(iter(subset_loader))
+
+rhythm_mashup_meta = pd.DataFrame()
+
+for ix, (i, j) in enumerate(zip(p1_seqs, p2_neighbor_seqs)):
+    i_roll = get_roll_from_sequence(i.numpy(), part_1)
+    j_roll = get_roll_from_sequence(j.numpy(), part_2)
+
+    i_key = key_list[ix]
+    j_key = key_list[ixs[ix]]
+
+    p1_segment = dataset.loaded_segments.iloc[ix]
+    p2_segment = dataset.loaded_segments.loc[emb_neighbor_roll_ixs[ix]].iloc[0]
+
+    p1_segment["part"] = part_1
+    p2_segment["part"] = part_2
+
+    merged_meta = (
+        p1_segment.to_frame()
+        .T.reset_index()
+        .join(p2_segment.to_frame().T.reset_index(), lsuffix="_p1", rsuffix="_p2")
+    )
+    rhythm_mashup_meta = pd.concat([rhythm_mashup_meta, merged_meta], axis=0)
+
+    j_stream = roll_to_music21_stream(j_roll.T)
+    j_stream_transposed = transpose_stream(j_stream, j_key, i_key)
+
+    i_stream = roll_to_music21_stream(i_roll.T)
+    merged_streams = merge_m21_streams(i_stream, j_stream_transposed)
+
+    outpath = os.path.join(rhythm_output_dir, f"{ix}.mid")
+
+    merged_streams.write("midi", outpath)
+
+rhythm_mashup_meta.to_csv(os.path.join(rhythm_output_dir, "meta.csv"), index=False)

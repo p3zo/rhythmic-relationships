@@ -36,15 +36,13 @@ dataset = PartPairDataset(
         "dataset_name": dataset_name,
         "part_1": config["data"]["part_1"],
         "part_2": config["data"]["part_2"],
-        "repr_1": "onset_roll",
-        "repr_2": "onset_roll",
+        "repr_1": "hits",
+        "repr_2": "hits",
     }
 )
 
 loader = DataLoader(dataset, batch_size=len(dataset), shuffle=True)
 p1_seqs, _ = next(iter(loader))
-
-segment_ids = dataset.loaded_segments.segment_id.values.tolist()
 
 mtb_embeddings = model.encoder(p1_seqs.to("mps"), return_embeddings=True)
 
@@ -58,10 +56,10 @@ with psycopg.connect(connection_string) as conn:
     # Melody to Bass (mtb)
     conn.execute("DROP TABLE IF EXISTS segments_mtb")
     conn.execute(
-        f"CREATE TABLE segments_mtb (id bigserial PRIMARY KEY,embedding vector({n_dim}))"
+        f"CREATE TABLE segments_mtb (id bigserial PRIMARY KEY, roll_id int, embedding vector({n_dim}))"
     )
 
-    for mtb_embedding in mtb_embeddings:
+    for ix, mtb_embedding in enumerate(mtb_embeddings):
         emb = (
             mtb_embedding.detach()
             .cpu()
@@ -71,8 +69,11 @@ with psycopg.connect(connection_string) as conn:
             .numpy()
         )
         conn.execute(
-            "INSERT INTO segments_mtb (embedding) VALUES (%s)",
-            (emb,),
+            "INSERT INTO segments_mtb (roll_id, embedding) VALUES (%s, %s)",
+            (
+                int(dataset.loaded_segments.index[ix]),
+                emb,
+            ),
         )
 
     # Check that the embeddings were inserted correctly
@@ -81,4 +82,4 @@ with psycopg.connect(connection_string) as conn:
     ).fetchall()
 
 for neighbor in neighbors:
-    print(neighbor[0])
+    print(neighbor[1])
