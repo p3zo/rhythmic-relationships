@@ -17,13 +17,11 @@ from rhythmic_relationships.evaluate import (
     get_oa_kld_dists,
     make_oa_kld_plot,
     mk_descriptor_dist_plot,
-    nucleus,
-    temperatured_softmax,
+    hits_inference,
 )
 from rhythmic_relationships.io import get_roll_from_hits, write_midi_from_hits
 from rhythmic_relationships.model_utils import load_model
 from rhythmic_relationships.models.hits_encdec import TransformerEncoderDecoder
-from rhythmic_relationships.vocab import get_hits_vocab
 from rhythmtoolbox import pianoroll2descriptors
 from torch.utils.data import DataLoader
 from utils import compute_loss, parse_batch
@@ -35,61 +33,6 @@ DEVICE = torch.device(
     if torch.cuda.device_count() > 0
     else torch.device("cpu")
 )
-
-
-def inference(
-    model,
-    src,
-    n_tokens,
-    temperature,
-    device,
-    sampler="multinomial",
-    nucleus_p=0.92,
-):
-    if sampler not in ["multinomial", "nucleus", "greedy"]:
-        raise ValueError(f"Unsupported {sampler}: sampler")
-
-    hits_vocab = get_hits_vocab()
-    ttoi = {v: k for k, v in hits_vocab.items()}
-    start_ix = ttoi["start"]
-
-    y = torch.tensor(
-        [[start_ix]],
-        dtype=torch.long,
-        requires_grad=False,
-        device=device,
-    )
-
-    for ix in range(n_tokens):
-        # Get the predictions
-        with torch.no_grad():
-            logits = model(src=src, tgt=y)
-
-        # Take the logits for the last tokens
-        logits = logits[:, -1, :]
-
-        # Apply softmax to get probabilities
-        probs = temperatured_softmax(logits.cpu().numpy(), temperature)
-
-        if sampler == "nucleus":
-            y_next = []
-            for j in range(probs.shape[0]):
-                yn = nucleus(probs[j], p=nucleus_p)
-                y_next.append(yn)
-            y_next = torch.tensor(y_next, dtype=torch.long, device=DEVICE).unsqueeze(1)
-        elif sampler == "multinomial":
-            y_next = torch.multinomial(
-                torch.tensor(probs, dtype=torch.float32, device=DEVICE),
-                num_samples=1,
-            )
-        else:
-            y_next = torch.tensor(
-                [probs.argmax()], dtype=torch.long, device=DEVICE
-            ).unsqueeze(1)
-
-        y = torch.cat([y, y_next], dim=1)
-
-    return y.squeeze(0)[1:]
 
 
 def pct_diff(x, y):
@@ -167,7 +110,7 @@ def get_sampler_eval(
     for ix in range(n_seqs):
         src = srcs[ix].unsqueeze(0)
 
-        seq = inference(
+        seq = hits_inference(
             model=model,
             src=src,
             n_tokens=config["model"]["context_len"],

@@ -4,10 +4,11 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import seaborn as sns
+import torch
 from scipy import integrate, stats
 from scipy.spatial import distance_matrix
 from matplotlib import rcParams
-
+from rhythmic_relationships.vocab import get_hits_vocab
 
 sns.set_style("white")
 sns.set_context("paper")
@@ -27,6 +28,7 @@ def temperatured_softmax(logits, temperature):
         probs = probs.astype(float)
     return probs
 
+
 def nucleus(probs, p):
     """Adapted from https://github.com/YatingMusic/MuseMorphose/blob/069570279db65ffb3914ca9aacab8061badfacb3/generate.py#L52-L66"""
     probs /= sum(probs)
@@ -43,6 +45,62 @@ def nucleus(probs, p):
     candidate_probs = np.array([probs[i] for i in candidate_ixs], dtype=np.float64)
     candidate_probs /= sum(candidate_probs)
     return np.random.choice(candidate_ixs, size=1, p=candidate_probs)[0]
+
+
+def hits_inference(
+    model,
+    src,
+    n_tokens,
+    temperature,
+    device,
+    sampler="multinomial",
+    nucleus_p=0.92,
+):
+    # TODO: move to a new hits module in models dir
+    if sampler not in ["multinomial", "nucleus", "greedy"]:
+        raise ValueError(f"Unsupported {sampler}: sampler")
+
+    hits_vocab = get_hits_vocab()
+    ttoi = {v: k for k, v in hits_vocab.items()}
+    start_ix = ttoi["start"]
+
+    y = torch.tensor(
+        [[start_ix]],
+        dtype=torch.long,
+        requires_grad=False,
+        device=device,
+    )
+
+    for ix in range(n_tokens):
+        # Get the predictions
+        with torch.no_grad():
+            logits = model(src=src, tgt=y)
+
+        # Take the logits for the last tokens
+        logits = logits[:, -1, :]
+
+        # Apply softmax to get probabilities
+        probs = temperatured_softmax(logits.cpu().numpy(), temperature)
+
+        if sampler == "nucleus":
+            y_next = []
+            for j in range(probs.shape[0]):
+                yn = nucleus(probs[j], p=nucleus_p)
+                y_next.append(yn)
+            y_next = torch.tensor(y_next, dtype=torch.long, device=device).unsqueeze(1)
+        elif sampler == "multinomial":
+            y_next = torch.multinomial(
+                torch.tensor(probs, dtype=torch.float32, device=device),
+                num_samples=1,
+            )
+        else:
+            y_next = torch.tensor(
+                [probs.argmax()], dtype=torch.long, device=device
+            ).unsqueeze(1)
+
+        y = torch.cat([y, y_next], dim=1)
+
+    return y.squeeze(0)[1:]
 
 
 def get_flat_nonzero_dissimilarity_matrix(x, y=None):
