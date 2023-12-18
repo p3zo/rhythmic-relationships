@@ -207,6 +207,7 @@ def slice_midi(
 
     # Initialize output object
     segments = defaultdict(list)
+    key = tracks[0]["key"]
 
     for track in tracks:
         part = get_part_from_program(track["program"], polyphonic=polyphonic)
@@ -261,7 +262,7 @@ def slice_midi(
 
             segments[f"{seg_ix}_{part}"].append(np.array(seg_reprs, dtype=object))
 
-    return segments
+    return segments, key
 
 
 def get_pmid_segment_reprs(pmid, segment_id, parts):
