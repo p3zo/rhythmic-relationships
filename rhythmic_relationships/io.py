@@ -104,29 +104,22 @@ def get_seg_iter(bar_start_ticks, seg_size, resolution, n_beat_bars):
     return list(zip(bar_start_ticks, bar_start_ticks[seg_size:]))
 
 
-def onset_chroma_is_monpohonic(chroma, min_n_pitches, max_n_rests):
-    """Check if a chroma is a monophonic sequence.
-
-    Additionally check if the sequence contains at least `n_pitches`
-    unique pitches and at most `max_n_rests` consecutive ticks of rests.
-
-    Note that polyphony consisting of only octave intervals is allowed.
-
-    :param chroma: Chroma array
-    :param min_n_pitches: Minimum number of unique pitches
-    :param max_n_rests: Maximum number of consecutive ticks of rests.
-        Note that this depends on the resolution of the chroma.
-    :return: Boolean
-    """
-    # Check that the chroma is monophonic
+def chroma_is_monophonic(chroma):
+    """Check if a chroma is monophonic. Note that polyphony consisting of only octave intervals is allowed."""
     if not np.all(chroma.sum(axis=1) <= 1):
         return False
+    return True
 
-    # Check that the chroma has at least `min_n_pitches` unique pitches
+
+def chroma_has_n_min_pitches(chroma, min_n_pitches):
+    """Check if a chroma has at least `min_n_pitches` unique pitches"""
     if (chroma.sum(axis=0) > 0).sum() < min_n_pitches:
         return False
+    return True
 
-    # Check that the chroma has at most `max_n_rests` consecutive ticks of rests
+
+def chroma_has_n_max_rests(chroma, max_n_rests):
+    """Check if a chroma has at most `max_n_rests` consecutive ticks of rests"""
     n_rests = 0
     for i in range(chroma.shape[0]):
         if chroma[i].sum() == 0:
@@ -135,6 +128,44 @@ def onset_chroma_is_monpohonic(chroma, min_n_pitches, max_n_rests):
                 return False
         else:
             n_rests = 0
+    return True
+
+
+def chroma_is_melody(chroma, min_n_pitches, max_n_rests):
+    """Check if a chroma contains a melodic part.
+
+    :param chroma: Chroma array
+    :param min_n_pitches: Minimum number of unique pitches
+    :param max_n_rests: Maximum number of consecutive ticks of rests.
+        Note that this depends on the resolution of the chroma.
+    :return: Boolean
+    """
+
+    if not chroma_is_monophonic(chroma):
+        return False
+
+    if not chroma_has_n_min_pitches(chroma, min_n_pitches):
+        return False
+
+    if not chroma_has_n_max_rests(chroma, max_n_rests):
+        return False
+
+    return True
+
+
+def chroma_is_harmony(chroma, min_n_pitches):
+    """Check if a chroma contains a harmonic part.
+
+    :param chroma: Chroma array
+    :param min_n_pitches: Minimum number of unique pitches
+    :return: Boolean
+    """
+
+    if chroma_is_monophonic(chroma):
+        return False
+
+    if not chroma_has_n_min_pitches(chroma, min_n_pitches):
+        return False
 
     return True
 
@@ -230,8 +261,15 @@ def slice_midi(
             if len(seg_onset_roll) != n_ticks_seg:
                 continue
 
-            if part in ["Melody", "Bass"] and not onset_chroma_is_monpohonic(
+            # TODO: add to params
+            min_harmony_pitches = 3
+
+            if part in ["Melody", "Bass"] and not chroma_is_melody(
                 seg_onset_chroma, min_melody_pitches, n_ticks_max_melody_rest
+            ):
+                continue
+            elif part == "Harmony" and not chroma_is_harmony(
+                seg_onset_chroma, min_harmony_pitches
             ):
                 continue
 
