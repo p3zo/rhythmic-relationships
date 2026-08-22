@@ -16,6 +16,7 @@ from rhythmic_relationships.parts import PARTS, get_part_pairs
 from rhythmic_relationships.representations import DRUM_ROLL_VOICES, REPRESENTATIONS
 from rhythmic_relationships.vocab import (
     get_vocab_encoder_decoder,
+    get_hits_block_tokens,
     get_hits_vocab,
     encode_hits,
     decode_hits,
@@ -58,16 +59,15 @@ def tokenize_hits(hits, block_size=1):
     if block_size == 1:
         return encoded
 
-    vocab = get_hits_vocab()
-    tokens = list(itertools.product(vocab.keys(), repeat=block_size))
-    tokens = ["".join([str(j) for j in i]) for i in tokens if i[0] != 0]
-    tokens.insert(0, "0" * block_size)
+    # A block vocabulary can hold over a million entries, so index it by block rather than
+    # scanning the list once per window
+    block_ixs = {block: ix for ix, block in enumerate(get_hits_block_tokens(block_size))}
 
     tokenized = []
-    for i in range(0, len(encoded) - block_size + 1, block_size):
-        window = encoded[i : i + block_size]
-        tok = "".join([str(i) for i in window])
-        tokenized.append(tokens.index(tok))
+    for start in range(0, len(encoded) - block_size + 1, block_size):
+        window = encoded[start : start + block_size]
+        block = "".join([str(i) for i in window])
+        tokenized.append(block_ixs[block])
 
     return tokenized
 

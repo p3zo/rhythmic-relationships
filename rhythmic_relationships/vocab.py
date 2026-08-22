@@ -81,10 +81,22 @@ def get_hits_vocab():
     return {0: "start", 1: 0, 2: 0.25, 3: 0.5, 4: 0.75, 5: 1.0}
 
 
+def get_hits_block_tokens(block_size):
+    """Build the vocabulary of `block_size`-step hit blocks.
+
+    Each block is a string of single-step hits token ids. Index 0 is the all-`start` block; the
+    rest are every combination of single-step tokens that does not begin with a `start` token.
+    """
+    blocks = [
+        "".join([str(j) for j in i])
+        for i in itertools.product(get_hits_vocab().keys(), repeat=block_size)
+        if i[0] != 0
+    ]
+    return ["0" * block_size] + blocks
+
+
 def get_hits_vocab_size(block_size):
-    # TODO: make programmatically
-    sizes = {1: 6, 2: 31, 3: 1081, 4: 1399681}
-    return sizes[block_size]
+    return len(get_hits_block_tokens(block_size))
 
 
 def encode_hits(hits, n_bins):
@@ -99,9 +111,7 @@ def decode_hits(tokenized_hits, block_size=1):
     if block_size == 1:
         return [hits_vocab[i] for i in tokenized_hits]
 
-    tokens = list(itertools.product(hits_vocab.keys(), repeat=block_size))
-    tokens = ["".join([str(j) for j in i]) for i in tokens if i[0] != 0]
-    tokens.insert(0, "0" * block_size)
+    tokens = get_hits_block_tokens(block_size)
     decoded = [tokens[i] for i in tokenized_hits]
     decoded_flat = list(itertools.chain(*[[int(i) for i in list(j)] for j in decoded]))
     return [hits_vocab[i] for i in decoded_flat]
