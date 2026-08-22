@@ -2,7 +2,7 @@ import numpy as np
 from rhythmic_relationships.io import (
     get_seg_iter,
     load_midi_file,
-    onset_chroma_is_monpohonic,
+    chroma_is_melody,
     slice_midi,
 )
 from rhythmic_relationships.representations import REPRESENTATIONS
@@ -20,7 +20,7 @@ BOSKA_3_DRUMS_FILEPATH = "tests/midi/boska/3_drums.mid"
 def test_roll_contains_mono_melody():
     pmid = load_midi_file(BABYSLAKH_18_VOCALS_8_FILEPATH)
 
-    assert onset_chroma_is_monpohonic(
+    assert chroma_is_melody(
         pmid.get_piano_roll().T / 127, min_n_pitches=2, max_n_rests=4
     )
 
@@ -36,7 +36,7 @@ def test_get_seg_iter():
 
 def test_slice_midi():
     pmid = load_midi_file(BABYSLAKH_18_VOCALS_8_FILEPATH)
-    sp_reprs = slice_midi(
+    sp_reprs, key = slice_midi(
         pmid,
         seg_size=1,
         resolution=4,
@@ -55,7 +55,7 @@ def test_slice_midi():
     assert reprs[REPRESENTATIONS.index("descriptors")].shape == (N_DESCRIPTORS,)
 
     pmid = load_midi_file(BOSKA_3_DRUMS_FILEPATH)
-    sp_reprs = slice_midi(
+    sp_reprs, key = slice_midi(
         pmid,
         seg_size=1,
         resolution=4,
