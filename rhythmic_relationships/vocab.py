@@ -3,15 +3,19 @@ import numpy as np
 
 from rhythmic_relationships.parts import PARTS
 
-def get_vocab(part, use_padding=False):
+# Both vocabularies reserve the same two ids so that a pad or a start token means the same thing
+# whichever representation a model is trained on
+PAD_IX = 0
+START_IX = 1
+
+
+def get_vocab(part):
     """Build the vocabulary used for onset rolls of a given part"""
     if part not in PARTS:
         raise ValueError(f"part must be one of {PARTS}")
 
     # Create a mapping from token to integer, including first any special tokens
-    itot = {0: "start"}
-    if use_padding:
-        itot = {0: "pad", 1: "start"}
+    itot = {PAD_IX: "pad", START_IX: "start"}
 
     if part == "Drums":
         patterns = [
@@ -41,10 +45,7 @@ def get_vocab(part, use_padding=False):
     pitches = list(range(pitch_min, pitch_max + 1))
     velocity_bins = list(range(n_velocity_bins))
 
-    if use_padding:
-        itot.update({2: "rest"})
-    else:
-        itot.update({1: "rest"})
+    itot.update({len(itot): "rest"})
     itot.update(
         {
             ix + len(itot): i
@@ -78,21 +79,22 @@ def get_vocab_sizes():
 
 
 def get_hits_vocab():
-    return {0: "start", 1: 0, 2: 0.25, 3: 0.5, 4: 0.75, 5: 1.0}
+    return {PAD_IX: "pad", START_IX: "start", 2: 0, 3: 0.25, 4: 0.5, 5: 0.75, 6: 1.0}
 
 
 def get_hits_block_tokens(block_size):
     """Build the vocabulary of `block_size`-step hit blocks.
 
-    Each block is a string of single-step hits token ids. Index 0 is the all-`start` block; the
-    rest are every combination of single-step tokens that does not begin with a `start` token.
+    Each block is a string of single-step hits token ids. The first two entries are the all-`pad`
+    and all-`start` blocks, so that they keep the ids they have as single-step tokens. The rest
+    are every combination of single-step tokens that begins with a hit rather than a special.
     """
     blocks = [
         "".join([str(j) for j in i])
         for i in itertools.product(get_hits_vocab().keys(), repeat=block_size)
-        if i[0] != 0
+        if i[0] not in (PAD_IX, START_IX)
     ]
-    return ["0" * block_size] + blocks
+    return [str(PAD_IX) * block_size, str(START_IX) * block_size] + blocks
 
 
 def get_hits_vocab_size(block_size):
@@ -102,8 +104,8 @@ def get_hits_vocab_size(block_size):
 def encode_hits(hits, n_bins):
     vel_bins = np.linspace(0, 1, n_bins + 1)
     tokenized = np.digitize(hits, vel_bins, right=True).tolist()
-    # Add 1 to account for start token at ix 0
-    return [i + 1 for i in tokenized]
+    # Offset past the pad and start tokens, which occupy the first ids
+    return [i + START_IX + 1 for i in tokenized]
 
 
 def decode_hits(tokenized_hits, block_size=1):
