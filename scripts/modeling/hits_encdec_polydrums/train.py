@@ -388,6 +388,14 @@ def eval_gen_hits_encdec(
     gen_srcs = torch.stack(gen_srcs)
     gen_tgts = torch.stack(gen_tgts)
 
+    # The loader runs out before n_seqs on a small dataset, and get_sampler_eval indexes
+    # srcs by position up to n_seqs regardless
+    if len(gen_srcs) < n_seqs:
+        raise ValueError(
+            f"n_eval_seqs is {n_seqs} but this split only holds {len(gen_srcs)} sequences. "
+            "Lower n_eval_seqs or prepare a larger dataset."
+        )
+
     gen_eval["sampler_stats"] = {}
 
     for sampler in samplers:
