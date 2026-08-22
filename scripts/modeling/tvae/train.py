@@ -49,22 +49,15 @@ def inference_latent_vanilla_truncate(
     nucleus_p,
     temperature,
 ):
-    latent_placeholder = torch.zeros(
-        n_new_tokens + len(y),
-        1,
-        latents.size(-1),
-        device=DEVICE,
-    )
-
     entropies = []
 
+    # The decoder cross-attends to the latents, so the whole latent sequence is the context at
+    # every step. The placeholder this replaced was indexed by `len(y)` -- the batch size, not
+    # the generated position -- so only one row of it ever received a latent.
     for _ in range(n_new_tokens):
-        latent_placeholder[len(y) - 1, 0, :] = latents[len(y)]
-        dec_seg_emb = latent_placeholder[: len(y), :]
-
         # Get the predictions
         with torch.no_grad():
-            logits = model.generate(y=y, latent=dec_seg_emb)
+            logits = model.generate(y=y, latent=latents)
 
         # Take the logits for the last tokens
         logits = logits[:, -1, :]
@@ -76,7 +69,8 @@ def inference_latent_vanilla_truncate(
         for ix in range(probs.shape[0]):
             yn = nucleus(probs[ix], nucleus_p)
             y_next.append(yn)
-        y_next = torch.tensor(y_next, dtype=torch.long, device=DEVICE).unsqueeze(1)
+        # Follow the sequence being extended rather than the module-level DEVICE
+        y_next = torch.tensor(y_next, dtype=torch.long, device=y.device).unsqueeze(1)
 
         y = torch.cat((y, y_next), dim=1)
         entropies.append(entropy(probs))
