@@ -249,7 +249,7 @@ def train_hits_decoder(
                 epoch=epoch,
                 model=model,
                 optimizer=optimizer,
-                loss=loss,
+                loss=loss.item(),
                 config=config,
                 evals=evals,
                 delete_prev=True,
