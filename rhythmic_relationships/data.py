@@ -76,8 +76,9 @@ def tokenize_roll(roll, part, add_start=False):
     encode, _ = get_vocab_encoder_decoder(part)
 
     if part in ["Drums", "Harmony"]:
-        if part == "Drums" and len(roll[0]) != 9:
-            raise Exception("Representation must be drum roll for Drums part")
+        if part == "Drums":
+            if len(roll[0]) != 9:
+                raise Exception("Representation must be drum roll for Drums part")
         elif len(roll[0]) != 12:
             raise Exception("Representation must be chroma for Harmony part")
         binarized = (roll > 0).astype(int)
