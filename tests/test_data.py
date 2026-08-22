@@ -1,3 +1,4 @@
+import numpy as np
 import pytest
 import torch
 from rhythmic_relationships.data import (
@@ -5,6 +6,7 @@ from rhythmic_relationships.data import (
     PartPairDataset,
     get_roll_from_sequence,
     tokenize_hits,
+    tokenize_roll,
     get_sequences,
     get_pair_sequences,
 )
@@ -54,6 +56,21 @@ def test_tokenize_hits():
     assert tokenize_hits(hits, block_size=1) == [5, 1, 2, 1, 3, 1, 3, 1]
     assert tokenize_hits(hits, block_size=2) == [26, 8, 14, 14]
     assert tokenize_hits(hits, block_size=4) == [914, 488]
+
+
+def test_tokenize_roll_validates_shape_per_part():
+    drum_roll = np.zeros((32, 9))
+    chroma = np.zeros((32, 12))
+
+    # The correct representation for each part is accepted
+    assert len(tokenize_roll(drum_roll, part="Drums")) == 32
+    assert len(tokenize_roll(chroma, part="Harmony")) == 32
+
+    # The wrong one is rejected, and the message names the part that was asked for
+    with pytest.raises(Exception, match="drum roll"):
+        tokenize_roll(chroma, part="Drums")
+    with pytest.raises(Exception, match="chroma"):
+        tokenize_roll(drum_roll, part="Harmony")
 
 
 def test_get_roll_from_sequence():
