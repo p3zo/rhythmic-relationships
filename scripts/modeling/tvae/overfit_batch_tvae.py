@@ -240,9 +240,9 @@ def overfit_single_batch(
 
         # Backprop
         optimizer.zero_grad(set_to_none=True)
+        losses["total_loss"].backward()
         # TODO: try removing gradient clips
         torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-        losses["total_loss"].backward()
         optimizer.step()
 
         # Save loss after each batch

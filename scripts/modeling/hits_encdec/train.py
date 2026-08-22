@@ -68,9 +68,9 @@ def train_hits_encdec(
 
             # Backprop
             optimizer.zero_grad(set_to_none=True)
+            loss.backward()
             if config["clip_gradients"]:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
-            loss.backward()
             optimizer.step()
 
             # Save loss after each batch
