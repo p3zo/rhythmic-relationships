@@ -25,7 +25,7 @@ from rhythmic_relationships.models.decoder import TransformerDecoder
 from rhythmic_relationships.vocab import get_hits_vocab
 from rhythmtoolbox import pianoroll2descriptors
 from torch.utils.data import DataLoader
-from utils import compute_loss, parse_batch
+from .utils import compute_loss, parse_batch
 
 DEVICE = torch.device(
     "mps"

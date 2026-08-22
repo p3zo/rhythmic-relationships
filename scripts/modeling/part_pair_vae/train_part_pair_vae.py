@@ -16,7 +16,6 @@ from torch.utils.data import DataLoader
 from tqdm import tqdm
 
 DEVICE = torch.device("mps" if torch.backends.mps.is_built() else "cpu")
-CONFIG_FILEPATH = "part_pair_vae_config.yml"
 
 
 def compute_kld_loss(mu, logvar):
@@ -25,7 +24,7 @@ def compute_kld_loss(mu, logvar):
     )
 
 
-def train(
+def train_part_pair_vae(
     model,
     loader,
     optimizer,
@@ -33,16 +32,13 @@ def train(
     config,
     device,
     model_name,
+    model_dir,
 ):
     x_dim = config["model"]["x_dim"]
     y_dim = config["model"]["y_dim"]
     conditional = config["model"]["conditional"]
     clip_gradients = config["clip_gradients"]
     num_epochs = config["num_epochs"]
-
-    model_dir = os.path.join(MODELS_DIR, model_name)
-    if not os.path.isdir(model_dir):
-        os.makedirs(model_dir)
 
     train_losses = []
     ud = []  # update:data ratio
@@ -115,21 +111,22 @@ def train(
     return loss.item()
 
 
-if __name__ == "__main__":
-    config = load_config(CONFIG_FILEPATH)
-    print(yaml.dump(config))
-
-    dataset = PartPairDataset(**config["dataset"])
+def train(config, model_name, datasets_dir, model_dir):
+    # These scripts want raw rolls, not the token sequences the transformers consume
+    dataset = PartPairDataset(
+        **config["dataset"],
+        datasets_dir=datasets_dir,
+        tokenize_rolls=False,
+    )
     loader = DataLoader(dataset, batch_size=config["batch_size"], shuffle=True)
 
     model = VAE(**config["model"]).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
     loss_fn = get_loss_fn(config)
 
-    model_name = get_model_name()
-    print(f"{model_name=}")
+    print(yaml.dump(config))
 
-    train(
+    train_loss = train_part_pair_vae(
         model=model,
         loader=loader,
         optimizer=optimizer,
@@ -137,6 +134,13 @@ if __name__ == "__main__":
         config=config,
         device=DEVICE,
         model_name=model_name,
+        model_dir=model_dir,
     )
 
-    save_model(model, config, model_name)
+    save_model(
+        model_path=os.path.join(model_dir, "model.pt"),
+        model=model,
+        config=config,
+        model_name=model_name,
+        evals=[{"train_loss": train_loss}],
+    )

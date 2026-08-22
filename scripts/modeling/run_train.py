@@ -15,17 +15,24 @@ DEVICE = torch.device(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    # parser.add_argument("--model", type=str, default="hits_encdec")
     parser.add_argument("--model", type=str, default="encdec")
     parser.add_argument("--datasets_dir", type=str, default=DATASETS_DIR)
     parser.add_argument("--config_path", type=str, default=None)
     args = parser.parse_args()
 
+    this_path = os.path.dirname(os.path.abspath(__file__))
+    model_types = sorted(
+        d
+        for d in os.listdir(this_path)
+        if os.path.isfile(os.path.join(this_path, d, "config.yml"))
+    )
+
     model_type = args.model
+    if model_type not in model_types:
+        raise ValueError(f"`{model_type}` is not a model. Choose one of {model_types}")
     print(f"{model_type=}")
 
     if not args.config_path:
-        this_path = os.path.dirname(__file__)
         args.config_path = os.path.join(this_path, model_type, "config.yml")
 
     model_name = get_model_name()
@@ -47,7 +54,13 @@ if __name__ == "__main__":
     if not os.path.isdir(model_dir):
         os.makedirs(model_dir)
 
-    model_module = importlib.import_module(args.model)
+    model_module = importlib.import_module(model_type)
+    if not callable(getattr(model_module, "train", None)):
+        raise AttributeError(
+            f"`{model_type}` has no train() entry point. Each model package needs an "
+            "__init__.py exporting `train(config, model_name, datasets_dir, model_dir)`."
+        )
+
     model_module.train(
         config=config,
         model_name=model_name,
