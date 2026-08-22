@@ -77,15 +77,15 @@ def inference(
             for j in range(probs.shape[0]):
                 yn = nucleus(probs[j], p=nucleus_p)
                 y_next.append(yn)
-            y_next = torch.tensor(y_next, dtype=torch.long, device=DEVICE).unsqueeze(1)
+            y_next = torch.tensor(y_next, dtype=torch.long, device=device).unsqueeze(1)
         elif sampler == "multinomial":
             y_next = torch.multinomial(
-                torch.tensor(probs, dtype=torch.float32, device=DEVICE),
+                torch.tensor(probs, dtype=torch.float32, device=device),
                 num_samples=1,
             )
         else:
             y_next = torch.tensor(
-                [probs.argmax()], dtype=torch.long, device=DEVICE
+                [probs.argmax()], dtype=torch.long, device=device
             ).unsqueeze(1)
 
         y = torch.cat([y, y_next], dim=1)

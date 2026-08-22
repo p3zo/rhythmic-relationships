@@ -65,16 +65,16 @@ def inference(
 
     hits_vocab = get_hits_vocab()
     ttoi = {v: k for k, v in hits_vocab.items()}
-    pad_ix = ttoi["pad"]
+    start_ix = ttoi["start"]
 
     y = torch.tensor(
-        [[pad_ix] * n_tokens],
+        [[start_ix]],
         dtype=torch.long,
         requires_grad=False,
         device=device,
     )
 
-    for ix in range(n_tokens):
+    for _ in range(n_tokens):
         # Get the predictions
         with torch.no_grad():
             logits = model(y)
@@ -90,16 +90,17 @@ def inference(
             for j in range(probs.shape[0]):
                 yn = nucleus(probs[j], nucleus_p)
                 y_next.append(yn)
-            y_next = torch.tensor(y_next, dtype=torch.long, device=DEVICE).unsqueeze(1)
+            y_next = torch.tensor(y_next, dtype=torch.long, device=device).unsqueeze(1)
         else:
             y_next = torch.multinomial(
-                torch.tensor(probs, dtype=torch.float32, device=DEVICE),
+                torch.tensor(probs, dtype=torch.float32, device=device),
                 num_samples=1,
             )
 
-        y[:, ix] = y_next.item()
+        y = torch.cat([y, y_next], dim=1)
 
-    return y.squeeze(0)
+    # Drop the start token the sequence was seeded with
+    return y.squeeze(0)[1:]
 
 
 def pct_diff(x, y):
