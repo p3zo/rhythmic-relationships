@@ -119,8 +119,10 @@ def evaluate_mma(
     evals_kldiv_raw = []
     evals_recons_loss = []
 
-    for k in range(n_eval_iters):
-        src, ctx, tgt = parse_mma_batch(next(iter(val_loader)))
+    for k, batch in enumerate(val_loader):
+        if k == n_eval_iters:
+            break
+        src, ctx, tgt = parse_mma_batch(batch)
 
         with torch.no_grad():
             mu, logvar, dec_logits = model(src, ctx)
@@ -295,12 +297,6 @@ def train_mma(
             torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
             optimizer.step()
 
-            # Save loss after each batch
-            plt.plot(train_losses)
-            loss_plot_path = os.path.join(model_dir, "loss.png")
-            plt.tight_layout()
-            plt.savefig(loss_plot_path)
-            plt.clf()
 
             ix += 1
 
@@ -314,6 +310,12 @@ def train_mma(
                     model_dir=model_dir,
                 )
                 evals.append(val)
+
+        # Save the batch loss curve once per epoch rather than once per batch
+        plt.plot(train_losses)
+        plt.tight_layout()
+        plt.savefig(os.path.join(model_dir, "loss.png"))
+        plt.clf()
 
         if config["checkpoints"]:
             save_checkpoint(

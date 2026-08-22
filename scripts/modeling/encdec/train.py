@@ -73,12 +73,6 @@ def train_encdec(
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
             optimizer.step()
 
-            # Save loss after each batch
-            plt.plot(train_losses)
-            loss_plot_path = os.path.join(model_dir, "loss.png")
-            plt.tight_layout()
-            plt.savefig(loss_plot_path)
-            plt.clf()
 
             ix += 1
 
@@ -110,6 +104,12 @@ def train_encdec(
                 plt.tight_layout()
                 plt.savefig(eval_loss_plot_path)
                 plt.clf()
+
+        # Save the batch loss curve once per epoch rather than once per batch
+        plt.plot(train_losses)
+        plt.tight_layout()
+        plt.savefig(os.path.join(model_dir, "loss.png"))
+        plt.clf()
 
         if config["checkpoints"]:
             save_checkpoint(

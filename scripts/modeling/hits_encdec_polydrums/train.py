@@ -379,10 +379,12 @@ def eval_gen_hits_encdec(
 
     print(f"Loading {n_seqs} inference sequences...")
     gen_srcs, _, gen_tgts = [], [], []
-    while len(gen_srcs) < n_seqs:
-        gs, gx, gt = parse_batch(next(iter(loader)), device=device)
+    for batch in loader:
+        gs, gx, gt = parse_batch(batch, device=device)
         gen_srcs.extend(gs)
         gen_tgts.extend(gt)
+        if len(gen_srcs) >= n_seqs:
+            break
     gen_srcs = torch.stack(gen_srcs)
     gen_tgts = torch.stack(gen_tgts)
 
@@ -439,8 +441,10 @@ def evaluate_hits_encdec(
     print(f"Evaluating train loss for {n_eval_iters} iters")
 
     evals_train_loss = []
-    for _ in range(n_eval_iters):
-        src, ctx, tgt = parse_batch(next(iter(train_loader)), device)
+    for ix, batch in enumerate(train_loader):
+        if ix == n_eval_iters:
+            break
+        src, ctx, tgt = parse_batch(batch, device)
         with torch.no_grad():
             logits = model(src, ctx)
             loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
@@ -449,8 +453,10 @@ def evaluate_hits_encdec(
     print(f"Evaluating val loss for {n_eval_iters} iters")
 
     evals_val_loss = []
-    for _ in range(n_eval_iters):
-        src, ctx, tgt = parse_batch(next(iter(val_loader)), device)
+    for ix, batch in enumerate(val_loader):
+        if ix == n_eval_iters:
+            break
+        src, ctx, tgt = parse_batch(batch, device)
         with torch.no_grad():
             logits = model(src, ctx)
             loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
@@ -526,12 +532,6 @@ def train_hits_encdec(
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 0.5)
             optimizer.step()
 
-            # Save loss after each batch
-            plt.plot(train_losses)
-            loss_plot_path = os.path.join(model_dir, "loss.png")
-            plt.tight_layout()
-            plt.savefig(loss_plot_path)
-            plt.clf()
 
             ix += 1
 
@@ -563,6 +563,12 @@ def train_hits_encdec(
                 plt.tight_layout()
                 plt.savefig(eval_loss_plot_path)
                 plt.clf()
+
+        # Save the batch loss curve once per epoch rather than once per batch
+        plt.plot(train_losses)
+        plt.tight_layout()
+        plt.savefig(os.path.join(model_dir, "loss.png"))
+        plt.clf()
 
         if config["checkpoints"]:
             save_checkpoint(
