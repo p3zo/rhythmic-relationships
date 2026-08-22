@@ -382,8 +382,9 @@ def eval_gen_hits_encdec(
     gen_srcs = torch.stack(gen_srcs)
     gen_tgts = torch.stack(gen_tgts)
 
+    gen_eval["sampler_stats"] = {}
+
     for sampler in samplers:
-        gen_eval["sampler_stats"] = {}
         gen_eval["sampler_stats"][sampler] = get_sampler_eval(
             srcs=gen_srcs,
             tgts=gen_tgts,
