@@ -91,11 +91,31 @@ print(f"x batch shape: {x.size()}")
 print(f"y batch shape: {y.size()}")
 ```
 
+### Get the MIDI data
+
+`input/babyslakh` ships with the repo: 20 tracks from [BabySlakh](https://zenodo.org/record/4603870), enough to exercise the code but too small to train on.
+
+Every config under `scripts/modeling/` names `lmdc_17243_2bar_4res`, which is built from the `clean_midi` subset of the [Lakh MIDI Dataset](https://colinraffel.com/projects/lmd/) — 223 MB to download, 811 MB extracted:
+
+```bash
+curl -L -o input/clean_midi.tar.gz http://hog.ee.columbia.edu/craffel/lmd/clean_midi.tar.gz
+tar -xzf input/clean_midi.tar.gz -C input/
+rm input/clean_midi.tar.gz
+```
+
+`input/` is gitignored. The subset holds 17,256 `.mid` files, but 13 of them sit under a dot-prefixed directory that `glob` skips, which is where the `17243` in the dataset name comes from.
+
 ### Create a dataset
 
-Slice MIDI data into segments and aggregate the segments by part using `scripts/prepare_dataset.py`. It accepts either a MIDI file or a directory of MIDI files. To process the example input provided from the [BabySlakh](https://zenodo.org/record/4603870) dataset:
+Slice MIDI data into segments and aggregate the segments by part using `scripts/prepare_dataset.py`. It accepts either a MIDI file or a directory of MIDI files. To process the example input:
 
-    python scripts/prepare_dataset.py --path=input/babyslakh --prefix=babyslakh --seg_size=1
+    uv run python scripts/prepare_dataset.py --path=input/babyslakh --prefix=babyslakh --seg_size=1
+
+To build the dataset the model configs expect, which takes about an hour:
+
+    uv run python scripts/prepare_dataset.py --path=input/clean_midi --prefix=lmdc --seg_size=2 --resolution=4
+
+Datasets are named `{prefix}_{n_midi_files}_{seg_size}bar_{resolution}res`, and that name is what a config's `data.dataset_name` refers to. A config's `sequence_len` has to equal `seg_size * n_beat_bars * resolution`; nothing checks the two against each other, so a mismatch surfaces as a shape error inside the model.
 
 One `.npz` file is created for each MIDI file in the dataset. Each `.npz` file contains the representations of the segments of its corresponding MIDI file. The representations are stored in arrays of type `numpy.uint8` and shape `(S x N x V)`, where `S` is the number of segments, `N` is the number of time steps in a segment, and `V` is the number of MIDI pitches. A map of all the segments is saved in the top-level directory as `segments.csv`. Lookup tables for co-occurring segments are stored in the `pair_lookups` directory, one for each pair of parts. Plots displaying dataset distributions are saved to the `plots` directory. An example dataset directory is shown below:
 
