@@ -49,9 +49,8 @@ if __name__ == "__main__":
     pair_model.load_state_dict(state_dict=state_dict)
     drums_rsp_tensor = torch.tensor(list(drums_rsp.values())).to(torch.float32)
     random_rsp_tensor = torch.randn_like(drums_rsp_tensor)
-    mu, sigma = pair_model.encode(drums_rsp_tensor, random_rsp_tensor)
-    epsilon = torch.randn_like(sigma)
-    drums_z = mu + sigma * epsilon
+    mu, logvar = pair_model.encode(drums_rsp_tensor, random_rsp_tensor)
+    drums_z = pair_model.reparameterize(mu, logvar)
     random_latent = torch.randn_like(drums_z)
     bass_rsp = pair_model.decode(drums_z, random_rsp_tensor)
 
@@ -82,9 +81,8 @@ if __name__ == "__main__":
     state_dict = torch.load(bass_vae_path, map_location=torch.device(DEVICE))
     bass_vae = VAE(SEGROLL_INPUT_DIM, SEGROLL_H_DIM, SEGROLL_Z_DIM)
     bass_vae.load_state_dict(state_dict=state_dict)
-    mu, sigma = bass_vae.encode(intermediate_bass_roll_tensor)
-    epsilon = torch.randn_like(sigma)
-    bass_z = mu + sigma * epsilon
+    mu, logvar = bass_vae.encode(intermediate_bass_roll_tensor)
+    bass_z = bass_vae.reparameterize(mu, logvar)
     bass_roll = bass_vae.decode(bass_z)
     bass_roll = bass_roll.view(SEGROLL_INPUT_WIDTH, SEGROLL_INPUT_HEIGHT).detach()
 
