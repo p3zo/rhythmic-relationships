@@ -138,10 +138,55 @@ def compute_kld(A, B, num_sample=1000):
     pdf_A = stats.gaussian_kde(A)
     pdf_B = stats.gaussian_kde(B)
 
-    sample_A = np.linspace(np.min(A), np.max(A), num_sample)
-    sample_B = np.linspace(np.min(B), np.max(B), num_sample)
+    # Both densities have to be evaluated at the same points for the result to be a divergence
+    # between them. Sampling each over its own range and zipping the two vectors together
+    # compares unrelated points.
+    lower_limit = np.min((np.min(A), np.min(B)))
+    upper_limit = np.max((np.max(A), np.max(B)))
+    grid = np.linspace(lower_limit, upper_limit, num_sample)
 
-    return stats.entropy(pdf_A(sample_A), pdf_B(sample_B))
+    return stats.entropy(pdf_A(grid), pdf_B(grid))
+
+
+def compute_oa_kld_dists(gen_df, ref_df, train_df=None, train_dist=None):
+    """Pairwise distance distributions for each reference set, with and without the generations.
+
+    Returns a `{label}_dist` / `{label}_gen_dist` pair per reference set, which is the shape
+    `compute_oa_and_kld` and `make_oa_kld_plot` consume.
+    """
+    dists = {
+        "ref_dist": get_flat_nonzero_dissimilarity_matrix(ref_df.values),
+        "ref_gen_dist": get_flat_nonzero_dissimilarity_matrix(ref_df.values, gen_df.values),
+    }
+
+    if train_df is not None:
+        # The training distribution is expensive on a large dataset, so accept a precomputed one
+        dists["train_dist"] = (
+            train_dist
+            if train_dist is not None
+            else get_flat_nonzero_dissimilarity_matrix(train_df.values)
+        )
+        dists["train_gen_dist"] = get_flat_nonzero_dissimilarity_matrix(
+            train_df.values,
+            gen_df.values,
+        )
+
+    return dists
+
+
+def compute_oa_and_kld(dists):
+    """Overlapping area and KL divergence for every pair in a `compute_oa_kld_dists` result"""
+    suffix = "_gen_dist"
+
+    oa_klds = {}
+    for key in dists:
+        if not key.endswith(suffix):
+            continue
+        label = key[: -len(suffix)]
+        oa_klds[f"{label}_gen_oa"] = compute_oa(dists[f"{label}_dist"], dists[key])
+        oa_klds[f"{label}_gen_kld"] = compute_kld(dists[f"{label}_dist"], dists[key])
+
+    return oa_klds
 
 
 def get_oa_kld_dists(gen_df, ref_df):
