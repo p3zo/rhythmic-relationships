@@ -39,10 +39,10 @@ def weights_init(m):
         if hasattr(m, "bias") and m.bias is not None:
             bias_init(m.bias)
     elif classname.find("Embedding") != -1:
-        if hasattr(m, "weight"):
+        if hasattr(m, "weight") and m.weight is not None:
             weight_init_normal(m.weight, 0.01)
     elif classname.find("LayerNorm") != -1:
-        if hasattr(m, "weight"):
+        if hasattr(m, "weight") and m.weight is not None:
             nn.init.normal_(m.weight, 1.0, 0.01)
         if hasattr(m, "bias") and m.bias is not None:
             bias_init(m.bias)
@@ -52,35 +52,6 @@ def weights_init(m):
                 weight_init_orthogonal(param, 0.01)
             else:
                 bias_init(param)
-
-
-class TokenEmbedding(nn.Module):
-    def __init__(self, n_token, d_embed, d_proj, pad_ix):
-        super().__init__()
-
-        self.n_token = n_token
-        self.d_embed = d_embed
-        self.d_proj = d_proj
-        self.emb_scale = d_proj**0.5
-
-        self.emb_lookup = nn.Embedding(
-            num_embeddings=n_token,
-            embedding_dim=d_embed,
-            padding_idx=pad_ix,
-        )
-
-        if d_proj != d_embed:
-            self.emb_proj = nn.Linear(d_embed, d_proj, bias=False)
-        else:
-            self.emb_proj = None
-
-    def forward(self, inp_tokens):
-        inp_emb = self.emb_lookup(inp_tokens)
-
-        if self.emb_proj is not None:
-            inp_emb = self.emb_proj(inp_emb)
-
-        return inp_emb.mul_(self.emb_scale)
 
 
 class VAETransformerEncoder(nn.Module):
@@ -105,7 +76,6 @@ class VAETransformerEncoder(nn.Module):
         self.vocab_size = vocab_size
         self.context_len = context_len
 
-        # TODO: how to set ff dims?
         self.encoder = TransformerWrapper(
             num_tokens=vocab_size,
             max_seq_len=context_len,
@@ -118,6 +88,8 @@ class VAETransformerEncoder(nn.Module):
                 rotary_pos_emb=True,
                 ff_glu=True,
                 ff_no_bias=True,
+                # x-transformers sizes the feed-forward as a multiple of the model dim
+                ff_mult=d_ff / d_model,
             ),
         )
 
@@ -170,6 +142,8 @@ class VAETransformerDecoder(nn.Module):
                 rotary_pos_emb=True,
                 ff_glu=True,
                 ff_no_bias=True,
+                # x-transformers sizes the feed-forward as a multiple of the model dim
+                ff_mult=d_ff / d_model,
             ),
         )
 
@@ -192,14 +166,12 @@ class VAETransformer(nn.Module):
         dec_d_model,
         dec_d_ff,
         d_vae_latent,
-        d_embed,
         src_vocab_size,
         tgt_vocab_size,
         pad_ix,
         context_len,
         enc_dropout,
         dec_dropout,
-        emb_dropout,
     ):
         """Adapted from https://github.com/YatingMusic/MuseMorphose/blob/main/model/musemorphose.py"""
         super().__init__()
@@ -217,25 +189,6 @@ class VAETransformer(nn.Module):
 
         self.d_vae_latent = d_vae_latent
         self.pad_ix = pad_ix
-
-        self.src_token_embedding = TokenEmbedding(
-            n_token=src_vocab_size,
-            d_embed=d_embed,
-            d_proj=enc_d_model,
-            pad_ix=pad_ix,
-        )
-        self.tgt_token_embedding = TokenEmbedding(
-            n_token=tgt_vocab_size,
-            d_embed=d_embed,
-            d_proj=dec_d_model,
-            pad_ix=pad_ix,
-        )
-        self.d_embed = d_embed
-        self.emb_dropout = nn.Dropout(emb_dropout)
-        self.pe = nn.Embedding(
-            num_embeddings=context_len,
-            embedding_dim=d_embed,
-        )
 
         self.encoder = VAETransformerEncoder(
             n_layer=enc_n_layer,
@@ -260,7 +213,8 @@ class VAETransformer(nn.Module):
             context_len=context_len,
         )
 
-        self.apply(weights_init)
+        for layer in (self.encoder.fc_mu, self.encoder.fc_logvar, self.decoder.latent_proj):
+            weights_init(layer)
 
     def reparameterize(self, mu, logvar, use_sampling=True, sampling_var=1.0):
         std = torch.exp(0.5 * logvar).to(mu.device)
@@ -271,8 +225,8 @@ class VAETransformer(nn.Module):
         return eps * std + mu
 
     def get_sampled_latent(self, x, use_sampling, sampling_var):
+        """Returns a (batch, seq_len, d_vae_latent) latent sequence for a batch of inputs"""
         _, mu, logvar = self.encoder(x)
-        mu, logvar = mu.reshape(-1, mu.size(-1)), logvar.reshape(-1, mu.size(-1))
 
         latent = self.reparameterize(
             mu,
