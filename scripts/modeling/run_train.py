@@ -33,6 +33,9 @@ if __name__ == "__main__":
 
     config = load_config(args.config_path)
 
+    # Seeds the default generator, which `random_split` draws the data splits from
+    torch.manual_seed(config["seed"])
+
     model_dir = os.path.join(MODELS_DIR, model_type, model_name)
     if model_type in ["encdec", "hits_encdec"]:
         model_dir = os.path.join(
