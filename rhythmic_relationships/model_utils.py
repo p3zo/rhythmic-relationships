@@ -64,8 +64,17 @@ def save_bento_model(model, model_name):
     print(f"Bento model saved: {saved_model}")
 
 
+def load_checkpoint(model_path):
+    """Load a checkpoint saved by `save_model` or `save_checkpoint`.
+
+    `weights_only=False` because the payload holds the config and eval dicts alongside the
+    tensors, which the weights-only unpickler rejects. Only load checkpoints you produced.
+    """
+    return torch.load(model_path, map_location=torch.device("cpu"), weights_only=False)
+
+
 def load_model(model_path, model_class):
-    model_obj = torch.load(model_path, map_location=torch.device("cpu"))
+    model_obj = load_checkpoint(model_path)
     config = model_obj["config"]
     model = model_class(**config["model"])
     model.load_state_dict(state_dict=model_obj["model_state_dict"])
@@ -81,7 +90,7 @@ def get_model_catalog(model_type=None):
 
     catalog = defaultdict(dict)
     for fp in model_files:
-        model_obj = torch.load(fp)
+        model_obj = load_checkpoint(fp)
         if "name" not in model_obj:
             continue
 
