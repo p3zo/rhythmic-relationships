@@ -26,6 +26,7 @@ class HitsDecoder(nn.Module):
         self.dropout = dropout
         self.vocab_size = vocab_size
         self.context_len = context_len
+        self.pad_ix = pad_ix
 
         self.decoder = TransformerWrapper(
             num_tokens=vocab_size,
@@ -39,29 +40,12 @@ class HitsDecoder(nn.Module):
                 rotary_pos_emb=True,
                 ff_glu=True,
                 ff_no_bias=True,
+                # x-transformers sizes the feed-forward as a multiple of the model dim
+                ff_mult=d_ff / d_model,
             ),
         )
-        self.apply(self._init_weights)
-
-    def _init_weights(self, module):
-        if isinstance(module, nn.Linear):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
-                torch.nn.init.zeros_(module.bias)
-        elif isinstance(module, nn.Embedding):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, x):
         attn_mask = get_causal_mask(x.size(1), device=x.device, boolean=True)
         out = self.decoder(x, attn_mask=attn_mask)
         return out
-
-    @torch.no_grad()
-    def generate(self, device, seq_len=32):
-        seq_out_start = torch.tensor(
-            [self.pad_ix] * seq_len,
-            dtype=torch.long,
-            requires_grad=False,
-            device=device,
-        )
-        return self.decoder.generate(seq_out_start, seq_len)
