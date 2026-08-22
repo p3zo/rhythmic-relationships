@@ -1,6 +1,6 @@
 dataset:
   dataset_name: "lmdc_3000_1bar_4res"
-  part_1: "Guitar"
+  part_1: "Melody"
   part_2: "Bass"
   repr_1: "onset_roll"
   repr_2: "onset_roll"
@@ -17,3 +17,5 @@ clip_gradients: True
 num_epochs: 5
 batch_size: 256
 lr: 1e-4
+save_checkpoints: False
+seed: 13

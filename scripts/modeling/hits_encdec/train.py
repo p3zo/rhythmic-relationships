@@ -20,8 +20,8 @@ from rhythmic_relationships.vocab import get_hits_vocab_size
 from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
-from eval import evaluate_hits_encdec
-from utils import compute_loss, parse_batch
+from .eval import evaluate_hits_encdec
+from .utils import compute_loss, parse_batch
 
 DEFAULT_CONFIG_FILEPATH = "config.yml"
 
@@ -203,32 +203,4 @@ def train(config, model_name, datasets_dir, model_dir, sweep=False):
         config=config,
         model_name=model_name,
         evals=evals,
-    )
-
-
-if __name__ == "__main__":
-    print(f"{DEVICE=}")
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--datasets_dir", type=str, default=DATASETS_DIR)
-    parser.add_argument("--config_path", type=str, default=DEFAULT_CONFIG_FILEPATH)
-    args = parser.parse_args()
-
-    datasets_dir = args.datasets_dir
-    config = load_config(args.config_path)
-
-    torch.manual_seed(config["seed"])
-
-    model_name = get_model_name()
-    print(f"{model_name=}")
-
-    model_dir = os.path.join(MODELS_DIR, model_name)
-    if not os.path.isdir(model_dir):
-        os.makedirs(model_dir)
-
-    train(
-        config=config,
-        model_name=model_name,
-        datasets_dir=datasets_dir,
-        model_dir=model_dir,
     )

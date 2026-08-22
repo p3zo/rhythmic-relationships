@@ -15,6 +15,7 @@ from rhythmic_relationships import DATASETS_DIR, MODELS_DIR
 from rhythmic_relationships.data import PartDatasetSequential, get_roll_from_sequence
 from rhythmic_relationships.io import write_midi_from_roll
 from rhythmic_relationships.models.decoder import TransformerDecoder
+from rhythmic_relationships.vocab import START_IX, get_vocab_sizes
 from torch.utils.data import DataLoader, random_split
 import wandb
 import matplotlib.pyplot as plt
@@ -75,8 +76,7 @@ def evaluate_transformer_decoder(
     rolls = []
     descriptors = []
 
-    start_ix = 4
-    idx = torch.full((n_seqs, 1), 4, dtype=torch.long, device=device)
+    idx = torch.full((n_seqs, 1), START_IX, dtype=torch.long, device=device)
     with torch.no_grad():
         seqs = model.generate(idx, max_new_tokens=n_ticks - 1)
 
@@ -106,16 +106,18 @@ def evaluate_transformer_decoder(
     eval_train_losses = torch.zeros(n_eval_iters)
     for k in range(n_eval_iters):
         x, y = parse_sequential_batch(next(iter(train_loader)), device)
-        logits = model(x)
-        loss = compute_loss(logits, y, loss_fn)
+        with torch.no_grad():
+            logits = model(x)
+            loss = compute_loss(logits, y, loss_fn)
         eval_train_losses[k] = loss.item()
 
     print(f"Evaluating val loss for {n_eval_iters} iters")
     eval_val_losses = torch.zeros(n_eval_iters)
     for k in range(n_eval_iters):
         x, y = parse_sequential_batch(next(iter(val_loader)), device)
-        logits = model(x)
-        loss = compute_loss(logits, y, loss_fn)
+        with torch.no_grad():
+            logits = model(x)
+            loss = compute_loss(logits, y, loss_fn)
         eval_val_losses[k] = loss.item()
 
     evaluation.update(
@@ -149,12 +151,9 @@ def train_transformer_decoder(
     config,
     device,
     model_name,
+    model_dir,
 ):
     num_epochs = config["num_epochs"]
-
-    model_dir = os.path.join(MODELS_DIR, model_name)
-    if not os.path.isdir(model_dir):
-        os.makedirs(model_dir)
 
     if config["wandb"]:
         wandb.init(project=WANDB_PROJECT_NAME, config=config, name=model_name)
@@ -225,25 +224,15 @@ def train_transformer_decoder(
                 optimizer=optimizer,
                 loss=loss.item(),
                 config=config,
+                evals=evals,
             )
 
     return evals
 
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--datasets_dir", type=str, default=DATASETS_DIR)
-    parser.add_argument("--config_path", type=str, default=DEFAULT_CONFIG_FILEPATH)
-    args = parser.parse_args()
-
-    datasets_dir = args.datasets_dir
-    config = load_config(args.config_path)
-    print(yaml.dump(config))
-    print(f"{DEVICE=}")
-
-    torch.manual_seed(config["seed"])
-
+def train(config, model_name, datasets_dir, model_dir):
     dataset = PartDatasetSequential(**config["dataset"], datasets_dir=datasets_dir)
+
     splits = config["splits"]
     train_data, val_data, test_data = random_split(dataset, list(splits.values()))
     print(f"{splits=}: {len(train_data)}, {len(val_data)}, {len(test_data)}")
@@ -251,14 +240,14 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_data, batch_size=config["batch_size"], shuffle=True)
     val_loader = DataLoader(val_data, batch_size=config["batch_size"], shuffle=True)
 
-    model_name = get_model_name()
-    print(f"{model_name=}")
+    config["model"]["vocab_size"] = get_vocab_sizes()[config["dataset"]["part"]]
+    config["model"]["context_len"] = config["sequence_len"]
 
-    config["model"]["vocab_size"] = config["dataset"]["context_len"]
-    config["model"]["sequence_len"] = config["dataset"]["context_len"] + 1
     model = TransformerDecoder(**config["model"]).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
     loss_fn = get_loss_fn(config)
+
+    print(yaml.dump(config))
 
     evals = train_transformer_decoder(
         model=model,
@@ -269,12 +258,13 @@ if __name__ == "__main__":
         config=config,
         device=DEVICE,
         model_name=model_name,
+        model_dir=model_dir,
     )
 
-    # Save the stats for the last epoch
-    stats = {
-        "evals": evals,
-        "n_params": sum(p.nelement() for p in model.parameters()),
-    }
-
-    save_model(model, config, model_name, stats, bento=config["bento"])
+    save_model(
+        model_path=os.path.join(model_dir, "model.pt"),
+        model=model,
+        config=config,
+        model_name=model_name,
+        evals=evals,
+    )

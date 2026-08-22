@@ -1,10 +1,17 @@
+"""RNN-VAE over onset rolls.
+
+NOTE: this does not currently run. `PartDatasetSequential` yields tokenized ids (int64) and the
+RNN needs continuous features, so `train()` fails on the dtype. Making it meaningful means
+deciding what a timestep and its features are, which is a redesign rather than a fix - see
+https://github.com/p3zo/rhythmic-relationships/issues/22.
+"""
 import os
 
 import matplotlib.pyplot as plt
 import torch
 import wandb
 import yaml
-from rhythmic_relationships import MODELS_DIR, WANDB_PROJECT_NAME
+from rhythmic_relationships import WANDB_PROJECT_NAME
 from rhythmic_relationships.data import PartDatasetSequential
 from rhythmic_relationships.model_utils import (
     get_loss_fn,
@@ -17,7 +24,6 @@ from torch.utils.data import DataLoader, random_split
 from tqdm import tqdm
 
 DEVICE = torch.device("mps" if torch.backends.mps.is_built() else "cpu")
-CONFIG_FILEPATH = "recurrent_part_vae_config.yml"
 
 
 def compute_recon_loss(recons, x, mu, logvar, loss_fn):
@@ -37,13 +43,10 @@ def train_recurrent(
     config,
     device,
     model_name,
+    model_dir,
 ):
     clip_gradients = config["clip_gradients"]
     num_epochs = config["num_epochs"]
-
-    model_dir = os.path.join(MODELS_DIR, model_name)
-    if not os.path.isdir(model_dir):
-        os.makedirs(model_dir)
 
     if config["wandb"]:
         wandb.init(project=WANDB_PROJECT_NAME, config=config, name=model_name)
@@ -111,13 +114,8 @@ def train_recurrent(
     return loss.log10().item(), val_loss.log10().item()
 
 
-if __name__ == "__main__":
-    config = load_config(CONFIG_FILEPATH)
-    print(yaml.dump(config))
-
-    torch.manual_seed(13)
-
-    dataset = PartDatasetSequential(**config["dataset"])
+def train(config, model_name, datasets_dir, model_dir):
+    dataset = PartDatasetSequential(**config["dataset"], datasets_dir=datasets_dir)
     splits = [0.6, 0.3, 0.1]
     train_data, val_data, test_data = random_split(dataset, splits)
     print(f"{splits=}: {len(train_data)}, {len(val_data)}, {len(test_data)}")
@@ -125,13 +123,12 @@ if __name__ == "__main__":
     train_loader = DataLoader(train_data, batch_size=config["batch_size"], shuffle=True)
     val_loader = DataLoader(val_data, batch_size=config["batch_size"], shuffle=True)
 
-    model_name = get_model_name()
-    print(f"{model_name=}")
-
     config["model"]["context_len"] = config["dataset"]["context_len"]
     model = RecurrentVAE(**config["model"]).to(DEVICE)
     optimizer = torch.optim.Adam(model.parameters(), lr=config["lr"])
     loss_fn = get_loss_fn(config)
+
+    print(yaml.dump(config))
 
     train_log_loss, val_log_loss = train_recurrent(
         model=model,
@@ -142,13 +139,16 @@ if __name__ == "__main__":
         config=config,
         device=DEVICE,
         model_name=model_name,
+        model_dir=model_dir,
     )
 
-    stats = {
-        "train_loss": train_log_loss,
-        "val_loss": val_log_loss,
-        "n_params": sum(p.nelement() for p in model.parameters()),
-    }
-    print(stats)
+    evals = [{"train_loss": train_log_loss, "val_loss": val_log_loss}]
+    print(evals)
 
-    save_model(model, config, model_name, stats)
+    save_model(
+        model_path=os.path.join(model_dir, "model.pt"),
+        model=model,
+        config=config,
+        model_name=model_name,
+        evals=evals,
+    )

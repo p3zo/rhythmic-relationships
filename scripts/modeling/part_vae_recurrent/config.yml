@@ -16,3 +16,4 @@ num_epochs: 5
 batch_size: 512
 lr: 1e-3
 wandb: True
+seed: 13
