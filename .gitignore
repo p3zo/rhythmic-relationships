@@ -11,3 +11,4 @@ temp
 .coverage
 wandb
 **/.env
+.venv/

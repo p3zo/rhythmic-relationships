@@ -2,17 +2,21 @@
 
 ## Environment
 
-- Install [PyTorch](https://pytorch.org/get-started/locally/) according to your OS and GPU.
-- Install this repo. Remove the `[experimental]` suffix if you aren't planning to do any development.
+Create a project-local environment with [uv](https://docs.astral.sh/uv/) and install the repo into it:
 
 ```bash
-pip install -e .[experimental]
+uv venv --python 3.11
+uv pip install -e ".[experimental,test]"
 ```
 
-- Install [rhythmtoolbox](https://github.com/danielgomezmarin/rhythmtoolbox) from source.
+`rhythmtoolbox` is installed automatically as a direct dependency. The `experimental` extra is only
+needed by the analysis scripts, and `test` only by the test suite.
 
-```
-pip install git+https://github.com/danielgomezmarin/rhythmtoolbox
+Run anything in the environment with `uv run`, e.g.:
+
+```bash
+uv run pytest
+uv run python scripts/modeling/run_train.py --model hits_encdec
 ```
 
 ## Scripts
