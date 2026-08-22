@@ -18,14 +18,17 @@ rcParams["figure.figsize"] = 11.7, 8.27  # fig size in inches
 
 def temperatured_softmax(logits, temperature):
     """Adapted from https://github.com/YatingMusic/MuseMorphose/blob/069570279db65ffb3914ca9aacab8061badfacb3/generate.py#L41-L50"""
-    try:
-        probs = np.exp(logits / temperature) / np.sum(np.exp(logits / temperature))
-        assert np.count_nonzero(np.isnan(probs)) == 0
-    except:
-        print("Overflow detected, use 128-bit")
-        logits = logits.astype(np.float128)
-        probs = np.exp(logits / temperature) / np.sum(np.exp(logits / temperature))
-        probs = probs.astype(float)
+    scaled = logits / temperature
+
+    # Subtracting the max leaves the result unchanged but keeps exp() from overflowing
+    scaled = scaled - scaled.max(axis=-1, keepdims=True)
+
+    exp = np.exp(scaled)
+    probs = exp / exp.sum(axis=-1, keepdims=True)
+
+    if np.count_nonzero(np.isnan(probs)) > 0:
+        raise ValueError(f"Softmax produced NaNs for {temperature=}")
+
     return probs
 
 
@@ -37,8 +40,10 @@ def nucleus(probs, p):
     cumsum_sorted_probs = np.cumsum(sorted_probs)
     after_thresh = cumsum_sorted_probs > p
     if after_thresh.sum() > 0:
-        last_index = np.where(after_thresh)[0][-1]
-        candidate_ixs = sorted_ixs[:last_index]
+        # The first index above the threshold is the smallest pool whose mass covers p. Taking
+        # the last one instead keeps all but the least likely token, which is no truncation.
+        first_index = np.where(after_thresh)[0][0]
+        candidate_ixs = sorted_ixs[: first_index + 1]
     else:
         # just assign a value
         candidate_ixs = sorted_ixs[:3]
