@@ -11,7 +11,7 @@ from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
 
 
 def load_config(filepath):
-    """Loads a model config and adds derived values"""
+    """Load a model config. Values derived from the data are set by each model's train()."""
     with open(filepath, "r") as fh:
         config = yaml.safe_load(fh)
 
@@ -51,17 +51,6 @@ def save_model(model_path, model, config, model_name, evals=[]):
         model_path,
     )
     print(f"Saved {model_path}")
-
-
-def save_bento_model(model, model_name):
-    from bentoml.pytorch import save_model as save_bento_model
-
-    saved_model = save_bento_model(
-        model_name,
-        model,
-        signatures={"encode": {"batchable": True}, "decode": {"batchable": True}},
-    )
-    print(f"Bento model saved: {saved_model}")
 
 
 def load_checkpoint(model_path):

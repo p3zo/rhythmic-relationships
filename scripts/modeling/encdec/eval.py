@@ -269,8 +269,8 @@ def get_sampler_eval(
             )
 
         mk_descriptor_dist_plot(
-            gen_df=train_df,
-            ref_df=gen_df,
+            gen_df=gen_df,
+            ref_df=train_df,
             model_name=model_name,
             outdir=eval_dir,
             label="Train",
@@ -279,8 +279,8 @@ def get_sampler_eval(
         )
 
     mk_descriptor_dist_plot(
-        gen_df=target_df,
-        ref_df=gen_df,
+        gen_df=gen_df,
+        ref_df=target_df,
         model_name=model_name,
         outdir=eval_dir,
         label="Target",
@@ -345,10 +345,12 @@ def eval_gen_encdec(
 
     print(f"Loading {n_seqs} sequences for inference...")
     gen_srcs, _, gen_tgts = [], [], []
-    while len(gen_srcs) < n_seqs:
-        gs, gx, gt = parse_batch(next(iter(loader)), device=device)
+    for batch in loader:
+        gs, gx, gt = parse_batch(batch, device=device)
         gen_srcs.extend(gs)
         gen_tgts.extend(gt)
+        if len(gen_srcs) >= n_seqs:
+            break
     gen_srcs = torch.stack(gen_srcs)
     gen_tgts = torch.stack(gen_tgts)
 
@@ -402,8 +404,10 @@ def evaluate_encdec(
     print(f"Evaluating train loss for {n_eval_iters} iters")
 
     evals_train_loss = []
-    for _ in range(n_eval_iters):
-        src, ctx, tgt = parse_batch(next(iter(train_loader)), device)
+    for ix, batch in enumerate(train_loader):
+        if ix == n_eval_iters:
+            break
+        src, ctx, tgt = parse_batch(batch, device)
         with torch.no_grad():
             logits = model(src, ctx)
             loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
@@ -412,8 +416,10 @@ def evaluate_encdec(
     print(f"Evaluating val loss for {n_eval_iters} iters")
 
     evals_val_loss = []
-    for _ in range(n_eval_iters):
-        src, ctx, tgt = parse_batch(next(iter(val_loader)), device)
+    for ix, batch in enumerate(val_loader):
+        if ix == n_eval_iters:
+            break
+        src, ctx, tgt = parse_batch(batch, device)
         with torch.no_grad():
             logits = model(src, ctx)
             loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)

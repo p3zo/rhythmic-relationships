@@ -359,8 +359,10 @@ def evaluate_chroma(
     print(f"Evaluating train loss for {n_eval_iters} iters")
 
     evals_train_loss = []
-    for _ in range(n_eval_iters):
-        src, tgt = parse_batch(next(iter(train_loader)), device)
+    for ix, batch in enumerate(train_loader):
+        if ix == n_eval_iters:
+            break
+        src, tgt = parse_batch(batch, device)
         with torch.no_grad():
             logits = model(src)
             loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
@@ -369,8 +371,10 @@ def evaluate_chroma(
     print(f"Evaluating val loss for {n_eval_iters} iters")
 
     evals_val_loss = []
-    for _ in range(n_eval_iters):
-        src, tgt = parse_batch(next(iter(val_loader)), device)
+    for ix, batch in enumerate(val_loader):
+        if ix == n_eval_iters:
+            break
+        src, tgt = parse_batch(batch, device)
         with torch.no_grad():
             logits = model(src)
             loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)

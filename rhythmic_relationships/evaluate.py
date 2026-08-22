@@ -263,10 +263,13 @@ def mk_descriptor_dist_plot(
         return 0, 1
 
     id_col = "Gen"
-    ref_df[id_col] = "Training"
+
+    # Work on copies: this used to add a column to the caller's frames and drop it again at the
+    # end, so anything raised in between left them modified
+    ref_df = ref_df.copy()
+    gen_df = gen_df.copy()
+    ref_df[id_col] = label
     gen_df[id_col] = "Generated"
-    # ref_df[id_col] = f"{label} (n={len(ref_df)})"
-    # gen_df[id_col] = f"Gen (n={len(gen_df)})"
     feature_cols = [c for c in ref_df.columns if c != id_col]
 
     # Combine the generated with the ground truth
@@ -344,6 +347,3 @@ def mk_descriptor_dist_plot(
     plt.savefig(outpath)
     plt.clf()
     print(f"Saved {outpath}")
-
-    ref_df.drop(id_col, axis=1, inplace=True)
-    gen_df.drop(id_col, axis=1, inplace=True)

@@ -29,7 +29,6 @@ weight_decay: 0
 
 n_eval_iters: 20
 wandb: False
-bento: False
 checkpoints: False
 
 val_interval: 50
