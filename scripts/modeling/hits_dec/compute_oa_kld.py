@@ -11,7 +11,8 @@ from tqdm import tqdm
 from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
 from rhythmic_relationships.data import PartDataset, get_hits_from_hits_seq
 from rhythmic_relationships.evaluate import (
-    compute_oa_and_kld,
+    compute_oa,
+    compute_kld,
     get_flat_nonzero_dissimilarity_matrix,
 )
 from rhythmic_relationships.io import write_midi_from_hits, get_roll_from_hits
@@ -193,7 +194,8 @@ if __name__ == "__main__":
         train_gen_dist = get_flat_nonzero_dissimilarity_matrix(train_gen)
 
         # Compute distribution comparison metrics
-        oa, kld = compute_oa_and_kld(train_dist, train_gen_dist)
+        oa = compute_oa(train_dist, train_gen_dist)
+        kld = compute_kld(train_dist, train_gen_dist)
 
         print(f"  {oa=}, {kld=}")
         print()
