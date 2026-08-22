@@ -565,7 +565,7 @@ def train_hits_encdec(
                 epoch=epoch,
                 model=model,
                 optimizer=optimizer,
-                loss=loss,
+                loss=loss.item(),
                 config=config,
                 evals=evals,
                 delete_prev=True,

@@ -323,7 +323,7 @@ def train_mma(
                 epoch=epoch,
                 model=model,
                 optimizer=optimizer,
-                loss=losses["total_loss"],
+                loss=losses["total_loss"].item(),
                 config=config,
                 evals=evals,
                 delete_prev=True,

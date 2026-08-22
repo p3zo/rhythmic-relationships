@@ -249,7 +249,7 @@ def train_rsp_fc(
                 epoch=epoch,
                 model=model,
                 optimizer=optimizer,
-                loss=loss,
+                loss=loss.item(),
                 config=config,
                 evals=evals,
                 delete_prev=True,
