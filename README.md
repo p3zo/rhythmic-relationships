@@ -2,22 +2,25 @@
 
 ## Environment
 
-Create a project-local environment with [uv](https://docs.astral.sh/uv/) and install the repo into it:
+This is a [uv](https://docs.astral.sh/uv/) project. To create `.venv` in the repo and install
+everything into it:
 
 ```bash
-uv venv --python 3.11
-uv pip install -e ".[experimental,test]"
+uv sync --extra experimental
 ```
 
-`rhythmtoolbox` is installed automatically as a direct dependency. The `experimental` extra is only
-needed by the analysis scripts, and `test` only by the test suite.
+Versions come from the committed `uv.lock`, so every checkout resolves identically. `rhythmtoolbox`
+is pulled from git. The `experimental` extra is only needed by the analysis scripts; the test
+dependencies are in the default `dev` group, so they are always installed.
 
-Run anything in the environment with `uv run`, e.g.:
+Run anything in the environment with `uv run`, which re-syncs first if the lockfile has changed:
 
 ```bash
 uv run pytest
 uv run python scripts/modeling/run_train.py --model hits_encdec
 ```
+
+Change dependencies with `uv add` / `uv remove` rather than by hand, so the lockfile stays in step.
 
 ## Scripts
 
