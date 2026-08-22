@@ -209,7 +209,6 @@ if __name__ == "__main__":
     config["n_eval_iters"] = 3
     config["n_epochs"] = 500
     config["wandb"] = False
-    config["bento"] = False
     config["checkpoints"] = False
 
     torch.manual_seed(config["seed"])

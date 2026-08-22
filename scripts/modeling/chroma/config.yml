@@ -27,7 +27,6 @@ clip_gradients: False
 weight_decay: 0
 
 wandb: False
-bento: False
 checkpoints: True
 
 n_eval_iters: 20

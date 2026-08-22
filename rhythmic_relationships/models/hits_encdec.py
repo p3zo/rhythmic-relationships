@@ -22,6 +22,13 @@ class TransformerEncoderDecoder(nn.Module):
     ):
         super().__init__()
 
+        # The encoder output is the decoder's cross-attention context, and no cross_attn_dim is
+        # set, so the two widths have to match
+        if enc_n_embed != dec_n_embed:
+            raise ValueError(
+                f"{enc_n_embed=} must equal {dec_n_embed=} for cross-attention to line up"
+            )
+
         self.context_len = context_len
 
         self.encoder = TransformerWrapper(
