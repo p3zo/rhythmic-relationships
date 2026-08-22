@@ -10,7 +10,7 @@ def parse_batch(batch, device):
     yb_shifted = torch.roll(yb, 1, dims=1)
     yb_shifted[:, 0] = START_IX
 
-    return yb.to(device), yb_shifted.to(device)
+    return yb_shifted.to(device), yb.to(device)
 
 
 def compute_loss(logits, y, loss_fn):
