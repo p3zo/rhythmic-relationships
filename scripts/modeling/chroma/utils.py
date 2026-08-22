@@ -1,10 +1,15 @@
 import torch
 
+from rhythmic_relationships.vocab import START_IX
+
 
 def parse_batch(batch, device):
     yb = batch
-    yb_shifted = torch.roll(yb, 1)
-    yb_shifted[:, 0] = torch.zeros((yb.shape[0],))
+
+    # Teacher forcing: the decoder reads the target shifted right by one, seeded with `start`
+    yb_shifted = torch.roll(yb, 1, dims=1)
+    yb_shifted[:, 0] = START_IX
+
     return yb.to(device), yb_shifted.to(device)
 
 

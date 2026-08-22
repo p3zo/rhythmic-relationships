@@ -35,6 +35,7 @@ from rhythmic_relationships.model_utils import (
 )
 from rhythmic_relationships.models.hits_encdec import TransformerEncoderDecoder
 from rhythmic_relationships.vocab import (
+    START_IX,
     get_hits_vocab,
     get_hits_vocab_size,
     get_vocab_sizes,
@@ -56,8 +57,11 @@ DEVICE = torch.device(
 
 def parse_batch(batch, device):
     xb, yb = batch
-    yb_shifted = torch.roll(yb, 1)
-    yb_shifted[:, 0] = torch.zeros((yb.shape[0],))
+
+    # Teacher forcing: the decoder reads the target shifted right by one, seeded with `start`
+    yb_shifted = torch.roll(yb, 1, dims=1)
+    yb_shifted[:, 0] = START_IX
+
     return xb.to(device), yb_shifted.to(device), yb.to(device)
 
 
