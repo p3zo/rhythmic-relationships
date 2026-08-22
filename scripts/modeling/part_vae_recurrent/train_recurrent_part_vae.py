@@ -20,10 +20,10 @@ DEVICE = torch.device("mps" if torch.backends.mps.is_built() else "cpu")
 CONFIG_FILEPATH = "recurrent_part_vae_config.yml"
 
 
-def compute_recon_loss(recons, x, mu, sigma, loss_fn):
+def compute_recon_loss(recons, x, mu, logvar, loss_fn):
     reconstruction_loss = loss_fn(recons, x)
     kld_loss = torch.mean(
-        -0.5 * torch.sum(1 + sigma - mu**2 - sigma.exp(), dim=1), dim=0
+        -0.5 * torch.sum(1 + logvar - mu**2 - logvar.exp(), dim=1), dim=0
     )
     return reconstruction_loss + kld_loss
 
@@ -65,11 +65,11 @@ def train_recurrent(
             xb, _ = batch
             x = xb.to(device).view(xb.shape[0] * xb.shape[1], xb.shape[2])
             # y = yb.to(device).view(yb.shape[0] * yb.shape[1])
-            x_recon, mu, sigma = model(x)
+            x_recon, mu, logvar = model(x)
             x_recon = x_recon.view(x.shape[0], x.shape[1])
 
             # Compute loss
-            loss = compute_recon_loss(x_recon, x, mu, sigma, loss_fn)
+            loss = compute_recon_loss(x_recon, x, mu, logvar, loss_fn)
             train_losses.append(loss.log10().item())
 
             # Backprop
@@ -87,9 +87,9 @@ def train_recurrent(
         vx, _ = next(iter(val_loader))
         vx = vx.to(device)
         with torch.no_grad():
-            vx_recon, mu, sigma = model(vx)
+            vx_recon, mu, logvar = model(vx)
             vx_recon = vx_recon.view(vx.shape[0], vx.shape[1], vx.shape[2])
-            val_loss = compute_recon_loss(vx_recon, vx, mu, sigma, loss_fn)
+            val_loss = compute_recon_loss(vx_recon, vx, mu, logvar, loss_fn)
 
         val_losses.append(val_loss.log10().item())
         if config["wandb"]:

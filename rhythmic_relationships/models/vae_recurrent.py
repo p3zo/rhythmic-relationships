@@ -25,7 +25,7 @@ class RecurrentVAE(nn.Module):
 
         # h_dim * 2 because of bidirectional
         self.hidden_to_mu = nn.Linear(h_dim * 2, z_dim)
-        self.hidden_to_sigma = nn.Linear(h_dim * 2, z_dim)
+        self.hidden_to_logvar = nn.Linear(h_dim * 2, z_dim)
 
         # Decoder
         self.z_to_h0 = nn.Sequential(nn.Linear(z_dim, h_dim), nn.Tanh())
@@ -44,13 +44,15 @@ class RecurrentVAE(nn.Module):
             bidirectional=False,
             nonlinearity="relu",
         )
-        # TODO: verify that -1 the correct dim for softmax
-        self.softmax = nn.Softmax(dim=-1)
-
     def encode(self, x):
         unused_output, hidden = self.input_to_hidden(x)
-        h = torch.cat((hidden[0], hidden[1]), dim=-1)
-        return self.hidden_to_mu(h), self.hidden_to_sigma(h)
+
+        # hidden is (num_layers * num_directions, batch, h_dim), so the last layer's two
+        # directions are the final pair. Indexing 0 and 1 read the *first* layer and discarded
+        # everything the second one learned.
+        h = torch.cat((hidden[-2], hidden[-1]), dim=-1)
+
+        return self.hidden_to_mu(h), self.hidden_to_logvar(h)
 
     def decode(self, z):
         # TODO: How to configure z_to_h0 given that z_to_hidden expects h0 to be of size (1, 1, 128)
@@ -58,13 +60,17 @@ class RecurrentVAE(nn.Module):
         # output, h = self.z_to_hidden(z, h0)
         output, h = self.z_to_hidden(z)
         xoutput, xh = self.hidden_to_input(output)
-        return self.softmax(xoutput)
+
+        # Raw scores, not probabilities: the configured cross-entropy loss applies log_softmax
+        # itself, so returning a softmax here would apply it twice
+        return xoutput
 
     def forward(self, x):
-        mu, sigma = self.encode(x)
+        mu, logvar = self.encode(x)
 
-        epsilon = torch.randn_like(sigma)
-        z_reparameterized = mu + sigma * epsilon
+        std = torch.exp(0.5 * logvar)
+        epsilon = torch.randn_like(std)
+        z_reparameterized = mu + std * epsilon
         x_reconstructed = self.decode(z_reparameterized)
 
-        return x_reconstructed, mu, sigma
+        return x_reconstructed, mu, logvar

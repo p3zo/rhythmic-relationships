@@ -57,9 +57,8 @@ if __name__ == "__main__":
 
     # Encode the samples to the latent space
     x = x_in.view(x_in.shape[0], config["model"]["x_dim"])
-    mu, sigma = model.encode(x)
-    epsilon = torch.randn_like(sigma)
-    z = mu + sigma * epsilon
+    mu, logvar = model.encode(x)
+    z = model.reparameterize(mu, logvar)
 
     emb = get_embeddings(
         z.detach().cpu().numpy(),

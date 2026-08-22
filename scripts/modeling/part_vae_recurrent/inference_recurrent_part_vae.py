@@ -25,7 +25,7 @@ if __name__ == "__main__":
     decoded = decoded.detach().cpu().numpy()
 
     x = torch.full_like(torch.from_numpy(samples), PAD_IX)
-    x_recon, mu, sigma = model(x)
+    x_recon, mu, logvar = model(x)
     x_recon = x_recon.view(x.shape[0], x.shape[1], x.shape[2])
 
     preds = []

@@ -19,12 +19,10 @@ DEVICE = torch.device("mps" if torch.backends.mps.is_built() else "cpu")
 CONFIG_FILEPATH = "part_pair_vae_config.yml"
 
 
-def compute_recon_loss(recons, x, mu, sigma, loss_fn):
-    reconstruction_loss = loss_fn(recons, x)
-    kld_loss = torch.mean(
-        -0.5 * torch.sum(1 + sigma - mu**2 - sigma.exp(), dim=1), dim=0
+def compute_kld_loss(mu, logvar):
+    return torch.mean(
+        -0.5 * torch.sum(1 + logvar - mu**2 - logvar.exp(), dim=1), dim=0
     )
-    return reconstruction_loss + kld_loss
 
 
 def train(
@@ -59,20 +57,21 @@ def train(
                     y.shape[0], y_dim
                 )
                 x_binary = (x > 0).to(torch.float32)
-                x_recon, mu, sigma = model(x_binary, y)
+                x_recon, mu, logvar = model(x_binary, y)
             else:
                 x = batch
                 x = x.to(device).view(x.shape[0], x_dim)
                 x_binary = (x > 0).to(torch.float32)
-                x_recon, mu, sigma = model(x_binary)
+                x_recon, mu, logvar = model(x_binary)
 
-            # Compute reconstruction loss
-            x_recon_binary = (x_recon > 0).to(torch.float32)
-            onset_loss = compute_recon_loss(
-                x_recon_binary, x_binary, mu, sigma, loss_fn
-            )
-            velocity_loss = compute_recon_loss(x_recon, x, mu, sigma, loss_fn)
-            loss = onset_loss + velocity_loss
+            # Compute reconstruction loss against both the onsets and the velocities. Both
+            # read the raw logits: thresholding the reconstruction first is not differentiable,
+            # so the onset term contributed no gradient at all.
+            onset_loss = loss_fn(x_recon, x_binary)
+            velocity_loss = loss_fn(x_recon, x)
+
+            # Added once, not once per reconstruction term
+            loss = onset_loss + velocity_loss + compute_kld_loss(mu, logvar)
             train_losses.append(loss.item())
 
             # Backprop
