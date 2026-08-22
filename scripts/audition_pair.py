@@ -158,6 +158,20 @@ def main():
                 raise SystemExit(f"Missing {path}")
             steps[role], notes[role] = read_steps(path, args.n_steps, step_seconds)
 
+        # One file with the three parts as three tracks, so a DAW import is a single drag
+        merged = pm.PrettyMIDI()
+        for role, row_label in zip(ROLES, ROW_LABELS):
+            source = pm.PrettyMIDI(
+                os.path.join(args.inference_dir, f"{ix}_{args.sampler}_{role}.mid")
+            ).instruments[0]
+            merged.instruments.append(
+                pm.Instrument(program=source.program, is_drum=source.is_drum,
+                              name=row_label)
+            )
+            merged.instruments[-1].notes = list(source.notes)
+        merged_path = os.path.join(outdir, f"{ix}_{args.sampler}_3track.mid")
+        merged.write(merged_path)
+
         tracks = {r: synthesize(notes[r], n_samples) for r in ROLES}
         # Input part left, bass right, so the two stay tellable apart
         with_target = np.stack([tracks["src"], tracks["tgt"]], axis=-1)
@@ -200,6 +214,8 @@ def main():
     print(f"Saved {wav_path}  ({audio.shape[0] / SAMPLE_RATE:.1f}s)")
     print(f"  per example: input+target x{args.repeats}, pause, input+model x{args.repeats}")
     print("  input in the left channel, bass in the right")
+    print(f"Saved {len(ixs)} x *_3track.mid in {outdir}")
+    print("  three named tracks per file - drag one into GarageBand to hear it with real sounds")
 
     if args.play:
         os.system(f'afplay "{wav_path}"')
