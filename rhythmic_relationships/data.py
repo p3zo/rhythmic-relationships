@@ -13,7 +13,11 @@ from rhythmic_relationships import (
     REPRESENTATIONS_FILENAME,
 )
 from rhythmic_relationships.parts import PARTS, get_part_pairs
-from rhythmic_relationships.representations import DRUM_ROLL_VOICES, REPRESENTATIONS
+from rhythmic_relationships.representations import (
+    DRUM_ROLL_VOICES,
+    REPRESENTATIONS,
+    ROLL_REPRESENTATIONS,
+)
 from rhythmic_relationships.vocab import (
     get_vocab_encoder_decoder,
     get_hits_block_tokens,
@@ -156,8 +160,9 @@ def get_roll_from_sequence(seq, part):
                 roll[tick, list(range(48, 60))] = [int(i) for i in token]
         return roll
 
-    # Replace padding with rests
-    seq[seq == encode(["start"])[0]] = encode(["rest"])[0]
+    # Replace the special tokens with rests. Only a leading start token is stripped above, so a
+    # generated sequence can still contain either of them anywhere.
+    seq[np.isin(seq, encode(["pad", "start"]))] = encode(["rest"])[0]
 
     decoded = decode(seq)
 
@@ -369,26 +374,20 @@ class PartPairDataset(Dataset):
 
         # TODO: parameterize if hits should be binned
         # TODO: parameterize block size
-        if self.repr_1 == "hits":
-            tokenized = tokenize_hits(p1_seg_repr, block_size=self.block_size)
-            x = torch.LongTensor(tokenized)
-        else:
-            if self.tokenize_rolls:
-                p1_seg_repr = tokenize_roll(p1_seg_repr, part=self.part_1)
-                x = torch.LongTensor(p1_seg_repr)
-            else:
-                x = torch.from_numpy(p1_seg_repr).to(torch.float32)
-        if self.repr_2 == "hits":
-            p2_seg_repr = tokenize_hits(p2_seg_repr, block_size=self.block_size)
-            y = torch.LongTensor(p2_seg_repr)
-        else:
-            if self.tokenize_rolls:
-                p2_seg_repr = tokenize_roll(p2_seg_repr, part=self.part_2)
-                y = torch.LongTensor(p2_seg_repr)
-            else:
-                y = torch.from_numpy(p2_seg_repr).to(torch.float32)
+        x = self.tokenize(p1_seg_repr, self.repr_1, self.part_1)
+        y = self.tokenize(p2_seg_repr, self.repr_2, self.part_2)
 
         return x, y
+
+    def tokenize(self, seg_repr, representation, part):
+        if representation == "hits":
+            return torch.LongTensor(tokenize_hits(seg_repr, block_size=self.block_size))
+
+        # `pattern` and `descriptors` are vectors, not rolls, so there is nothing to tokenize
+        if self.tokenize_rolls and representation in ROLL_REPRESENTATIONS:
+            return torch.LongTensor(tokenize_roll(seg_repr, part=part))
+
+        return torch.from_numpy(seg_repr).to(torch.float32)
 
     def as_dfs(self, shuffle=False, subset=None):
         """Returns the entire dataset in two dataframes. Useful for analysis.
@@ -645,12 +644,11 @@ class PartDataset(Dataset):
 
         # TODO: parameterize if hits should be binned
         if self.representation == "hits":
-            tokenized = tokenize_hits(seg_repr, block_size=self.block_size)
-            return torch.LongTensor(tokenized)
-        else:
-            if self.tokenize_rolls:
-                seg_repr = tokenize_roll(seg_repr, part=self.part)
-                return torch.LongTensor(seg_repr)
+            return torch.LongTensor(tokenize_hits(seg_repr, block_size=self.block_size))
+
+        # `pattern` and `descriptors` are vectors, not rolls, so there is nothing to tokenize
+        if self.tokenize_rolls and self.representation in ROLL_REPRESENTATIONS:
+            return torch.LongTensor(tokenize_roll(seg_repr, part=self.part))
 
         return torch.from_numpy(seg_repr.astype(np.float32))
 

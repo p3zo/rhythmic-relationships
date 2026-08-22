@@ -13,6 +13,18 @@ REPRESENTATIONS = [
     "descriptors",
 ]
 
+# The (n_ticks, n_pitches) representations, which are the only ones `tokenize_roll` accepts.
+# `pattern` and `descriptors` are vectors, and `hits` has its own tokenizer.
+ROLL_REPRESENTATIONS = [
+    "roll",
+    "onset_roll",
+    "onset_roll_3_octave",
+    "binary_onset_roll",
+    "drum_roll",
+    "chroma",
+    "onset_chroma",
+]
+
 
 # Standard 88-key piano range
 MIDI_PITCH_RANGE = [21, 108]
