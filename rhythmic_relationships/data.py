@@ -356,18 +356,23 @@ class PartPairDataset(Dataset):
             right_on="roll_id",
         )
 
-        self.loaded_segments = pd.DataFrame()
+        self.loaded_ixs = []
         self.block_size = block_size
         self.tokenize_rolls = tokenize_rolls
 
     def __len__(self):
         return len(self.p1_pairs)
 
+    @property
+    def loaded_segments(self):
+        """The part 1 rows accessed so far, in access order"""
+        return self.p1_pairs.iloc[self.loaded_ixs].drop("part_id", axis=1)
+
     def __getitem__(self, idx):
         p1_seg = self.p1_pairs.iloc[idx]
         p2_seg = self.p2_pairs.iloc[idx]
 
-        self.loaded_segments = pd.concat([self.loaded_segments, p1_seg.drop('part_id').to_frame().T])
+        self.loaded_ixs.append(idx)
 
         p1_seg_repr = load_repr(p1_seg, self.repr_1_ix)
         p2_seg_repr = load_repr(p2_seg, self.repr_2_ix)
