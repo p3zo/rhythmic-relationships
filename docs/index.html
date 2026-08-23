@@ -76,6 +76,9 @@
   .hdr .mid { flex: 1; min-width: 160px; }
   .hdr .who { width: 300px; flex: none; }
   .hdr .spacer { width: 44px; flex: none; }
+  .match .shift { width: 40px; flex: none; text-align: right; color: var(--dim);
+                  font-family: ui-monospace, monospace; font-size: 12px; }
+  .hdr .shift { width: 40px; flex: none; text-align: right; }
 </style>
 </head>
 <body>
@@ -532,6 +535,8 @@ function drawInput() {
   const cells = $("inGrid").children;
   for (let i = 0; i < input.length; i++) cells[i].style.background = shade(input[i], "in");
   drawDescriptors();
+  // Editing the grid changes what the mashups have to fit, so their shifts are recomputed
+  if (matches.length) drawMatches();
 }
 
 function drawOutput() {
@@ -553,6 +558,54 @@ function drawOutput() {
   }
 }
 
+// ---------- key fit ----------
+// Segments arrive in whatever key they were recorded in, so each is moved to sit with the input
+// before it is heard against it. Two terms, both measured against the input as it will actually
+// sound: how much of the segment lands on a pitch class the input uses, less what collides with
+// it on the same step. Semitones and tritones are the collisions that read as wrong.
+const CLASH_PENALTY = 2;
+const pitchClass = (p) => ((p % 12) + 12) % 12;
+const intervalClass = (a, b) => {
+  const d = Math.abs(a - b) % 12;
+  return Math.min(d, 12 - d);
+};
+
+function keyShift(heard, segNotes) {
+  if (!segNotes.length || !heard.length) return 0;
+
+  const share = new Array(12).fill(0);
+  for (const [, p, v] of heard) share[pitchClass(p)] += v;
+  const total = share.reduce((a, b) => a + b, 0);
+  if (!total) return 0;
+
+  const byStep = new Map();
+  for (const [s, p, v] of heard) byStep.set(s, (byStep.get(s) || []).concat([[p, v]]));
+
+  let best = 0, bestScore = -Infinity;
+  // Half an octave either way, so a part stays in the register it was recorded in
+  for (let t = -6; t <= 5; t++) {
+    let score = 0;
+    for (const [s, p, v] of segNotes) {
+      const pc = pitchClass(p + t);
+      score += (v * share[pc]) / total;
+      for (const [q, w] of byStep.get(s) || []) {
+        const cls = intervalClass(pc, pitchClass(q));
+        if (cls === 1 || cls === 6) score -= CLASH_PENALTY * v * w;
+      }
+    }
+    // Ties go to the smaller move
+    if (score > bestScore + 1e-9 ||
+        (Math.abs(score - bestScore) < 1e-9 && Math.abs(t) < Math.abs(best))) {
+      bestScore = score;
+      best = t;
+    }
+  }
+  return best;
+}
+
+const transpose = (notes, semitones) =>
+  semitones ? notes.map(([s, p, v]) => [s, p + semitones, v]) : notes;
+
 // ---------- mashups ----------
 function drawMatches() {
   const box = $("matches");
@@ -562,18 +615,23 @@ function drawMatches() {
   }
   box.innerHTML =
     `<div class="hdr"><span class="spacer"></span><span class="apart">apart</span>` +
-    `<span class="mid">${META.part_2} rhythm</span><span class="who">segment</span></div>`;
+    `<span class="mid">${META.part_2} rhythm</span><span class="shift">shift</span>` +
+    `<span class="who">segment</span></div>`;
+
+  const heard = inputPart().notes;
 
   matches.forEach((m, ix) => {
     const rowEl = document.createElement("div");
     rowEl.className = "match";
+
+    const shift = keyShift(heard, m.pitched);
 
     const btn = document.createElement("button");
     btn.textContent = "▶";
     btn.title = "Play this against the input";
     btn.onclick = () => playFrom(btn, [
       inputPart(),
-      { notes: m.pitched, voice: "bass" },
+      { notes: transpose(m.pitched, shift), voice: "bass" },
     ]);
     rowEl.appendChild(btn);
 
@@ -597,6 +655,15 @@ function drawMatches() {
       mini.appendChild(c);
     }
     rowEl.appendChild(mini);
+
+    const shiftEl = document.createElement("span");
+    shiftEl.className = "shift";
+    shiftEl.textContent = shift > 0 ? `+${shift}` : `${shift}`;
+    shiftEl.title = shift
+      ? `Moved ${Math.abs(shift)} semitone${Math.abs(shift) === 1 ? "" : "s"} ` +
+        `${shift > 0 ? "up" : "down"} to fit the input`
+      : "Already fits the input";
+    rowEl.appendChild(shiftEl);
 
     const who = document.createElement("span");
     who.className = "who";

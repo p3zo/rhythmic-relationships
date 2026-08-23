@@ -3,6 +3,10 @@
 The static build reimplements three things that already exist in Python: the sampling loop, the
 hits vocabulary, and the paired descriptors. Two implementations of one definition drift, so this
 emits what the Python says for a fixed set of cases and the browser is asked the same questions.
+
+The mashup transposition is the exception: it lives only in the page, so `key_shift` below is a
+second implementation written from the same definition rather than a call into shipped code. It
+is here to disagree if the JavaScript ever changes meaning.
 Run it, then `node scripts/check_web_port.mjs` with the page served.
 """
 
@@ -31,6 +35,47 @@ PATTERNS = {
 }
 
 
+CLASH_PENALTY = 2
+
+
+def interval_class(a, b):
+    d = abs(a - b) % 12
+    return min(d, 12 - d)
+
+
+def key_shift(heard, seg_notes):
+    """Semitones to move seg_notes so it sits with the notes in `heard`.
+
+    Both are [step, pitch, velocity]. Reference for the page's keyShift.
+    """
+    if not seg_notes or not heard:
+        return 0
+
+    share = [0.0] * 12
+    for _, pitch, vel in heard:
+        share[pitch % 12] += vel
+    total = sum(share)
+    if not total:
+        return 0
+
+    by_step = {}
+    for step, pitch, vel in heard:
+        by_step.setdefault(step, []).append((pitch, vel))
+
+    best, best_score = 0, float("-inf")
+    for t in range(-6, 6):
+        score = 0.0
+        for step, pitch, vel in seg_notes:
+            pc = (pitch + t) % 12
+            score += vel * share[pc] / total
+            for other, other_vel in by_step.get(step, []):
+                if interval_class(pc, other % 12) in (1, 6):
+                    score -= CLASH_PENALTY * vel * other_vel
+        if score > best_score + 1e-9 or (abs(score - best_score) < 1e-9 and abs(t) < abs(best)):
+            best, best_score = t, score
+    return best
+
+
 def greedy_from_onnx(data_dir, hits, n_steps, part_2):
     """The same fixed-length-buffer generation the page does, in Python."""
     encoder = ort.InferenceSession(os.path.join(data_dir, "encoder.onnx"))
@@ -46,6 +91,35 @@ def greedy_from_onnx(data_dir, hits, n_steps, part_2):
         logits = decoder.run(None, {"tgt": tgt, "enc": enc})[0]
         seq.append(int(logits[0, t].argmax()))
     return get_hits_from_hits_seq(np.array(seq[1:]), part=part_2, block_size=1)
+
+
+def key_shift_cases(data_dir, drawn_pitch):
+    """Real melody/segment pairs, plus the cases that are easy to get wrong."""
+    with open(os.path.join(data_dir, "examples.json")) as f:
+        examples = [e for e in json.load(f) if e["p"]]
+    with open(os.path.join(data_dir, "index.json")) as f:
+        index = [seg for seg in json.load(f) if seg["p"]]
+
+    def notes(raw):
+        return [[step, pitch, vel / 127] for step, pitch, vel in raw]
+
+    pairs = []
+    # Spread across both files rather than taking a contiguous run of either
+    for i in range(20):
+        pairs.append((notes(examples[i * 7]["p"]), notes(index[i * 137]["p"])))
+
+    heard = notes(examples[0]["p"])
+    drawn = [[step, drawn_pitch, 1.0] for step in (0, 4, 8, 12)]
+    pairs += [
+        (heard, []),
+        ([], notes(index[0]["p"])),
+        (heard, heard),                                                   # already fits
+        (heard, [[s, p + 1, v] for s, p, v in heard]),                     # a semitone off
+        (heard, [[s, p + 6, v] for s, p, v in heard]),                     # a tritone off
+        (drawn, notes(index[0]["p"])),                                     # drawn grid, one pitch
+        (drawn, [[s, drawn_pitch + 1, 1.0] for s in (0, 4, 8, 12)]),       # clashes on every step
+    ]
+    return [{"heard": h, "seg": g, "shift": key_shift(h, g)} for h, g in pairs]
 
 
 def main():
@@ -78,11 +152,13 @@ def main():
                 round(float(get_antiphony(ta, tb)[0]), 6),
             ]
 
+    cases["key_shift"] = key_shift_cases(args.data_dir, meta["part_1_pitch"])
+
     with open(args.outfile, "w") as f:
         json.dump({"patterns": PATTERNS, "cases": cases}, f, indent=1)
     print(f"Saved {args.outfile}")
     print(f"  {len(cases['tokenize'])} tokenizations, {len(cases['greedy'])} greedy generations, "
-          f"{len(cases['paired'])} descriptor pairs")
+          f"{len(cases['paired'])} descriptor pairs, {len(cases['key_shift'])} key shifts")
 
 
 if __name__ == "__main__":
