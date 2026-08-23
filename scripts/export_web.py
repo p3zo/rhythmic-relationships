@@ -28,6 +28,8 @@ from rhythmic_relationships import (
     REPRESENTATIONS_DIRNAME,
     REPRESENTATIONS_FILENAME,
 )
+from rhythmic_relationships.data import load_co_occurring_hits
+from rhythmic_relationships.interlock import fit_pair_score, lineup_accuracy
 from rhythmic_relationships.model_utils import load_model
 from rhythmic_relationships.models.hits_decoder import get_causal_mask
 from rhythmic_relationships.models.hits_encdec import TransformerEncoderDecoder
@@ -157,6 +159,35 @@ def collect_segments(dataset_name, part, n_wanted, seed, per_file, with_pitches=
     return out
 
 
+def fit_scorer(dataset_name, part_1, part_2, n_pairs, n_imposters, seed):
+    """The interlock scorer the page retrieves with, and how well it does on pairs it never saw.
+
+    The page needs this because the generated rhythm turned out not to be a useful query: the
+    ablation found a mashup picked to match it no closer to a real relationship than one picked at
+    random. Scoring candidates on how they would sit against the input instead does much better,
+    and the accuracy printed here is what the page is claiming when it ranks segments.
+
+    Two fits: one on half the pairs to measure on the other half, and one on all of them to ship,
+    since there is no reason to hand the page a scorer trained on less data than exists.
+    """
+    pairs = load_co_occurring_hits(dataset_name, [part_1, part_2], n_pairs, seed, per_file=1)
+    a, b = pairs[part_1], pairs[part_2]
+    half = len(a) // 2
+    held_out = fit_pair_score(a[:half], b[:half], seed)
+    accuracy, n = lineup_accuracy(held_out, a[half:], b[half:],
+                                  np.random.default_rng(seed + 1), n_imposters)
+    print(f"  interlock score: prefers the real partner over an imposter on "
+          f"{accuracy * 100:.1f}% of {n} lineups it was not fitted on")
+
+    shipped = fit_pair_score(a, b, seed)
+    return {
+        "w": [float(v) for v in shipped.w],
+        "offset": shipped.offset,
+        "lineup_accuracy": round(accuracy, 4),
+        "n_pairs": len(a),
+    }
+
+
 def write_json(path, payload):
     with open(path, "w") as f:
         json.dump(payload, f, separators=(",", ":"))
@@ -174,6 +205,10 @@ def main():
     parser.add_argument("--examples_per_file", type=int, default=1)
     parser.add_argument("--index_per_file", type=int, default=4)
     parser.add_argument("--seed", type=int, default=13)
+    parser.add_argument("--fit_pairs", type=int, default=2000,
+                        help="Real pairs to fit the interlock scorer on. A few hundred is too "
+                             "few: fitted on 100 pairs it scores at chance")
+    parser.add_argument("--fit_imposters", type=int, default=40)
     parser.add_argument("--no_quantize", action="store_true")
     args = parser.parse_args()
 
@@ -204,10 +239,13 @@ def main():
 
         checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
         evals = checkpoint.get("evals") or []
+        fit = fit_scorer(config["data"]["dataset_name"], part_1, part_2,
+                         args.fit_pairs, args.fit_imposters, args.seed)
         models.append({
             "id": run,
             "part_1": part_1,
             "part_2": part_2,
+            "fit": fit,
             "n_params": sum(p.numel() for p in model.parameters()),
             "val_loss": round(evals[-1]["val_loss"], 4) if evals else None,
             "epochs": checkpoint.get("epoch"),
@@ -247,6 +285,13 @@ def main():
         "start_ix": START_IX,
         # token id -> hit value, so the page can encode and decode exactly as training did
         "hits_tokens": {str(k): v for k, v in hits_vocab.items() if not isinstance(v, str)},
+        # The interlock features the fitted weights above multiply, in order. The page ports
+        # these and is checked against the Python by scripts/check_web_port.py.
+        "interlock_features": [
+            "of the candidate's onsets, the share landing with the input",
+            "of the input's onsets, the share the candidate leaves alone",
+            "how much of the bar neither part touches",
+        ],
         "models": sorted(models, key=lambda m: (m["part_1"], m["part_2"])),
         "parts": parts,
     }
