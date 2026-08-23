@@ -27,13 +27,22 @@ N_DESCRIPTORS = len(DESCRIPTOR_NAMES)
 
 
 def test_get_pair_sequences():
-    pad_ix = 0
     p1 = [1, 3, 4]
     p2 = [1, 2, 2]
     context_len = 3
+
+    # The encoder is conditioned on all of part 1, so X is the full source at every position of
+    # the target, and Y is the growing target prefix
     X, Y = get_pair_sequences(p1, p2, context_len)
-    assert X == [[pad_ix, pad_ix, 1], [pad_ix, 1, 3], [1, 3, 4]]
-    assert Y == [[pad_ix, pad_ix, 1], [pad_ix, 1, 2], [1, 2, 2]]
+    assert X == [[1, 3, 4], [1, 3, 4], [1, 3, 4]]
+    assert Y == [[1], [1, 2], [1, 2, 2]]
+
+
+def test_get_pair_sequences_pads_the_target_to_the_context_length():
+    pad_ix = 0
+    X, Y = get_pair_sequences([1, 3, 4], [1, 2, 2], context_len=3, pad_ix=pad_ix)
+    assert X == [[1, 3, 4], [1, 3, 4], [1, 3, 4]]
+    assert Y == [[1, pad_ix, pad_ix], [1, 2, pad_ix], [1, 2, 2]]
 
 
 def test_get_sequences():
@@ -49,17 +58,11 @@ def get_expected_velocity_from_bin(vel_bin, n_bins):
 
 
 def test_tokenize_hits():
-    # # TODO: account for padding token
-    # n_bins = 4
-    # hits = [0.0, 0.1, 0.3, 0.6, 1.0]
-    # assert tokenize_hits(hits, n_bins) == [0, 1, 2, 3, 4]
-    # hits = [0.0, 0.25, 0.5, 0.75, 1.0]
-    # assert tokenize_hits(hits, n_bins) == [0, 1, 2, 3, 4]
-
+    # Ids start at 2 because `pad` and `start` occupy 0 and 1
     hits = [1, 0, 0.25, 0, 0.5, 0, 0.5, 0]
-    assert tokenize_hits(hits, block_size=1) == [5, 1, 2, 1, 3, 1, 3, 1]
-    assert tokenize_hits(hits, block_size=2) == [26, 8, 14, 14]
-    assert tokenize_hits(hits, block_size=4) == [914, 488]
+    assert tokenize_hits(hits, block_size=1) == [6, 2, 3, 2, 4, 2, 4, 2]
+    assert tokenize_hits(hits, block_size=2) == [32, 11, 18, 18]
+    assert tokenize_hits(hits, block_size=4) == [1495, 816]
 
 
 def test_tokenize_hits_ids_fit_the_vocab_size():
@@ -103,7 +106,7 @@ def test_get_roll_from_sequence():
     tokens = ["start", "rest", (60, 3), (72, 1), "rest"]
 
     encode, _ = get_vocab_encoder_decoder("Melody")
-    sequence = encode(tokens)
+    sequence = np.array(encode(tokens))
     roll = get_roll_from_sequence(sequence, part="Melody")
     assert roll.shape == (4, 128)
     assert roll[0].sum() == 0
@@ -121,7 +124,7 @@ def test_get_roll_from_sequence():
 
     assert roll[3].sum() == 0
 
-    drum_seq = [1, 2, 11, 101]
+    drum_seq = np.array([1, 2, 11, 101])
     roll = get_roll_from_sequence(drum_seq, part="Drums")
     assert roll.shape == (3, 128)
     assert roll[0].sum() == 0
@@ -129,22 +132,52 @@ def test_get_roll_from_sequence():
     assert roll[2].nonzero()[0].tolist() == [42, 43, 50, 51]
 
 
-def test_PartDataset():
+def test_PartDataset(prepared_dataset):
+    datasets_dir, DATASET_NAME = prepared_dataset
+
     with pytest.raises(Exception):
         PartDataset(DATASET_NAME, PART_1, "incorrect-descriptor-name")
 
-    data = PartDataset(DATASET_NAME, PART_1, "descriptors")
+    data = PartDataset(DATASET_NAME, PART_1, "descriptors", datasets_dir=datasets_dir, tokenize_rolls=False)
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     x = next(iter(loader))
     assert x.size() == torch.Size([batch_size, N_DESCRIPTORS])
 
-    data = PartDataset(DATASET_NAME, PART_1, "roll")
+    data = PartDataset(DATASET_NAME, PART_1, "roll", datasets_dir=datasets_dir, tokenize_rolls=False)
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     x = next(iter(loader))
     assert x.size() == torch.Size([batch_size, 16, 128])
 
 
-def test_PartPairDatasets():
+def test_PartDataset_tokenizes_only_roll_representations(prepared_dataset):
+    datasets_dir, DATASET_NAME = prepared_dataset
+
+    # A roll of the right shape for the part is tokenized to one id per tick
+    data = PartDataset(DATASET_NAME, "Drums", "drum_roll", datasets_dir=datasets_dir)
+    x = next(iter(DataLoader(data, batch_size=batch_size)))
+    assert x.size() == torch.Size([batch_size, 16])
+    assert x.dtype == torch.int64
+
+    # Descriptors are a vector, so they come back untouched even with tokenizing on
+    data = PartDataset(DATASET_NAME, "Drums", "descriptors", datasets_dir=datasets_dir)
+    x = next(iter(DataLoader(data, batch_size=batch_size)))
+    assert x.size() == torch.Size([batch_size, N_DESCRIPTORS])
+    assert x.dtype == torch.float32
+
+    # So is a pattern
+    data = PartDataset(DATASET_NAME, "Drums", "pattern", datasets_dir=datasets_dir)
+    x = next(iter(DataLoader(data, batch_size=batch_size)))
+    assert x.size() == torch.Size([batch_size, 16])
+
+    # A roll of the wrong shape for the part is still rejected
+    data = PartDataset(DATASET_NAME, "Drums", "roll", datasets_dir=datasets_dir)
+    with pytest.raises(Exception, match="drum roll"):
+        next(iter(DataLoader(data, batch_size=batch_size)))
+
+
+def test_PartPairDatasets(prepared_dataset):
+    datasets_dir, DATASET_NAME = prepared_dataset
+
     with pytest.raises(Exception):
         PartPairDataset(
             DATASET_NAME, PART_1, PART_2, "desc", "incorrect-descriptor-name"
@@ -152,67 +185,155 @@ def test_PartPairDatasets():
 
     seq_len = 16
 
-    data = PartPairDataset(DATASET_NAME, PART_1, PART_2, "roll", "roll")
+    data = PartPairDataset(
+        DATASET_NAME,
+        PART_1,
+        PART_2,
+        "roll",
+        "roll",
+        datasets_dir=datasets_dir,
+        tokenize_rolls=False,
+    )
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     x, y = next(iter(loader))
     assert x.size() == torch.Size([batch_size, seq_len, 128])
     assert y.size() == torch.Size([batch_size, seq_len, 128])
 
-    data = PartPairDataset(DATASET_NAME, PART_1, PART_2, "descriptors", "descriptors")
+    data = PartPairDataset(
+        DATASET_NAME,
+        PART_1,
+        PART_2,
+        "descriptors",
+        "descriptors",
+        datasets_dir=datasets_dir,
+        tokenize_rolls=False,
+    )
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     x, y = next(iter(loader))
     assert x.size() == torch.Size([batch_size, N_DESCRIPTORS])
     assert y.size() == torch.Size([batch_size, N_DESCRIPTORS])
 
-    data = PartPairDataset(DATASET_NAME, PART_1, PART_2, "roll", "descriptors")
+    data = PartPairDataset(
+        DATASET_NAME,
+        PART_1,
+        PART_2,
+        "roll",
+        "descriptors",
+        datasets_dir=datasets_dir,
+        tokenize_rolls=False,
+    )
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     x, y = next(iter(loader))
     assert x.size() == torch.Size([batch_size, seq_len, 128])
     assert y.size() == torch.Size([batch_size, N_DESCRIPTORS])
 
-    data = PartPairDataset(DATASET_NAME, PART_1, PART_2, "descriptors", "roll")
+    data = PartPairDataset(
+        DATASET_NAME,
+        PART_1,
+        PART_2,
+        "descriptors",
+        "roll",
+        datasets_dir=datasets_dir,
+        tokenize_rolls=False,
+    )
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     x, y = next(iter(loader))
     assert x.size() == torch.Size([batch_size, N_DESCRIPTORS])
     assert y.size() == torch.Size([batch_size, seq_len, 128])
 
-    data = PartPairDataset(DATASET_NAME, PART_1, PART_2, "hits", "hits")
+    data = PartPairDataset(
+        DATASET_NAME,
+        PART_1,
+        PART_2,
+        "hits",
+        "hits",
+        datasets_dir=datasets_dir,
+        tokenize_rolls=False,
+    )
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     x, y = next(iter(loader))
     assert x.size() == torch.Size([batch_size, seq_len])
     assert y.size() == torch.Size([batch_size, seq_len])
 
-    data = PartPairDataset(DATASET_NAME, PART_1, PART_2, "hits", "roll")
+    data = PartPairDataset(
+        DATASET_NAME,
+        PART_1,
+        PART_2,
+        "hits",
+        "roll",
+        datasets_dir=datasets_dir,
+        tokenize_rolls=False,
+    )
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     x, y = next(iter(loader))
     assert x.size() == torch.Size([batch_size, seq_len])
     assert y.size() == torch.Size([batch_size, seq_len, 128])
 
-    data = PartPairDataset(DATASET_NAME, PART_1, PART_2, "descriptors", "hits")
+    data = PartPairDataset(
+        DATASET_NAME,
+        PART_1,
+        PART_2,
+        "descriptors",
+        "hits",
+        datasets_dir=datasets_dir,
+        tokenize_rolls=False,
+    )
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     x, y = next(iter(loader))
     assert x.size() == torch.Size([batch_size, N_DESCRIPTORS])
     assert y.size() == torch.Size([batch_size, seq_len])
 
-    data = PartPairDataset(DATASET_NAME, PART_1, PART_2, "pattern", "pattern")
+    data = PartPairDataset(
+        DATASET_NAME,
+        PART_1,
+        PART_2,
+        "pattern",
+        "pattern",
+        datasets_dir=datasets_dir,
+        tokenize_rolls=False,
+    )
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     x, y = next(iter(loader))
     assert x.size() == torch.Size([batch_size, seq_len])
     assert y.size() == torch.Size([batch_size, seq_len])
 
-    data = PartPairDataset(DATASET_NAME, PART_1, PART_2, "roll", "pattern")
+    data = PartPairDataset(
+        DATASET_NAME,
+        PART_1,
+        PART_2,
+        "roll",
+        "pattern",
+        datasets_dir=datasets_dir,
+        tokenize_rolls=False,
+    )
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     x, y = next(iter(loader))
     assert x.size() == torch.Size([batch_size, seq_len, 128])
     assert y.size() == torch.Size([batch_size, seq_len])
 
-    data = PartPairDataset(DATASET_NAME, PART_1, PART_2, "pattern", "chroma")
+    data = PartPairDataset(
+        DATASET_NAME,
+        PART_1,
+        PART_2,
+        "pattern",
+        "chroma",
+        datasets_dir=datasets_dir,
+        tokenize_rolls=False,
+    )
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     x, y = next(iter(loader))
     assert x.size() == torch.Size([batch_size, seq_len])
     assert y.size() == torch.Size([batch_size, seq_len, 12])
 
-    data = PartPairDataset(DATASET_NAME, PART_1, PART_2, "chroma", "roll")
+    data = PartPairDataset(
+        DATASET_NAME,
+        PART_1,
+        PART_2,
+        "chroma",
+        "roll",
+        datasets_dir=datasets_dir,
+        tokenize_rolls=False,
+    )
     loader = DataLoader(data, batch_size=batch_size, shuffle=True)
     x, y = next(iter(loader))
     assert x.size() == torch.Size([batch_size, seq_len, 12])
