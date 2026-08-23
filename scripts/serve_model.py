@@ -38,6 +38,10 @@ from rhythmic_relationships.models.hits_encdec import TransformerEncoderDecoder
 from rhythmic_relationships.vocab import START_IX, get_hits_vocab
 from rhythmtoolbox import pianoroll2descriptors
 
+# `run_train` and this server both run from `scripts/`, so the thesis's paired descriptors are
+# importable as a sibling. Using them rather than reimplementing keeps one definition of each.
+from pair_descriptors import get_antiphony, get_onset_balance
+
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 PAGE_PATH = os.path.join(THIS_DIR, "serve_model.html")
 
@@ -46,6 +50,9 @@ REST_IX = next(ix for ix, value in get_hits_vocab().items() if value == 0)
 
 # Only these carry a value for a part on one pitch; the rest need a real pitch spread
 DESCRIPTORS = ["stepDensity", "sync", "syness", "balance", "evenness"]
+
+# The two descriptors of a *pair* of parts, from scripts/pair_descriptors.py
+PAIRED_DESCRIPTORS = ["onset_balance", "antiphony"]
 
 STATE = {"models": {}, "loaded": {}, "examples": {}, "indexes": {}}
 
@@ -267,6 +274,22 @@ def describe(hits, pitch, resolution):
     return {k: descriptors[k] for k in DESCRIPTORS}
 
 
+def describe_pair(a_hits, b_hits):
+    """The paired descriptors for two parts heard together.
+
+    Both are undefined for a part with no onsets - `get_center` divides by the onset count - so
+    they are reported as absent rather than as a nan that would render as a number.
+    """
+    a = (torch.tensor([a_hits], dtype=torch.float32) > 0).to(int)
+    b = (torch.tensor([b_hits], dtype=torch.float32) > 0).to(int)
+    if int(a.sum()) == 0 or int(b.sum()) == 0:
+        return {name: None for name in PAIRED_DESCRIPTORS}
+    return {
+        "onset_balance": round(float(get_onset_balance(a, b)[0]), 4),
+        "antiphony": round(float(get_antiphony(a, b)[0]), 4),
+    }
+
+
 def generate(model_id, hits, sampler, temperature, nucleus_p):
     entry = get_model(model_id)
     model, config = entry["model"], entry["config"]
@@ -321,6 +344,7 @@ def generate(model_id, hits, sampler, temperature, nucleus_p):
             "input": describe(hits, STATE["part_1_pitch"], resolution),
             "output": describe(gen_hits, STATE["part_2_pitch"], resolution),
         },
+        "paired": describe_pair(hits, gen_hits),
     }
 
 
@@ -349,6 +373,7 @@ def meta_for(model_id):
         "has_examples": STATE["n_examples"] > 0,
         "n_index": STATE["n_index"],
         "descriptors": DESCRIPTORS,
+        "paired_descriptors": PAIRED_DESCRIPTORS,
     }
 
 
