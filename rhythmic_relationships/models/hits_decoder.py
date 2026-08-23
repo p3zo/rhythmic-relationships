@@ -49,15 +49,6 @@ class TransformerDecoderXTransformers(nn.Module):
                 # ff_no_bias=True,
             ),
         )
-        self.apply(self._init_weights)
-
-    def _init_weights(self, module):
-        if isinstance(module, nn.Linear):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
-            if module.bias is not None:
-                torch.nn.init.zeros_(module.bias)
-        elif isinstance(module, nn.Embedding):
-            torch.nn.init.normal_(module.weight, mean=0.0, std=0.02)
 
     def forward(self, x):
         attn_mask = get_causal_mask(x.size(1), device=x.device, boolean=True)
@@ -170,16 +161,15 @@ class TransformerDecoder(nn.Module):
     ):
         super().__init__()
 
-        vocab_size = vocab_size + 1
-
         self.context_len = context_len
+        self.pad_ix = pad_ix
 
         self.token_embedding_table = nn.Embedding(
             vocab_size, n_embed, padding_idx=pad_ix
         )
-        self.position_embedding_table = nn.Embedding(
-            context_len, n_embed, padding_idx=pad_ix
-        )
+        # No padding_idx here: this table is indexed by position, not by token, so pad_ix is a
+        # position like any other
+        self.position_embedding_table = nn.Embedding(context_len, n_embed)
         self.blocks = nn.Sequential(
             *[
                 Block(
@@ -194,6 +184,11 @@ class TransformerDecoder(nn.Module):
         self.ln_final = nn.LayerNorm(n_embed)
         self.lm_head = nn.Linear(n_embed, vocab_size)
         self.apply(self._init_weights)
+
+        # `apply` above re-randomises the row that padding_idx had zeroed, and its gradient stays
+        # zero, so the pad embedding would otherwise keep a random value for the whole run
+        with torch.no_grad():
+            self.token_embedding_table.weight[pad_ix].zero_()
 
     def _init_weights(self, module):
         if isinstance(module, nn.Linear):

@@ -22,9 +22,7 @@ model:
   dec_n_head: 2
   dec_d_ff: 240
   dec_dropout: 0.1
-  d_embed: 96
   d_vae_latent: 24
-  emb_dropout: 0.1
 
 kl_max_beta: 1.0
 free_bit_lambda:  0.25
