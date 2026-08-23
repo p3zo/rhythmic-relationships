@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>rhythmic relationships</title>
+<title>p3zo/rhythmic-relationships</title>
 <style>
   :root {
     --bg: #14161a; --panel: #1c1f25; --line: #2c313a; --text: #e6e8ec;
@@ -11,10 +11,11 @@
   * { box-sizing: border-box; }
   body { margin: 0; padding: 24px; background: var(--bg); color: var(--text);
          font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-  h1 { font-size: 17px; margin: 0 0 2px; font-weight: 600; }
-  h1 .repo { margin-left: 12px; font-size: 12px; font-weight: 400; color: var(--dim);
-             font-family: ui-monospace, monospace; text-decoration: none; }
-  h1 .repo:hover { color: var(--in); text-decoration: underline; }
+  .head { display: flex; align-items: baseline; gap: 16px; }
+  h1 { font-size: 21px; margin: 0; font-weight: 600; flex: 1;
+       font-family: ui-monospace, monospace; letter-spacing: -.02em; }
+  h1 a { color: var(--text); text-decoration: none; }
+  h1 a:hover { color: var(--in); }
   h2 { font-size: 13px; margin: 0 0 14px; font-weight: 600; letter-spacing: .07em;
        text-transform: uppercase; color: var(--dim); }
   .meta { color: var(--dim); font-size: 12px; font-family: ui-monospace, monospace; }
@@ -82,10 +83,10 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>rhythmic relationships
-    <a class="repo" href="https://github.com/p3zo/rhythmic-relationships" target="_blank"
-       rel="noopener">p3zo/rhythmic-relationships</a></h1>
-  <div class="meta" id="meta">loading…</div>
+  <div class="head">
+    <h1><a href="https://github.com/p3zo/rhythmic-relationships" target="_blank"
+           rel="noopener">p3zo/rhythmic-relationships</a></h1>
+  </div>
 
   <div class="panel">
     <div class="row">
@@ -104,6 +105,8 @@
     <div class="row" style="margin-top:12px">
       <div class="label"></div>
       <div id="inDesc"></div>
+      <span style="flex:1"></span>
+      <span class="hint" id="inSeg"></span>
     </div>
     <div class="row" style="margin-top:14px">
       <div class="label"></div>
@@ -127,6 +130,10 @@
       <div class="grid" id="probGrid"></div>
     </div>
     <div class="row" style="margin-top:14px">
+      <div class="label">model</div>
+      <span class="meta" id="meta">loading the model…</span>
+    </div>
+    <div class="row" style="margin-top:10px">
       <div class="label"></div>
       <button class="primary" id="gen">Generate ⏎</button>
       <select id="sampler">
@@ -159,6 +166,7 @@
 
   <div class="panel">
     <h2>Mashups</h2>
+    <div class="meta" id="mashupNote" style="margin-bottom:14px"></div>
     <div id="matches"><span class="hint">Generate to find real segments that move like the output.</span></div>
   </div>
 
@@ -202,54 +210,74 @@ function noiseBuffer(ac) {
   return noise;
 }
 
-// A struck string, per partial: [harmonic number, level, how much of the note it lasts].
-// The upper partials dying away while the fundamental is still ringing is what reads as a
-// piano; give them all the same envelope and it turns into an organ.
+// A struck string, per partial: [harmonic, level, how much of the note's decay it lasts].
+// Three things separate this from a toy piano: the upper partials die away while the
+// fundamental is still ringing, each note is two strings a hair apart so the sustain beats
+// against itself instead of sitting still, and a soft strike barely wakes the top of the
+// spectrum at all.
 const PIANO_PARTIALS = [
-  [1, 1.00, 1.00], [2, 0.50, 0.62], [3, 0.26, 0.45], [4, 0.15, 0.34],
-  [5, 0.09, 0.26], [6, 0.05, 0.20], [7, 0.03, 0.16],
+  [1, 1.00, 1.00], [2, 0.62, 0.68], [3, 0.38, 0.52], [4, 0.24, 0.42],
+  [5, 0.15, 0.34], [6, 0.10, 0.28], [7, 0.07, 0.23], [8, 0.05, 0.20],
+  [9, 0.035, 0.17], [10, 0.025, 0.15], [12, 0.015, 0.12],
 ];
 // Real strings are stiff, so their partials sit slightly above whole multiples of the
 // fundamental. This is why a piano sounds bright rather than perfectly in tune with itself.
-const INHARMONICITY = 0.0004;
+const INHARMONICITY = 0.00035;
+// How far the second string of a note sits from the first. Proportional, so middle C beats
+// around once a second and the bass beats slower, which is how a real unison behaves.
+const DETUNE = 0.0025;
 
-function pianoNote(ac, at, midi, gain, pan, ring) {
+function pianoNote(ac, at, midi, gain, velocity, pan, ring) {
   const p = ac.createStereoPanner();
   p.pan.value = pan;
+  // Bare sines sound glassy however they are stacked; rolling the top off is most of what
+  // turns the stack into an instrument
+  const warm = ac.createBiquadFilter();
+  warm.type = "lowpass";
+  warm.frequency.value = 7000;
+  warm.connect(p);
   p.connect(ac.destination);
 
   // Bass strings ring far longer than treble ones
-  const seconds = Math.max(0.5, Math.min(3, ring * Math.pow(2, (60 - midi) / 24)));
+  const seconds = Math.max(1, Math.min(5, ring * Math.pow(2, (60 - midi) / 22)));
   const freq = midiHz(midi);
 
   for (const [n, level, lasts] of PIANO_PARTIALS) {
+    // A hard strike excites the upper partials; a soft one leaves them alone
+    const amp = gain * velocity * level * Math.pow(velocity, (n - 1) * 0.35);
     const f = freq * n * Math.sqrt(1 + INHARMONICITY * n * n);
-    if (f > 16000) continue;
+    if (amp < 1e-4 || f > 16000) continue;
     const decay = seconds * lasts;
-    const g = ac.createGain();
-    g.gain.setValueAtTime(0, at);
-    // Hammer-fast: any slower and it reads as a bowed or blown note instead of a struck one
-    g.gain.linearRampToValueAtTime(gain * level, at + 0.004);
-    g.gain.exponentialRampToValueAtTime(0.0001, at + decay);
-    const osc = ac.createOscillator();
-    osc.type = "sine";
-    osc.frequency.value = f;
-    osc.connect(g); g.connect(p);
-    osc.start(at); osc.stop(at + decay + 0.02);
+    const strings = n <= 4 ? [1 - DETUNE, 1 + DETUNE] : [1];
+    for (const detune of strings) {
+      const g = ac.createGain();
+      const start = amp / strings.length;
+      g.gain.setValueAtTime(0, at);
+      // Hammer-fast: any slower and it reads as bowed or blown rather than struck
+      g.gain.linearRampToValueAtTime(start, at + 0.004);
+      // Piano decay happens in two stages - a quick drop as the strings shed energy into the
+      // soundboard, then a long aftersound. A single exponential to silence is the plink.
+      g.gain.exponentialRampToValueAtTime(start * 0.45, at + decay * 0.06);
+      g.gain.exponentialRampToValueAtTime(0.0001, at + decay);
+      const osc = ac.createOscillator();
+      osc.type = "sine";
+      osc.frequency.value = f * detune;
+      osc.connect(g); g.connect(warm);
+      osc.start(at); osc.stop(at + decay + 0.02);
+    }
   }
 
-  // The thud of the hammer itself, which is most of what makes the attack sound like wood
-  const hammer = ac.createBufferSource();
-  hammer.buffer = noiseBuffer(ac);
-  const bp = ac.createBiquadFilter();
-  bp.type = "bandpass";
-  bp.frequency.value = Math.min(5000, freq * 6);
-  bp.Q = 0.8;
-  const hg = ac.createGain();
-  hg.gain.setValueAtTime(gain * 0.7, at);
-  hg.gain.exponentialRampToValueAtTime(0.0001, at + 0.035);
-  hammer.connect(bp); bp.connect(hg); hg.connect(p);
-  hammer.start(at); hammer.stop(at + 0.05);
+  // The knock of the hammer, quiet enough to be felt rather than heard
+  const knock = ac.createBufferSource();
+  knock.buffer = noiseBuffer(ac);
+  const lp = ac.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.value = Math.min(3500, freq * 8);
+  const kg = ac.createGain();
+  kg.gain.setValueAtTime(gain * velocity * 0.22, at);
+  kg.gain.exponentialRampToValueAtTime(0.0001, at + 0.025);
+  knock.connect(lp); lp.connect(kg); kg.connect(warm);
+  knock.start(at); knock.stop(at + 0.04);
 }
 
 // A stick tap: a filtered noise burst with no pitch in it at all
@@ -275,11 +303,11 @@ function stickTap(ac, at, gain, pan) {
 // Both parts are the same grand piano, kept apart in the stereo field so it stays clear which
 // one you are hearing.
 const VOICES = {
-  melody: { gain: 0.13, pan: -0.45, lift: 0, ring: 1.3 },
+  melody: { gain: 0.13, pan: -0.45, lift: 0, ring: 4 },
   // A bassline's fundamental is often below what a laptop speaker reproduces at all, so notes
   // under MIDI 45 are folded up by octaves into a register that can be heard. Folding by whole
   // octaves keeps the pitch class, so it cannot undo a mashup's transposition.
-  bass:   { gain: 0.14, pan: 0.40, lift: 45, ring: 1.3 },
+  bass:   { gain: 0.14, pan: 0.40, lift: 45, ring: 4 },
 };
 
 // Fold a note up by whole octaves until it clears `floorNote`, preserving its pitch class
@@ -311,7 +339,7 @@ function play(parts) {
           stickTap(ac, at, level * 0.5, part.pan ?? 0.55);
         } else {
           const v = VOICES[part.voice];
-          pianoNote(ac, at, lift(pitch, v.lift), level * v.gain,
+          pianoNote(ac, at, lift(pitch, v.lift), v.gain, level,
                     part.pan ?? v.pan, v.ring);
         }
       }
@@ -330,7 +358,7 @@ function play(parts) {
       }
     }
   }
-  return loops * META.n_steps * step + 1.6;
+  return loops * META.n_steps * step + 3;
 }
 
 // Any play button is also its own stop button while it is the thing playing
@@ -437,8 +465,15 @@ const fmt = (v) => {
   return Number.isInteger(+v) ? String(+v) : (+v).toFixed(3);
 };
 
+// What the two paired descriptors from the thesis mean, shown on hover wherever they appear
+const DESCRIBES = {
+  onset_balance: "1 when both parts play the same number of onsets, 0 when one part plays all of them",
+  antiphony: "0 when both parts' onsets centre on the same point in the two bars, rising as one crowds the start and the other the end",
+};
+
 function statRow(name, value) {
-  return `<span class="metric"><b>${fmt(value)}</b>${name}</span>`;
+  const tip = DESCRIBES[name] ? ` title="${DESCRIBES[name]}"` : "";
+  return `<span class="metric"${tip}><b>${fmt(value)}</b>${name}</span>`;
 }
 
 function drawDescriptors() {
@@ -599,7 +634,7 @@ function buildSteer() {
   $("steer").innerHTML =
     META.paired_descriptors.map((k) => `
       <div class="line">
-        <label class="check nm"><input type="checkbox" data-on="${k}"> ${k}</label>
+        <label class="check nm" title="${DESCRIBES[k]}"><input type="checkbox" data-on="${k}"> ${k}</label>
         <input type="range" data-target="${k}" min="0" max="1" step="0.01" value="0.5">
         <span class="tv" id="tv-${k}">0.50</span>
         <span id="got-${k}"></span>
@@ -643,15 +678,15 @@ function drawSteerResult() {
 }
 
 function setMeta() {
-  const bits = [
+  $("inSeg").textContent = exampleName;
+  $("mashupNote").textContent =
+    `The closest matches out of ${META.n_index.toLocaleString()} searchable ${META.part_2} segments.`;
+  $("meta").textContent = [
     `${META.part_1} → ${META.part_2}`,
-    `${META.n_steps} steps`,
     `${META.n_params.toLocaleString()} params`,
     `val ${META.final_eval.val_loss ?? "?"}`,
     META.dataset_name,
-  ];
-  if (exampleName) bits.push(exampleName);
-  $("meta").textContent = bits.join("  ·  ");
+  ].join("  ·  ");
 }
 
 async function generate() {
