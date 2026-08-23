@@ -251,7 +251,7 @@ for src in p1_seqs.to("mps"):
         device="mps",
         sampler="nucleus",
         nucleus_p=0.92,
-    )
+    )[0]
     mtb_embeddings.append(
         model.encoder(seq.unsqueeze(0), return_embeddings=True)
         .detach()

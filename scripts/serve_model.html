@@ -12,6 +12,9 @@
   body { margin: 0; padding: 24px; background: var(--bg); color: var(--text);
          font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
   h1 { font-size: 17px; margin: 0 0 2px; font-weight: 600; }
+  h1 .repo { margin-left: 12px; font-size: 12px; font-weight: 400; color: var(--dim);
+             font-family: ui-monospace, monospace; text-decoration: none; }
+  h1 .repo:hover { color: var(--in); text-decoration: underline; }
   h2 { font-size: 13px; margin: 0 0 14px; font-weight: 600; letter-spacing: .07em;
        text-transform: uppercase; color: var(--dim); }
   .meta { color: var(--dim); font-size: 12px; font-family: ui-monospace, monospace; }
@@ -49,6 +52,13 @@
   .metrics b { display: block; font-size: 15px; font-weight: 600; color: var(--text); }
   .metrics.paired { margin-top: 12px; padding-top: 12px; border-top: 1px solid #23272f; }
   .metrics.paired b { color: #b98cff; }
+  .steer { display: flex; flex-direction: column; gap: 6px; }
+  .steer .line { display: flex; align-items: center; gap: 10px; font-size: 12px;
+                 color: var(--dim); font-family: ui-monospace, monospace; }
+  .steer .nm { width: 152px; flex: none; white-space: nowrap; }
+  .steer .tv { width: 34px; }
+  .steer .got { color: var(--text); }
+  .steer .miss { color: #ff9a6a; }
   /* mashup rows */
   .match { display: flex; align-items: center; gap: 12px; padding: 5px 0;
            border-top: 1px solid #23272f; }
@@ -69,7 +79,9 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>rhythmic relationships</h1>
+  <h1>rhythmic relationships
+    <a class="repo" href="https://github.com/p3zo/rhythmic-relationships" target="_blank"
+       rel="noopener">p3zo/rhythmic-relationships</a></h1>
   <div class="meta" id="meta">loading…</div>
 
   <div class="panel">
@@ -131,6 +143,10 @@
       <span class="sw" style="background:rgb(86,211,100)"></span>onset on an input onset
       <span class="sw" style="background:rgb(255,140,90)"></span>onset in an input gap
       <span class="sw" style="background:#4b5563"></span>the model's onset probability at that step
+    </div>
+    <div class="row" style="margin-top:14px">
+      <div class="label">steer</div>
+      <div id="steer" class="steer"></div>
     </div>
     <div class="row" style="margin-top:14px">
       <div class="label"></div>
@@ -490,6 +506,53 @@ async function findMatches() {
 }
 
 // ---------- wiring ----------
+function buildSteer() {
+  $("steer").innerHTML =
+    META.paired_descriptors.map((k) => `
+      <div class="line">
+        <label class="check nm"><input type="checkbox" data-on="${k}"> ${k}</label>
+        <input type="range" data-target="${k}" min="0" max="1" step="0.01" value="0.5">
+        <span class="tv" id="tv-${k}">0.50</span>
+        <span id="got-${k}"></span>
+      </div>`).join("") +
+    `<div class="line"><span class="nm">candidates</span>
+       <select id="nCand">
+         <option>16</option><option selected>48</option><option>128</option>
+       </select></div>`;
+
+  META.paired_descriptors.forEach((k) => {
+    document.querySelector(`[data-target="${k}"]`).oninput = (e) => {
+      $(`tv-${k}`).textContent = (+e.target.value).toFixed(2);
+    };
+  });
+}
+
+// Only the descriptors whose box is ticked are steered toward
+function steerTargets() {
+  const targets = {};
+  META.paired_descriptors.forEach((k) => {
+    if (document.querySelector(`[data-on="${k}"]`).checked) {
+      targets[k] = parseFloat(document.querySelector(`[data-target="${k}"]`).value);
+    }
+  });
+  return Object.keys(targets).length ? targets : null;
+}
+
+function drawSteerResult() {
+  META.paired_descriptors.forEach((k) => {
+    const el = $(`got-${k}`);
+    if (!el) return;
+    const search = output && output.search;
+    if (!search || !(k in search.targets)) { el.textContent = ""; return; }
+    const got = output.paired[k];
+    const reach = search.reachable[k];
+    const missed = got === null || Math.abs(got - search.targets[k]) > 0.05;
+    el.className = missed ? "miss" : "got";
+    el.textContent = `got ${fmt(got)}` +
+      (reach ? `   (${search.n_candidates} candidates spanned ${fmt(reach.min)}–${fmt(reach.max)})` : "");
+  });
+}
+
 function setMeta() {
   const bits = [
     `${META.part_1} → ${META.part_2}`,
@@ -514,6 +577,8 @@ async function generate() {
         sampler: $("sampler").value,
         temperature: parseFloat($("temp").value),
         nucleus_p: parseFloat($("pp").value),
+        targets: steerTargets(),
+        n_candidates: parseInt($("nCand").value, 10),
       }),
     });
     const body = await res.json();
@@ -521,6 +586,7 @@ async function generate() {
     output = body;
     drawOutput();
     drawDescriptors();
+    drawSteerResult();
   } finally {
     $("gen").disabled = false;
   }
@@ -552,6 +618,7 @@ async function selectModel(modelId) {
   exampleName = "";
   $("playPitched").disabled = true;
   buildGrids();
+  buildSteer();
   drawInput();
   drawOutput();
   drawDescriptors();
