@@ -1,9 +1,14 @@
 import argparse
-import os
 import importlib
+import inspect
+import os
 import torch
 from rhythmic_relationships import DATASETS_DIR, MODELS_DIR
-from rhythmic_relationships.model_utils import get_model_name, load_config
+from rhythmic_relationships.model_utils import (
+    get_model_name,
+    load_checkpoint,
+    load_config,
+)
 
 DEVICE = torch.device(
     "mps"
@@ -18,6 +23,20 @@ if __name__ == "__main__":
     parser.add_argument("--model", type=str, default="encdec")
     parser.add_argument("--datasets_dir", type=str, default=DATASETS_DIR)
     parser.add_argument("--config_path", type=str, default=None)
+    parser.add_argument(
+        "--resume",
+        type=str,
+        default=None,
+        help="Continue a run from one of its checkpoints, e.g. .../checkpoints/5. The run "
+        "carries on in the same directory, with the same data splits and optimiser state.",
+    )
+    parser.add_argument(
+        "--epochs",
+        type=int,
+        default=None,
+        help="Total epochs to train to, overriding the config. To add three epochs to a run "
+        "that stopped at five, pass 8.",
+    )
     args = parser.parse_args()
 
     this_path = os.path.dirname(os.path.abspath(__file__))
@@ -35,22 +54,34 @@ if __name__ == "__main__":
     if not args.config_path:
         args.config_path = os.path.join(this_path, model_type, "config.yml")
 
-    model_name = get_model_name()
-    print(f"{model_name=}")
+    checkpoint = None
+    if args.resume:
+        # The checkpoint's own config is what built the model being loaded, so it wins over
+        # anything on disk that may have been edited since
+        checkpoint = load_checkpoint(args.resume)
+        config = checkpoint["config"]
+        model_dir = os.path.dirname(os.path.dirname(os.path.abspath(args.resume)))
+        model_name = os.path.basename(model_dir)
+        print(f"{model_name=} resuming from {args.resume}")
+    else:
+        config = load_config(args.config_path)
+        model_name = get_model_name()
+        print(f"{model_name=}")
+        model_dir = os.path.join(MODELS_DIR, model_type, model_name)
+        if model_type in ["encdec", "hits_encdec"]:
+            model_dir = os.path.join(
+                MODELS_DIR,
+                model_type,
+                f"{config['data']['part_1']}_{config['data']['part_2']}",
+                model_name,
+            )
 
-    config = load_config(args.config_path)
+    if args.epochs:
+        config["n_epochs"] = args.epochs
 
     # Seeds the default generator, which `random_split` draws the data splits from
     torch.manual_seed(config["seed"])
 
-    model_dir = os.path.join(MODELS_DIR, model_type, model_name)
-    if model_type in ["encdec", "hits_encdec"]:
-        model_dir = os.path.join(
-            MODELS_DIR,
-            model_type,
-            f"{config['data']['part_1']}_{config['data']['part_2']}",
-            model_name,
-        )
     if not os.path.isdir(model_dir):
         os.makedirs(model_dir)
 
@@ -61,9 +92,15 @@ if __name__ == "__main__":
             "__init__.py exporting `train(config, model_name, datasets_dir, model_dir)`."
         )
 
-    model_module.train(
+    train_kwargs = dict(
         config=config,
         model_name=model_name,
         datasets_dir=args.datasets_dir,
         model_dir=model_dir,
     )
+    if checkpoint is not None:
+        if "resume" not in inspect.signature(model_module.train).parameters:
+            raise ValueError(f"`{model_type}`'s train() cannot resume from a checkpoint yet")
+        train_kwargs["resume"] = checkpoint
+
+    model_module.train(**train_kwargs)
