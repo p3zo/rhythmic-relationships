@@ -1,5 +1,6 @@
 // Ask the served page the questions scripts/check_web_port.py answered, and compare.
-// Usage: python scripts/check_web_port.py && node scripts/check_web_port.mjs [pageUrl]
+// Usage: python scripts/check_web_port.py && node scripts/check_web_port.mjs [port|url]
+// A full URL checks a deployed site; a bare port checks a local server.
 const PAGE = process.argv[2] || "8099";
 const t = (await (await fetch("http://127.0.0.1:9222/json")).json())
   .find((x) => x.type === "page" && x.url.includes(PAGE));
@@ -19,7 +20,9 @@ async function ev(expr) {
 await send("Runtime.enable");
 for (let i = 0; i < 120; i++) { if (await ev(`!!window.ort && !!document.querySelector('[data-on]')`)) break; await sleep(500); }
 
-const ref = await (await fetch(`http://localhost:${PAGE}/data/.port_check.json`)).json();
+// The reference is scaffolding, not part of the site, so it is read off disk rather than
+// fetched — a deployed target does not serve it.
+const ref = JSON.parse(await (await import("node:fs/promises")).readFile("docs/data/.port_check.json", "utf8"));
 const P = ref.patterns, C = ref.cases;
 let checked = 0, failed = 0;
 const fail = (what, want, got) => { failed++; console.log(`  FAIL ${what}\n    python: ${JSON.stringify(want)}\n    js    : ${JSON.stringify(got)}`); };
