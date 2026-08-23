@@ -170,3 +170,16 @@ To train a model:
     python scripts/modeling/run_train.py --model hits_encdec
 
 The possible model names are the names of directories in `scripts/modeling`. See `scripts/modeling/README.md` for a catalog.
+
+### Trained weights
+
+Weights are not in git. They are attached to [releases](https://github.com/p3zo/rhythmic-relationships/releases) under a version of their own, `models-vX.Y.Z`, which is bumped whenever the set of models changes: a patch for a re-export of the same runs, a minor for models added, a major for a change to the representation that makes older weights unusable with the current code.
+
+`hits-encdec-models-<version>.zip` holds one `model.pt` per run, which is all you need to run a model. `hits-encdec-checkpoints-<version>.zip` also carries the optimizer state, and only matters if you intend to resume training. Both hold a `MANIFEST.json` recording each run's parts, dataset, epochs, val loss and sha256.
+
+To build the archives for a new version:
+
+    uv run python scripts/package_models.py --version 1.1.0 --model_path \
+      output/models/hits_encdec/<pair>/<run>/model.pt ...
+
+then attach the two zips to a release tagged `models-v1.1.0`.
