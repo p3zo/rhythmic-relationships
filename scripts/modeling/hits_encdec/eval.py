@@ -12,9 +12,8 @@ from rhythmic_relationships.data import (
     get_hits_from_hits_seq,
 )
 from rhythmic_relationships.evaluate import (
-    compute_kld,
-    compute_oa,
-    get_oa_kld_dists,
+    compute_oa_and_kld,
+    compute_oa_kld_dists,
     make_oa_kld_plot,
     mk_descriptor_dist_plot,
     hits_inference,
@@ -37,38 +36,6 @@ DEVICE = torch.device(
 
 def pct_diff(x, y):
     return 100 * np.abs(x - y) / ((x + y) / 2)
-
-
-def mk_oa_kld_plots(
-    descriptor_dists,
-    label,
-    model_name,
-    eval_dir,
-    sampler,
-):
-    print(f"{label} oa_kld_dists")
-    for descriptor in descriptor_dists:
-        if descriptor != "all_descriptors":
-            print("TODO remove this. skipping", descriptor)
-            continue
-        print(f"{descriptor=}")
-        dist_1 = descriptor_dists[descriptor]["ref_dist"]
-        dist_2 = descriptor_dists[descriptor]["ref_gen_dist"]
-
-        oa = compute_oa(dist_1, dist_2)
-        kld = compute_kld(dist_1, dist_2)
-
-        make_oa_kld_plot(
-            dist_1=dist_1,
-            dist_2=dist_2,
-            oa=oa,
-            kld=kld,
-            label=f"{label}_{descriptor}",
-            model_name=model_name,
-            outdir=eval_dir,
-            suffix=sampler,
-            descriptor=descriptor,
-        )
 
 
 def get_sampler_eval(
@@ -272,13 +239,27 @@ def get_sampler_eval(
             filename_suffix=f"{sampler}_train_gen",
         )
 
-        train_oa_kld_dists = get_oa_kld_dists(gen_df=gen_df, ref_df=train_df)
-        mk_oa_kld_plots(
-            train_oa_kld_dists,
-            label="train",
+    # The target distribution is always to hand, so this pair is computed on every eval. A
+    # training-set distribution only arrives from the standalone eval script, and used to be the
+    # only reference here, which is why these numbers never reached an eval record.
+    oa_kld_dists = compute_oa_kld_dists(
+        gen_df=gen_df,
+        ref_df=target_df,
+        train_df=train_df,
+    )
+    oa_klds = compute_oa_and_kld(oa_kld_dists)
+
+    labels = ["ref"] if train_df is None else ["ref", "train"]
+    for label in labels:
+        make_oa_kld_plot(
+            dist_1=oa_kld_dists[f"{label}_dist"],
+            dist_2=oa_kld_dists[f"{label}_gen_dist"],
+            oa=oa_klds[f"{label}_gen_oa"],
+            kld=oa_klds[f"{label}_gen_kld"],
+            label=label,
             model_name=model_name,
-            eval_dir=eval_dir,
-            sampler=sampler,
+            outdir=eval_dir,
+            suffix=sampler,
         )
 
     sample_stats = {
