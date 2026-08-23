@@ -42,6 +42,9 @@
   button.playing { background: #3b2226; border-color: #a24a54; color: #ffd9dc; }
   input[type=range] { width: 130px; vertical-align: middle; }
   label.check { color: var(--dim); font-size: 12px; cursor: pointer; user-select: none; }
+  select.part { width: 120px; flex: none; padding: 4px 8px; font-size: 12px;
+                text-align: right; text-align-last: right; }
+  #status { color: var(--dim); font-size: 12px; font-family: ui-monospace, monospace; }
   table { border-collapse: collapse; font-family: ui-monospace, monospace; font-size: 12px; }
   th, td { text-align: right; padding: 3px 12px 3px 0; }
   th { color: var(--dim); font-weight: 500; }
@@ -87,13 +90,14 @@
   <div class="head">
     <h1><a href="https://github.com/p3zo/rhythmic-relationships" target="_blank"
            rel="noopener">p3zo/rhythmic-relationships</a></h1>
+    <span id="status">loading…</span>
     <label class="check"><input type="checkbox" id="click"> click track</label>
   </div>
 
   <div class="panel">
     <h2>Input</h2>
     <div class="row">
-      <div class="label" id="inLabel"></div>
+      <select class="label part" id="inPart" title="Which part to play in"></select>
       <div class="grid in" id="inGrid"></div>
     </div>
     <div class="row" style="margin-top:12px">
@@ -116,7 +120,7 @@
   <div class="panel">
     <h2>Output</h2>
     <div class="row">
-      <div class="label" id="outLabel"></div>
+      <select class="label part" id="outPart" title="Which part to answer with"></select>
       <div class="grid" id="outGrid"></div>
     </div>
     <div class="row" style="margin-top:8px">
@@ -124,12 +128,6 @@
       <div class="grid" id="probGrid"></div>
     </div>
     <div class="row" style="margin-top:14px">
-      <div class="label">model</div>
-      <select id="model"></select>
-      <span class="meta" id="meta">loading…</span>
-      <span class="meta" id="valLoss"></span>
-    </div>
-    <div class="row" style="margin-top:10px">
       <div class="label"></div>
       <button class="primary" id="gen">Generate ⏎</button>
       <select id="sampler">
@@ -796,24 +794,12 @@ function drawSteerResult() {
   });
 }
 
-// 3,334,176 -> "3.3M"
-const millions = (n) =>
-  n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n);
-
 function setMeta() {
-  $("inLabel").textContent = META.part_1;
-  $("outLabel").textContent = META.part_2;
+  $("inPart").value = META.part_1;
+  $("outPart").value = META.part_2;
   $("inSeg").textContent = exampleName;
   $("mashupNote").textContent =
     `The closest matches out of ${META.n_index.toLocaleString()} searchable ${META.part_2} segments.`;
-  $("meta").textContent = `(${millions(META.n_params)} params)`;
-  setValLoss(META.val_loss);
-}
-
-function setValLoss(loss) {
-  $("valLoss").textContent = loss === null || loss === undefined ? "" : `val loss ${(+loss).toFixed(2)}`;
-  $("valLoss").title =
-    "Mean cross-entropy per token on the validation split, which the model never trained on";
 }
 
 // ---------- actions ----------
@@ -879,11 +865,34 @@ function loadExample() {
 
 const getJson = (url) => fetch(url).then((r) => r.json());
 
+// Which target parts each input part has a model for. Only trained pairs are ever offered -
+// there is nothing behind Melody -> Drums, so it does not appear.
+function targetsFor(part) {
+  return SHARED.models.filter((m) => m.part_1 === part).map((m) => m.part_2).sort();
+}
+
+function fillParts(part_1, part_2) {
+  const sources = [...new Set(SHARED.models.map((m) => m.part_1))].sort();
+  $("inPart").innerHTML = sources.map((p) => `<option>${p}</option>`).join("");
+  $("inPart").value = part_1;
+  const targets = targetsFor(part_1);
+  $("outPart").innerHTML = targets.map((p) => `<option>${p}</option>`).join("");
+  $("outPart").value = targets.includes(part_2) ? part_2 : targets[0];
+}
+
+// Changing the input part can strand the output part, so the pair is resolved before loading
+function pickModel(part_1, part_2) {
+  const targets = targetsFor(part_1);
+  const target = targets.includes(part_2) ? part_2 : targets[0];
+  return SHARED.models.find((m) => m.part_1 === part_1 && m.part_2 === target);
+}
+
 async function selectModel(id) {
   const model = SHARED.models.find((m) => m.id === id);
   stopAll();
-  $("model").disabled = true;
-  $("meta").textContent = "loading…";
+  $("inPart").disabled = $("outPart").disabled = true;
+  $("status").textContent = "loading…";
+  fillParts(model.part_1, model.part_2);
 
   const [enc, dec, examples, index] = await Promise.all([
     LOADED.sessions[`${id}/encoder`] ||= ort.InferenceSession.create(`data/models/${id}/encoder.onnx`),
@@ -916,22 +925,23 @@ async function selectModel(id) {
   // Land on a real segment of the new input part rather than an empty grid
   loadExample();
   await generate();
-  $("model").disabled = false;
+  $("status").textContent = "";
+  $("inPart").disabled = $("outPart").disabled = false;
 }
 
 (async function init() {
   try {
     ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/";
     SHARED = await getJson("data/meta.json");
-    $("model").innerHTML = SHARED.models
-      .map((m) => `<option value="${m.id}">${m.part_1} → ${m.part_2}</option>`).join("");
     await selectModel(SHARED.models[0].id);
   } catch (e) {
-    $("meta").textContent = `Could not load the model: ${e}`;
+    $("status").textContent = `Could not load the model: ${e}`;
     throw e;
   }
 
-  $("model").onchange = (e) => selectModel(e.target.value);
+  const repick = () => selectModel(pickModel($("inPart").value, $("outPart").value).id);
+  $("inPart").onchange = repick;
+  $("outPart").onchange = repick;
 
   $("clear").onclick = () => {
     input.fill(0); output = null; matches = []; dropPitches();

@@ -18,7 +18,7 @@ async function ev(expr) {
   return r.result.result.value;
 }
 await send("Runtime.enable");
-for (let i = 0; i < 120; i++) { if (await ev(`!!window.ort && !!document.querySelector('[data-on]')`)) break; await sleep(500); }
+for (let i = 0; i < 120; i++) { if (await ev(`!!window.ort && !!document.querySelector('.cell')`)) break; await sleep(500); }
 
 // The reference is scaffolding, not part of the site, so it is read off disk rather than
 // fetched — a deployed target does not serve it.
@@ -53,11 +53,19 @@ let current = null;
 for (const [key, want] of Object.entries(C.greedy)) {
   const [model, name] = key.split("|");
   if (model !== current) {
-    await ev(`(() => { const s = document.getElementById('model'); s.value = ${JSON.stringify(model)}; s.onchange({ target: s }); })()`);
+    const { part_1, part_2 } = ref.models.find((m) => m.id === model);
+    await ev(`(() => { const s = document.getElementById('inPart'); s.value = ${JSON.stringify(part_1)}; s.onchange(); })()`);
     for (let i = 0; i < 600; i++) {
-      if (await ev(`!document.getElementById('model').disabled`)) break;
+      if (await ev(`!document.getElementById('inPart').disabled`)) break;
       await sleep(200);
     }
+    await ev(`(() => { const s = document.getElementById('outPart'); s.value = ${JSON.stringify(part_2)}; s.onchange(); })()`);
+    for (let i = 0; i < 600; i++) {
+      if (await ev(`!document.getElementById('inPart').disabled`)) break;
+      await sleep(200);
+    }
+    const got = await ev(`META.run`);
+    if (got !== model) fail(`selecting ${part_1} -> ${part_2}`, model, got);
     current = model;
   }
   const got = JSON.parse(await ev(`generateBatch(${JSON.stringify(P[name])}, 1, 'greedy', 1.0, 0.92).then(r => JSON.stringify(r[0]))`));
