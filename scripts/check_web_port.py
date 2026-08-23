@@ -76,10 +76,10 @@ def key_shift(heard, seg_notes):
     return best
 
 
-def greedy_from_onnx(data_dir, hits, n_steps, part_2):
+def greedy_from_onnx(model_dir, hits, n_steps, part_2):
     """The same fixed-length-buffer generation the page does, in Python."""
-    encoder = ort.InferenceSession(os.path.join(data_dir, "encoder.onnx"))
-    decoder = ort.InferenceSession(os.path.join(data_dir, "decoder.onnx"))
+    encoder = ort.InferenceSession(os.path.join(model_dir, "encoder.onnx"))
+    decoder = ort.InferenceSession(os.path.join(model_dir, "decoder.onnx"))
 
     src = np.array([tokenize_hits(np.array(hits), block_size=1)], dtype=np.int64)
     enc = encoder.run(None, {"src": src})[0]
@@ -93,11 +93,11 @@ def greedy_from_onnx(data_dir, hits, n_steps, part_2):
     return get_hits_from_hits_seq(np.array(seq[1:]), part=part_2, block_size=1)
 
 
-def key_shift_cases(data_dir, drawn_pitch):
-    """Real melody/segment pairs, plus the cases that are easy to get wrong."""
-    with open(os.path.join(data_dir, "examples.json")) as f:
+def key_shift_cases(data_dir, drawn_pitch, part_1, part_2):
+    """Real input/segment pairs, plus the cases that are easy to get wrong."""
+    with open(os.path.join(data_dir, "parts", part_1, "examples.json")) as f:
         examples = [e for e in json.load(f) if e["p"]]
-    with open(os.path.join(data_dir, "index.json")) as f:
+    with open(os.path.join(data_dir, "parts", part_2, "index.json")) as f:
         index = [seg for seg in json.load(f) if seg["p"]]
 
     def notes(raw):
@@ -130,15 +130,20 @@ def main():
 
     with open(os.path.join(args.data_dir, "meta.json")) as f:
         meta = json.load(f)
-    n_steps, part_2 = meta["n_steps"], meta["part_2"]
+    n_steps = meta["n_steps"]
 
     cases = {"tokenize": {}, "greedy": {}, "paired": {}}
 
     for name, hits in PATTERNS.items():
         cases["tokenize"][name] = tokenize_hits(np.array(hits), block_size=1)
 
-    for name in ["quarters", "eighths", "sparse", "mixed"]:
-        cases["greedy"][name] = greedy_from_onnx(args.data_dir, PATTERNS[name], n_steps, part_2)
+    # Every model on the page, since each has its own exported weights to disagree with
+    for model in meta["models"]:
+        model_dir = os.path.join(args.data_dir, "models", model["id"])
+        for name in ["quarters", "eighths", "sparse", "mixed"]:
+            cases["greedy"][f"{model['id']}|{name}"] = greedy_from_onnx(
+                model_dir, PATTERNS[name], n_steps, model["part_2"]
+            )
 
     for a in PATTERNS:
         for b in PATTERNS:
@@ -152,7 +157,10 @@ def main():
                 round(float(get_antiphony(ta, tb)[0]), 6),
             ]
 
-    cases["key_shift"] = key_shift_cases(args.data_dir, meta["part_1_pitch"])
+    first = meta["models"][0]
+    cases["key_shift"] = key_shift_cases(
+        args.data_dir, meta["input_pitch"], first["part_1"], first["part_2"]
+    )
 
     with open(args.outfile, "w") as f:
         json.dump({"patterns": PATTERNS, "cases": cases}, f, indent=1)

@@ -125,7 +125,8 @@
     </div>
     <div class="row" style="margin-top:14px">
       <div class="label">model</div>
-      <span class="meta" id="meta">loading the model…</span>
+      <select id="model"></select>
+      <span class="meta" id="meta">loading…</span>
       <span class="meta" id="valLoss"></span>
     </div>
     <div class="row" style="margin-top:10px">
@@ -175,6 +176,12 @@
 // against it (see scripts/check_web_port.py).
 
 let META = null, EXAMPLES = [], INDEX = [], encSession = null, decSession = null;
+// Shared facts (representation, part pools) live apart from the selected model. META is rebuilt
+// per model so everything downstream keeps reading one flat object.
+let SHARED = null;
+// Parts are shared between models - Melody->Bass and Harmony->Bass search one Bass index - so
+// segment files and onnx sessions are fetched once and kept
+const LOADED = { examples: {}, index: {}, sessions: {} };
 let input = [], output = null, pitched = null, exampleName = "", matches = [];
 
 const $ = (id) => document.getElementById(id);
@@ -799,7 +806,7 @@ function setMeta() {
   $("inSeg").textContent = exampleName;
   $("mashupNote").textContent =
     `The closest matches out of ${META.n_index.toLocaleString()} searchable ${META.part_2} segments.`;
-  $("meta").textContent = `${META.run}  (${millions(META.n_params)} params)`;
+  $("meta").textContent = `(${millions(META.n_params)} params)`;
   setValLoss(META.val_loss);
 }
 
@@ -870,28 +877,61 @@ function loadExample() {
   setMeta();
 }
 
+const getJson = (url) => fetch(url).then((r) => r.json());
+
+async function selectModel(id) {
+  const model = SHARED.models.find((m) => m.id === id);
+  stopAll();
+  $("model").disabled = true;
+  $("meta").textContent = "loading…";
+
+  const [enc, dec, examples, index] = await Promise.all([
+    LOADED.sessions[`${id}/encoder`] ||= ort.InferenceSession.create(`data/models/${id}/encoder.onnx`),
+    LOADED.sessions[`${id}/decoder`] ||= ort.InferenceSession.create(`data/models/${id}/decoder.onnx`),
+    LOADED.examples[model.part_1] ||= getJson(`data/parts/${model.part_1}/examples.json`),
+    LOADED.index[model.part_2] ||= getJson(`data/parts/${model.part_2}/index.json`),
+  ]);
+  encSession = enc; decSession = dec; EXAMPLES = examples; INDEX = index;
+
+  // Flat, so the code downstream - and the block shared with the local page - reads one object
+  META = {
+    ...SHARED,
+    ...model,
+    run: model.id,
+    part_1_pitch: SHARED.input_pitch,
+    n_examples: SHARED.parts[model.part_1].n_examples,
+    n_index: SHARED.parts[model.part_2].n_index,
+  };
+
+  input = new Array(META.n_steps).fill(0);
+  output = null;
+  matches = [];
+  dropPitches();
+  buildGrids();
+  buildSteer();
+  drawInput();
+  drawOutput();
+  drawMatches();
+  setMeta();
+  // Land on a real segment of the new input part rather than an empty grid
+  loadExample();
+  await generate();
+  $("model").disabled = false;
+}
+
 (async function init() {
   try {
     ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/";
-    const [meta, examples, index] = await Promise.all(
-      ["meta", "examples", "index"].map((n) => fetch(`data/${n}.json`).then((r) => r.json())));
-    META = meta; EXAMPLES = examples; INDEX = index;
-
-    [encSession, decSession] = await Promise.all([
-      ort.InferenceSession.create("data/encoder.onnx"),
-      ort.InferenceSession.create("data/decoder.onnx"),
-    ]);
+    SHARED = await getJson("data/meta.json");
+    $("model").innerHTML = SHARED.models
+      .map((m) => `<option value="${m.id}">${m.part_1} → ${m.part_2}</option>`).join("");
+    await selectModel(SHARED.models[0].id);
   } catch (e) {
     $("meta").textContent = `Could not load the model: ${e}`;
     throw e;
   }
 
-  input = new Array(META.n_steps).fill(0);
-  buildGrids();
-  buildSteer();
-  drawInput();
-  drawOutput();
-  setMeta();
+  $("model").onchange = (e) => selectModel(e.target.value);
 
   $("clear").onclick = () => {
     input.fill(0); output = null; matches = []; dropPitches();
@@ -918,9 +958,6 @@ function loadExample() {
     if (e.key === "Enter") generate();
     if (e.key === "Escape") stopAll();
   });
-
-  loadExample();
-  await generate();
 })();
 </script>
 </body>

@@ -26,7 +26,7 @@ Change dependencies with `uv add` / `uv remove` rather than by hand, so the lock
 
 Two ways, the same interface.
 
-**Hosted**, at [p3zo.github.io/rhythmic-relationships](https://p3zo.github.io/rhythmic-relationships/) — the model runs in the browser through onnxruntime-web, so there is nothing to install. It ships one exported model and 30,000 indexed segments to search.
+**Hosted**, at [p3zo.github.io/rhythmic-relationships](https://p3zo.github.io/rhythmic-relationships/) — the models run in the browser through onnxruntime-web, so there is nothing to install. Pick a directed pair from the model menu; each carries 30,000 indexed segments of its target part to search. Only the selected model's files are fetched.
 
 **Locally**, against any model you have trained, with the full rhythmtoolbox descriptors:
 
@@ -37,8 +37,14 @@ uv run python scripts/serve_model.py     # http://localhost:8765
 To refresh the hosted site after training a new model, re-export and commit `docs/`:
 
 ```bash
-uv run python scripts/export_web.py --model_path output/models/hits_encdec/<pair>/<run>/model.pt
+uv run python scripts/export_web.py --model_path \
+  output/models/hits_encdec/Melody_Bass/<run>/model.pt \
+  output/models/hits_encdec/Bass_Melody/<run>/model.pt
 ```
+
+Pass every model that should appear in the menu; they all have to agree about the representation
+and the dataset. Segments are stored per part rather than per model, so two models targeting the
+same part share one index.
 
 The export cannot run in CI, since it needs both the checkpoint and the prepared dataset, so
 `.github/workflows/pages.yml` only publishes what is committed. The JavaScript reimplements the
