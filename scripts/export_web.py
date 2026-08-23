@@ -1,8 +1,12 @@
-"""Export a trained hits encoder-decoder into a static site's worth of files.
+"""Export trained hits encoder-decoders into a static site's worth of files.
 
 GitHub Pages serves files, not Python, so everything the interface needs at runtime has to be
-baked out ahead of time: the model as ONNX for onnxruntime-web, a handful of real input segments,
+baked out ahead of time: each model as ONNX for onnxruntime-web, a pool of real input segments,
 and the segment index the nearest-rhythm search reads. The dataset itself stays where it is.
+
+Segments are keyed by part rather than by model, because a part means the same thing to every
+model that reads it: Melody->Bass and Harmony->Bass search one Bass index between them. The page
+loads only what the selected model needs.
 
 The int8 export is the one that ships. It is checked here against the original weights by how
 often it would make the same greedy choice, because that - not the size of a logit difference -
@@ -153,9 +157,15 @@ def collect_segments(dataset_name, part, n_wanted, seed, per_file, with_pitches=
     return out
 
 
+def write_json(path, payload):
+    with open(path, "w") as f:
+        json.dump(payload, f, separators=(",", ":"))
+    print(f"  {os.path.relpath(path)}  {os.path.getsize(path)/1e6:.2f} MB")
+
+
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--model_path", type=str, required=True)
+    parser.add_argument("--model_path", type=str, required=True, nargs="+")
     parser.add_argument("--outdir", type=str, default="docs")
     parser.add_argument("--examples", type=int, default=2000)
     parser.add_argument("--index", type=int, default=30000)
@@ -167,61 +177,86 @@ def main():
     parser.add_argument("--no_quantize", action="store_true")
     args = parser.parse_args()
 
-    model, config = load_model(args.model_path, TransformerEncoderDecoder)
-    model.eval()
-    n_steps = config["model"]["context_len"]
-    part_1 = config["data"]["part_1"]
-    part_2 = config["data"]["part_2"]
-    dataset_name = config["data"]["dataset_name"]
-
     data_dir = os.path.join(args.outdir, "data")
     os.makedirs(data_dir, exist_ok=True)
 
-    print("exporting onnx")
-    paths = export_onnx(model, n_steps, data_dir, quantize=not args.no_quantize)
-    agree = check_fidelity(model, paths, n_steps)
+    models, shared, parts_wanted = [], {}, {}
+    for model_path in args.model_path:
+        model, config = load_model(model_path, TransformerEncoderDecoder)
+        model.eval()
+        run = os.path.basename(os.path.dirname(model_path))
+        part_1, part_2 = config["data"]["part_1"], config["data"]["part_2"]
+        n_steps = config["model"]["context_len"]
 
-    print(f"collecting {args.examples} {part_1} inputs")
-    examples = collect_segments(
-        dataset_name, part_1, args.examples, args.seed, args.examples_per_file
-    )
-    print(f"collecting {args.index} {part_2} segments to search")
-    index = collect_segments(
-        dataset_name, part_2, args.index, args.seed + 1, args.index_per_file
-    )
+        # One page holds one sequencer and one tokenizer, so every model on it has to agree
+        # about the representation. Anything else belongs on its own page.
+        facts = {"n_steps": n_steps, "dataset": config["data"]["dataset_name"],
+                 "block_size": config["data"]["block_size"]}
+        if shared and facts != shared:
+            raise ValueError(f"{run} does not match the others: {facts} vs {shared}")
+        shared = facts
 
-    checkpoint = torch.load(args.model_path, map_location="cpu", weights_only=False)
-    evals = checkpoint.get("evals") or []
+        print(f"exporting {run}  ({part_1} -> {part_2})")
+        model_dir = os.path.join(data_dir, "models", run)
+        os.makedirs(model_dir, exist_ok=True)
+        paths = export_onnx(model, n_steps, model_dir, quantize=not args.no_quantize)
+        agree = check_fidelity(model, paths, n_steps)
+
+        checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
+        evals = checkpoint.get("evals") or []
+        models.append({
+            "id": run,
+            "part_1": part_1,
+            "part_2": part_2,
+            "n_params": sum(p.numel() for p in model.parameters()),
+            "val_loss": round(evals[-1]["val_loss"], 4) if evals else None,
+            "epochs": checkpoint.get("epoch"),
+            "greedy_agreement": round(agree, 4),
+        })
+        parts_wanted.setdefault(part_1, set()).add("examples")
+        parts_wanted.setdefault(part_2, set()).add("index")
+
+    dataset_name = shared["dataset"]
+    parts = {}
+    for part, wanted in sorted(parts_wanted.items()):
+        part_dir = os.path.join(data_dir, "parts", part)
+        os.makedirs(part_dir, exist_ok=True)
+        parts[part] = {}
+        if "examples" in wanted:
+            print(f"collecting {args.examples} {part} inputs")
+            segs = collect_segments(dataset_name, part, args.examples, args.seed,
+                                    args.examples_per_file)
+            write_json(os.path.join(part_dir, "examples.json"), segs)
+            parts[part]["n_examples"] = len(segs)
+        if "index" in wanted:
+            print(f"collecting {args.index} {part} segments to search")
+            segs = collect_segments(dataset_name, part, args.index, args.seed + 1,
+                                    args.index_per_file)
+            write_json(os.path.join(part_dir, "index.json"), segs)
+            parts[part]["n_index"] = len(segs)
+
     hits_vocab = get_hits_vocab()
-
     meta = {
-        "run": os.path.basename(os.path.dirname(args.model_path)),
-        "part_1": part_1,
-        "part_2": part_2,
         "dataset": dataset_name,
-        "n_steps": n_steps,
+        "n_steps": shared["n_steps"],
         "resolution": 4,
         "n_beat_bars": 4,
-        "part_1_pitch": 55,
-        "part_2_pitch": 72,
-        "n_params": sum(p.numel() for p in model.parameters()),
-        "val_loss": round(evals[-1]["val_loss"], 4) if evals else None,
+        # The pitch a drawn rhythm is sounded at, for any part. It carries no musical claim -
+        # a hand-drawn grid has no pitch content of its own.
+        "input_pitch": 55,
         "start_ix": START_IX,
         # token id -> hit value, so the page can encode and decode exactly as training did
         "hits_tokens": {str(k): v for k, v in hits_vocab.items() if not isinstance(v, str)},
-        "greedy_agreement": round(agree, 4),
-        "n_examples": len(examples),
-        "n_index": len(index),
+        "models": sorted(models, key=lambda m: (m["part_1"], m["part_2"])),
+        "parts": parts,
     }
-
-    for name, payload in [("meta", meta), ("examples", examples), ("index", index)]:
-        path = os.path.join(data_dir, f"{name}.json")
-        with open(path, "w") as f:
-            json.dump(payload, f, separators=(",", ":"))
-        print(f"  {name}.json  {os.path.getsize(path)/1e6:.2f} MB")
+    write_json(os.path.join(data_dir, "meta.json"), meta)
 
     total = sum(
-        os.path.getsize(os.path.join(data_dir, f)) for f in os.listdir(data_dir)
+        os.path.getsize(os.path.join(root, f))
+        for root, _, files in os.walk(data_dir)
+        for f in files
+        if not f.startswith(".")
     )
     print(f"\n{data_dir}: {total/1e6:.1f} MB total")
 

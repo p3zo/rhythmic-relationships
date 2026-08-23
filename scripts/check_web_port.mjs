@@ -48,10 +48,21 @@ for (const [ix, c] of C.key_shift.entries()) {
 }
 
 await ev(`document.getElementById('sampler').value = 'greedy'`);
-for (const [name, want] of Object.entries(C.greedy)) {
+// Keys are "<model id>|<pattern>": each model has its own weights, so each is asked separately
+let current = null;
+for (const [key, want] of Object.entries(C.greedy)) {
+  const [model, name] = key.split("|");
+  if (model !== current) {
+    await ev(`(() => { const s = document.getElementById('model'); s.value = ${JSON.stringify(model)}; s.onchange({ target: s }); })()`);
+    for (let i = 0; i < 600; i++) {
+      if (await ev(`!document.getElementById('model').disabled`)) break;
+      await sleep(200);
+    }
+    current = model;
+  }
   const got = JSON.parse(await ev(`generateBatch(${JSON.stringify(P[name])}, 1, 'greedy', 1.0, 0.92).then(r => JSON.stringify(r[0]))`));
   checked++;
-  if (JSON.stringify(want) !== JSON.stringify(got)) fail(`greedy ${name}`, want, got);
+  if (JSON.stringify(want) !== JSON.stringify(got)) fail(`greedy ${key}`, want, got);
 }
 
 console.log(`${checked} checks, ${failed} failed`);
