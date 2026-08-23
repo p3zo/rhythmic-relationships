@@ -19,6 +19,8 @@
   h1 a:hover { color: var(--in); }
   h2 { font-size: 13px; margin: 0 0 14px; font-weight: 600; letter-spacing: .07em;
        text-transform: uppercase; color: var(--dim); }
+  h3 { font-size: 12px; margin: 0 0 8px; font-weight: 600; color: var(--text); }
+  h3.next { margin-top: 30px; }
   .meta { color: var(--dim); font-size: 12px; font-family: ui-monospace, monospace; }
   .wrap { max-width: 1080px; margin: 0 auto; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
@@ -160,6 +162,10 @@
 
   <div class="panel">
     <h2>Mashups</h2>
+    <h3>Best fit with the input</h3>
+    <div class="meta" id="fitNote" style="margin-bottom:14px"></div>
+    <div id="fits"><span class="hint">Draw or load an input to rank real segments against it.</span></div>
+    <h3 class="next">Closest to the generated rhythm</h3>
     <div class="meta" id="mashupNote" style="margin-bottom:14px"></div>
     <div id="matches"><span class="hint">Generate to find real segments that move like the output.</span></div>
   </div>
@@ -180,7 +186,7 @@ let SHARED = null;
 // Parts are shared between models - Melody->Bass and Harmony->Bass search one Bass index - so
 // segment files and onnx sessions are fetched once and kept
 const LOADED = { examples: {}, index: {}, sessions: {} };
-let input = [], output = null, pitched = null, exampleName = "", matches = [];
+let input = [], output = null, pitched = null, exampleName = "", matches = [], fits = [];
 
 const $ = (id) => document.getElementById(id);
 const midiHz = (n) => 440 * Math.pow(2, (n - 69) / 12);
@@ -329,7 +335,62 @@ function nearestRhythms(target, k) {
   return out;
 }
 
-// ===== shared verbatim with scripts/serve_model.html =====
+// ---------- interlock retrieval (rhythmic_relationships/interlock.py) ----------
+// The generated rhythm turns out to be a poor query: a segment chosen to match it sits no closer
+// to a real relationship than one chosen at random. These three shares read how a candidate would
+// fall against the input instead, and the weights fitted on real pairs at export time turn them
+// into the log odds that the pairing is one that was actually recorded together.
+// Only whether a step sounds matters, so the index's stored 0-4 values are read as they are.
+function interlockFeatures(a, b) {
+  let together = 0, aAlone = 0, neither = 0, nA = 0, nB = 0;
+  for (let i = 0; i < a.length; i++) {
+    const onA = a[i] > 0, onB = b[i] > 0;
+    if (onA) nA++;
+    if (onB) nB++;
+    if (onA && onB) together++;
+    if (onA && !onB) aAlone++;
+    if (!onA && !onB) neither++;
+  }
+  return [together / Math.max(nB, 1), aAlone / Math.max(nA, 1), neither / a.length];
+}
+
+const interlockScore = (a, b) =>
+  interlockFeatures(a, b).reduce((sum, v, i) => sum + v * META.fit.w[i], 0) - META.fit.offset;
+
+function bestFits(k) {
+  if (!input.some((v) => v > 0)) return [];
+  const scored = [];
+  INDEX.forEach((seg, ix) => {
+    // A silent candidate has no relationship to score, which is usable() in the Python
+    if (seg.h.some((v) => v > 0)) scored.push({ ix, score: interlockScore(input, seg.h) });
+  });
+  scored.sort((a, b) => b.score - a.score);
+
+  // One per song, and one per rhythm: the score rises with the share of the input's onsets a
+  // candidate lands on, so its very top is whatever doubles the input exactly, and without this
+  // the whole list is that one rhythm played by ten different songs.
+  const out = [], seenFiles = new Set(), seenRhythms = new Set();
+  for (const s of scored) {
+    const seg = INDEX[s.ix];
+    const file = seg.n.split(" seg ")[0];
+    const rhythm = seg.h.map((v) => (v > 0 ? 1 : 0)).join("");
+    if (seenFiles.has(file) || seenRhythms.has(rhythm)) continue;
+    seenFiles.add(file);
+    seenRhythms.add(rhythm);
+    out.push({
+      name: seg.n,
+      hits: seg.h.map((v) => v / 4),
+      pitched: seg.p.map(([step, pitch, vel]) => [step, pitch, vel / 127]),
+      score: s.score,
+    });
+    if (out.length >= k) break;
+  }
+  return out;
+}
+
+// ===== The audio engine and the key fit below are shared verbatim with
+// scripts/serve_model.html, so a segment sounds and transposes the same on both pages. The
+// drawing code is not: only this page ranks segments two ways. =====
 // ---------- audio ----------
 // One context at a time: starting anything stops whatever was playing, and the button that
 // started it becomes its own stop button, so what you hear is always attributable.
@@ -584,8 +645,11 @@ function drawInput() {
   const cells = $("inGrid").children;
   for (let i = 0; i < input.length; i++) cells[i].style.background = shade(input[i], "in");
   drawDescriptors();
-  // Editing the grid changes what the mashups have to fit, so their shifts are recomputed
+  // Editing the grid changes both what the mashups have to fit, so their shifts are recomputed,
+  // and which segments fit it at all
   if (matches.length) drawMatches();
+  fits = bestFits(10);
+  drawFits();
 }
 
 function drawOutput() {
@@ -656,20 +720,22 @@ const transpose = (notes, semitones) =>
   semitones ? notes.map(([s, p, v]) => [s, p + semitones, v]) : notes;
 
 // ---------- mashups ----------
-function drawMatches() {
-  const box = $("matches");
-  if (!matches.length) {
-    box.innerHTML = '<span class="hint">No matches.</span>';
+// One row per segment, given a way to rank them: the number in the second column, its tooltip,
+// and the rhythm the miniature is coloured against all come from the caller.
+function renderMatches(boxId, rows, metric, against) {
+  const box = $(boxId);
+  if (!rows.length) {
+    box.innerHTML = `<span class="hint">${metric.empty}</span>`;
     return;
   }
   box.innerHTML =
-    `<div class="hdr"><span class="spacer"></span><span class="apart">apart</span>` +
+    `<div class="hdr"><span class="spacer"></span><span class="apart">${metric.head}</span>` +
     `<span class="mid">${META.part_2} rhythm</span><span class="shift">shift</span>` +
     `<span class="who">segment</span></div>`;
 
   const heard = inputPart().notes;
 
-  matches.forEach((m, ix) => {
+  rows.forEach((m) => {
     const rowEl = document.createElement("div");
     rowEl.className = "match";
 
@@ -684,10 +750,11 @@ function drawMatches() {
     ]);
     rowEl.appendChild(btn);
 
-    const apart = document.createElement("span");
-    apart.className = "apart";
-    apart.textContent = `${m.steps_apart} step${m.steps_apart === 1 ? "" : "s"}`;
-    rowEl.appendChild(apart);
+    const value = document.createElement("span");
+    value.className = "apart";
+    value.textContent = metric.of(m);
+    value.title = metric.title;
+    rowEl.appendChild(value);
 
     const mini = document.createElement("div");
     mini.className = "mini";
@@ -696,8 +763,8 @@ function drawMatches() {
       const c = document.createElement("i");
       c.className = spacing(i);
       const mine = m.hits[i] > 0;
-      const theirs = output && output.gen_hits[i] > 0;
-      // Where this segment and the generated rhythm agree, and where they part company
+      const theirs = against && against[i] > 0;
+      // Where this segment and what it is ranked against agree, and where they part company
       if (mine && theirs) c.style.background = "rgba(86,211,100,0.85)";
       else if (mine) c.style.background = "rgba(255,140,90,0.85)";
       else if (theirs) c.style.background = "#3b4250";
@@ -722,6 +789,26 @@ function drawMatches() {
 
     box.appendChild(rowEl);
   });
+}
+
+function drawMatches() {
+  renderMatches("matches", matches, {
+    head: "apart",
+    of: (m) => `${m.steps_apart} step${m.steps_apart === 1 ? "" : "s"}`,
+    title: "How many steps of this segment's rhythm differ from the generated one",
+    empty: "No matches.",
+  }, output && output.gen_hits);
+}
+
+function drawFits() {
+  renderMatches("fits", fits, {
+    head: "fit",
+    // The score is the log odds that a pairing is real rather than arbitrary, so a logistic of
+    // it is the probability the scorer puts on this pairing being a real one
+    of: (m) => (1 / (1 + Math.exp(-m.score))).toFixed(2),
+    title: "How much this pairing looks like one that was actually recorded together",
+    empty: "Nothing to rank against an empty input.",
+  }, input);
 }
 
 
@@ -800,6 +887,10 @@ function setMeta() {
   $("inSeg").textContent = exampleName;
   $("mashupNote").textContent =
     `The closest matches out of ${META.n_index.toLocaleString()} searchable ${META.part_2} segments.`;
+  $("fitNote").textContent =
+    `The same ${META.n_index.toLocaleString()} segments ranked by how the pair would sit together ` +
+    `instead. On pairs it was not fitted on, that ranking prefers a real partner over an ` +
+    `imposter ${Math.round(META.fit.lineup_accuracy * 100)}% of the time.`;
 }
 
 // ---------- actions ----------
@@ -915,6 +1006,7 @@ async function selectModel(id) {
   input = new Array(META.n_steps).fill(0);
   output = null;
   matches = [];
+  fits = [];
   dropPitches();
   buildGrids();
   buildSteer();
