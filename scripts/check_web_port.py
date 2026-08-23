@@ -1,8 +1,9 @@
 """Reference values for the JavaScript in docs/index.html to be checked against.
 
 The static build reimplements four things that already exist in Python: the sampling loop, the
-hits vocabulary, the paired descriptors, and the interlock score the mashup search ranks by. Two implementations of one definition drift, so this
-emits what the Python says for a fixed set of cases and the browser is asked the same questions.
+hits vocabulary, the paired descriptors, and the relationship distance the mashup search ranks by.
+Two implementations of one definition drift, so this emits what the Python says for a fixed set of
+cases and the browser is asked the same questions.
 
 The mashup transposition is the exception: it lives only in the page, so `key_shift` below is a
 second implementation written from the same definition rather than a call into shipped code. It
@@ -20,7 +21,7 @@ import torch
 
 from pair_descriptors import get_antiphony, get_onset_balance
 from rhythmic_relationships.data import get_hits_from_hits_seq, tokenize_hits
-from rhythmic_relationships.interlock import interlock_features
+from rhythmic_relationships.interlock import interlock_features, relationship_distance
 from rhythmic_relationships.vocab import START_IX
 
 # Deliberately awkward: empty, full, single onset, and uneven densities
@@ -133,7 +134,7 @@ def main():
         meta = json.load(f)
     n_steps = meta["n_steps"]
 
-    cases = {"tokenize": {}, "greedy": {}, "paired": {}, "interlock": {}}
+    cases = {"tokenize": {}, "greedy": {}, "paired": {}, "relationship": {}}
 
     for name, hits in PATTERNS.items():
         cases["tokenize"][name] = tokenize_hits(np.array(hits), block_size=1)
@@ -146,16 +147,18 @@ def main():
                 model_dir, PATTERNS[name], n_steps, model["part_2"]
             )
 
-    # Per model, because each ships its own fitted weights for the page to multiply. Silent
-    # patterns are left out: the page skips them, as usable() does in the Python.
+    # Per model, because each ships its own targets and covariance for the page to measure
+    # against. Silent patterns are left out: the page skips them, as usable() does in the Python.
     for model in meta["models"]:
-        w = np.array(model["fit"]["w"])
-        for a, b in ((a, b) for a in PATTERNS for b in PATTERNS
-                     if any(PATTERNS[a]) and any(PATTERNS[b])):
-            features = interlock_features(np.array([PATTERNS[a]]), np.array([PATTERNS[b]]))[0]
-            cases["interlock"][f"{model['id']}|{a}|{b}"] = round(
-                float(features @ w - model["fit"]["offset"]), 6
-            )
+        precision = np.array(model["relationships"]["precision"])
+        # Three of the shipped targets rather than all of them; the arithmetic is the same one
+        for t, target in enumerate(np.array(model["relationships"]["targets"][:3])):
+            for a, b in ((a, b) for a in PATTERNS for b in PATTERNS
+                         if any(PATTERNS[a]) and any(PATTERNS[b])):
+                features = interlock_features(np.array([PATTERNS[a]]), np.array([PATTERNS[b]]))
+                cases["relationship"][f"{model['id']}|{t}|{a}|{b}"] = round(
+                    float(relationship_distance(features, target, precision)[0]), 6
+                )
 
     for a in PATTERNS:
         for b in PATTERNS:
@@ -182,7 +185,8 @@ def main():
         json.dump({"patterns": PATTERNS, "cases": cases, "models": models}, f, indent=1)
     print(f"Saved {args.outfile}")
     print(f"  {len(cases['tokenize'])} tokenizations, {len(cases['greedy'])} greedy generations, "
-          f"{len(cases['paired'])} descriptor pairs, {len(cases['interlock'])} interlock scores, "
+          f"{len(cases['paired'])} descriptor pairs, "
+          f"{len(cases['relationship'])} relationship distances, "
           f"{len(cases['key_shift'])} key shifts")
 
 

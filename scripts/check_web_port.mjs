@@ -67,14 +67,16 @@ for (const [key, want] of Object.entries(C.greedy)) {
     if (got !== model) fail(`selecting ${part_1} -> ${part_2}`, model, got);
     current = model;
 
-    // The score reads this model's exported weights out of META, so it can only be asked while
-    // this model is the selected one
-    const keys = Object.keys(C.interlock).filter((k) => k.startsWith(`${model}|`));
-    const pairs = keys.map((k) => { const [, a, b] = k.split("|"); return [P[a], P[b]]; });
-    const scores = JSON.parse(await ev(`JSON.stringify(${JSON.stringify(pairs)}.map(([a, b]) => interlockScore(a, b)))`));
+    // The distance reads this model's exported covariance out of META, so it can only be asked
+    // while this model is the selected one
+    const keys = Object.keys(C.relationship).filter((k) => k.startsWith(`${model}|`));
+    const cases = keys.map((k) => { const [, t, a, b] = k.split("|"); return [+t, P[a], P[b]]; });
+    const distances = JSON.parse(await ev(`JSON.stringify(${JSON.stringify(cases)}.map(([t, a, b]) =>
+      relationshipDistance(interlockFeatures(a, b), META.relationships.targets[t])))`));
     keys.forEach((k, i) => {
       checked++;
-      if (Math.abs(scores[i] - C.interlock[k]) > 1e-6) fail(`interlock ${k}`, C.interlock[k], scores[i]);
+      if (Math.abs(distances[i] - C.relationship[k]) > 1e-6)
+        fail(`relationship ${k}`, C.relationship[k], distances[i]);
     });
   }
   const got = JSON.parse(await ev(`generateBatch(${JSON.stringify(P[name])}, 1, 'greedy', 1.0, 0.92).then(r => JSON.stringify(r[0]))`));

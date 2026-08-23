@@ -153,9 +153,9 @@
 
   <div class="panel">
     <h2>Mashups</h2>
-    <h3>Best fit with the input</h3>
+    <h3>Ten ways real pairs sit together</h3>
     <div class="meta" id="fitNote" style="margin-bottom:14px"></div>
-    <div id="fits"><span class="hint">Draw or load an input to rank real segments against it.</span></div>
+    <div id="fits"><span class="hint">Draw or load an input to search for segments to sit with it.</span></div>
     <h3 class="next">Closest to the generated rhythm</h3>
     <div class="meta" id="mashupNote" style="margin-bottom:14px"></div>
     <div id="matches"><span class="hint">Generate to find real segments that move like the output.</span></div>
@@ -178,6 +178,9 @@ let SHARED = null;
 // segment files and onnx sessions are fetched once and kept
 const LOADED = { examples: {}, index: {}, sessions: {} };
 let input = [], output = null, pitched = null, exampleName = "", matches = [], fits = [];
+// One target relationship per mashup row, redrawn whenever the input changes wholesale so
+// that editing a step shows the same ten relationships resolving differently
+let targets = [];
 
 const $ = (id) => document.getElementById(id);
 const midiHz = (n) => 440 * Math.pow(2, (n - 69) / 12);
@@ -334,38 +337,75 @@ function interlockFeatures(a, b) {
   return [together / Math.max(nB, 1), aAlone / Math.max(nA, 1), neither / a.length];
 }
 
-const interlockScore = (a, b) =>
-  interlockFeatures(a, b).reduce((sum, v, i) => sum + v * META.fit.w[i], 0) - META.fit.offset;
+// Mahalanobis under the real pairs' own covariance, so "close" is close relative to how much
+// real relationships vary in that direction
+function relationshipDistance(f, target) {
+  const P = META.relationships.precision;
+  let out = 0;
+  for (let i = 0; i < f.length; i++) {
+    for (let j = 0; j < f.length; j++) out += (f[i] - target[i]) * P[i][j] * (f[j] - target[j]);
+  }
+  return out;
+}
 
-function bestFits(k) {
+// Ten relationships real pairs of these parts stood in. Aiming at one of these rather than at the
+// maximum of a score is what keeps the results complementary: the score rises with the share of
+// the input's onsets a candidate covers, so its maximum is whatever doubles the input exactly.
+function drawTargets(k) {
+  const all = META.relationships.targets;
+  const out = [], taken = new Set();
+  while (out.length < k && taken.size < all.length) {
+    const ix = Math.floor(Math.random() * all.length);
+    if (taken.has(ix)) continue;
+    taken.add(ix);
+    out.push(all[ix]);
+  }
+  return out;
+}
+
+function bestFits() {
   if (!input.some((v) => v > 0)) return [];
-  const scored = [];
+  // The features depend on the input, not on the target, so they are computed once and every
+  // target then costs one pass over three numbers per candidate
+  const ixs = [], feats = [];
   INDEX.forEach((seg, ix) => {
-    // A silent candidate has no relationship to score, which is usable() in the Python
-    if (seg.h.some((v) => v > 0)) scored.push({ ix, score: interlockScore(input, seg.h) });
+    // A silent candidate has no relationship at all, which is usable() in the Python
+    if (!seg.h.some((v) => v > 0)) return;
+    const f = interlockFeatures(input, seg.h);
+    // MAX_TOGETHER in the Python: a candidate landing every onset on one of the input's doubles
+    // it rather than sitting with it, however close to a real relationship that comes
+    if (f[0] >= 0.95) return;
+    ixs.push(ix);
+    feats.push(f);
   });
-  scored.sort((a, b) => b.score - a.score);
 
-  // One per song, and one per rhythm: the score rises with the share of the input's onsets a
-  // candidate lands on, so its very top is whatever doubles the input exactly, and without this
-  // the whole list is that one rhythm played by ten different songs.
   const out = [], seenFiles = new Set(), seenRhythms = new Set();
-  for (const s of scored) {
-    const seg = INDEX[s.ix];
-    const file = seg.n.split(" seg ")[0];
-    const rhythm = seg.h.map((v) => (v > 0 ? 1 : 0)).join("");
-    if (seenFiles.has(file) || seenRhythms.has(rhythm)) continue;
-    seenFiles.add(file);
-    seenRhythms.add(rhythm);
+  for (const target of targets) {
+    let best = -1, bestDistance = Infinity;
+    for (let i = 0; i < ixs.length; i++) {
+      const d = relationshipDistance(feats[i], target);
+      if (d >= bestDistance) continue;
+      const seg = INDEX[ixs[i]];
+      // One song and one rhythm per list: two targets often have the same nearest segment, and
+      // ten rows of it says less than ten different ways of sitting with the input
+      if (seenFiles.has(seg.n.split(" seg ")[0])) continue;
+      if (seenRhythms.has(seg.h.map((v) => (v > 0 ? 1 : 0)).join(""))) continue;
+      best = i;
+      bestDistance = d;
+    }
+    if (best < 0) continue;
+    const seg = INDEX[ixs[best]];
+    seenFiles.add(seg.n.split(" seg ")[0]);
+    seenRhythms.add(seg.h.map((v) => (v > 0 ? 1 : 0)).join(""));
     out.push({
       name: seg.n,
       hits: seg.h.map((v) => v / 4),
       pitched: seg.p.map(([step, pitch, vel]) => [step, pitch, vel / 127]),
-      score: s.score,
+      together: feats[best][0],
     });
-    if (out.length >= k) break;
   }
-  return out;
+  // Read as a spectrum, from the row that doubles the input most to the one that fills its gaps
+  return out.sort((x, y) => y.together - x.together);
 }
 
 // ===== The audio engine and the key fit below are shared verbatim with
@@ -628,7 +668,7 @@ function drawInput() {
   // Editing the grid changes both what the mashups have to fit, so their shifts are recomputed,
   // and which segments fit it at all
   if (matches.length) drawMatches();
-  fits = bestFits(10);
+  fits = bestFits();
   drawFits();
 }
 
@@ -781,13 +821,13 @@ function drawMatches() {
 }
 
 function drawFits() {
+  const average = Math.round(META.relationships.real_means[0] * 100);
   renderMatches("fits", fits, {
-    head: "fit",
-    // The score is the log odds that a pairing is real rather than arbitrary, so a logistic of
-    // it is the probability the scorer puts on this pairing being a real one
-    of: (m) => (1 / (1 + Math.exp(-m.score))).toFixed(2),
-    title: "How much this pairing looks like one that was actually recorded together",
-    empty: "Nothing to rank against an empty input.",
+    head: "together",
+    of: (m) => `${Math.round(m.together * 100)}%`,
+    title: `The share of this segment's onsets that land on one of the input's. Real ` +
+           `${META.part_1}/${META.part_2} pairs average ${average}%.`,
+    empty: "Nothing to sit with an empty input.",
   }, input);
 }
 
@@ -868,9 +908,9 @@ function setMeta() {
   $("mashupNote").textContent =
     `The closest matches out of ${META.n_index.toLocaleString()} searchable ${META.part_2} segments.`;
   $("fitNote").textContent =
-    `The same ${META.n_index.toLocaleString()} segments ranked by how the pair would sit together ` +
-    `instead. On pairs it was not fitted on, that ranking prefers a real partner over an ` +
-    `imposter ${Math.round(META.fit.lineup_accuracy * 100)}% of the time.`;
+    `Each row aims at a relationship some real ${META.part_1} and ${META.part_2} actually stood ` +
+    `in, and holds the segment out of ${META.n_index.toLocaleString()} that comes closest to ` +
+    `sitting that way with the input.`;
 }
 
 // ---------- actions ----------
@@ -926,6 +966,7 @@ function loadExample() {
   input = pick.h.map((v) => v / 4);
   pitched = pick.p.map(([s, p, v]) => [s, p, v / 127]);
   exampleName = pick.n;
+  targets = drawTargets(10);
   $("playPitched").disabled = !pitched.length;
   drawInput();
   setMeta();
@@ -984,6 +1025,7 @@ async function selectModel(id) {
   output = null;
   matches = [];
   fits = [];
+  targets = drawTargets(10);
   dropPitches();
   buildGrids();
   buildSteer();

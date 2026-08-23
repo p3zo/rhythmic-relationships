@@ -29,7 +29,11 @@ from rhythmic_relationships import (
     REPRESENTATIONS_FILENAME,
 )
 from rhythmic_relationships.data import load_co_occurring_hits
-from rhythmic_relationships.interlock import fit_pair_score, lineup_accuracy
+from rhythmic_relationships.interlock import (
+    fit_pair_score,
+    fit_relationship_targets,
+    lineup_accuracy,
+)
 from rhythmic_relationships.model_utils import load_model
 from rhythmic_relationships.models.hits_decoder import get_causal_mask
 from rhythmic_relationships.models.hits_encdec import TransformerEncoderDecoder
@@ -159,16 +163,18 @@ def collect_segments(dataset_name, part, n_wanted, seed, per_file, with_pitches=
     return out
 
 
-def fit_scorer(dataset_name, part_1, part_2, n_pairs, n_imposters, seed):
-    """The interlock scorer the page retrieves with, and how well it does on pairs it never saw.
+def fit_relationships(dataset_name, part_1, part_2, n_pairs, n_targets, n_imposters, seed):
+    """Relationships real pairs of these parts had, for the page to retrieve toward.
 
-    The page needs this because the generated rhythm turned out not to be a useful query: the
+    The page needs these because the generated rhythm turned out not to be a useful query: the
     ablation found a mashup picked to match it no closer to a real relationship than one picked at
-    random. Scoring candidates on how they would sit against the input instead does much better,
-    and the accuracy printed here is what the page is claiming when it ranks segments.
+    random. What replaces it is not a score to maximise - that picks whatever doubles the input -
+    but a target drawn from real pairs, with candidates ranked by how close they come to it.
 
-    Two fits: one on half the pairs to measure on the other half, and one on all of them to ship,
-    since there is no reason to hand the page a scorer trained on less data than exists.
+    The lineup accuracy printed here is not what the page claims; it is the evidence that these
+    features carry relationship information at all, without which aiming at a target in their space
+    would mean nothing. It is measured on half the pairs after fitting a discriminant on the other
+    half, while the targets that ship come from all of them.
     """
     pairs = load_co_occurring_hits(dataset_name, [part_1, part_2], n_pairs, seed, per_file=1)
     a, b = pairs[part_1], pairs[part_2]
@@ -176,13 +182,16 @@ def fit_scorer(dataset_name, part_1, part_2, n_pairs, n_imposters, seed):
     held_out = fit_pair_score(a[:half], b[:half], seed)
     accuracy, n = lineup_accuracy(held_out, a[half:], b[half:],
                                   np.random.default_rng(seed + 1), n_imposters)
-    print(f"  interlock score: prefers the real partner over an imposter on "
-          f"{accuracy * 100:.1f}% of {n} lineups it was not fitted on")
+    print(f"  interlock features: tell a real partner from an imposter on {accuracy * 100:.1f}% "
+          f"of {n} lineups they were not fitted on")
 
-    shipped = fit_pair_score(a, b, seed)
+    targets, precision, means = fit_relationship_targets(a, b, n_targets, seed)
+    print(f"  {len(targets)} target relationships; real pairs land on "
+          f"{means[0] * 100:.0f}% of each other's onsets")
     return {
-        "w": [float(v) for v in shipped.w],
-        "offset": shipped.offset,
+        "targets": np.round(targets, 5).tolist(),
+        "precision": np.round(precision, 5).tolist(),
+        "real_means": np.round(means, 5).tolist(),
         "lineup_accuracy": round(accuracy, 4),
         "n_pairs": len(a),
     }
@@ -206,8 +215,10 @@ def main():
     parser.add_argument("--index_per_file", type=int, default=4)
     parser.add_argument("--seed", type=int, default=13)
     parser.add_argument("--fit_pairs", type=int, default=2000,
-                        help="Real pairs to fit the interlock scorer on. A few hundred is too "
-                             "few: fitted on 100 pairs it scores at chance")
+                        help="Real pairs to read relationships off. A few hundred is too few: a "
+                             "discriminant fitted on 100 pairs scores at chance")
+    parser.add_argument("--targets", type=int, default=256,
+                        help="Target relationships shipped per pair, for the page to draw from")
     parser.add_argument("--fit_imposters", type=int, default=40)
     parser.add_argument("--no_quantize", action="store_true")
     args = parser.parse_args()
@@ -239,13 +250,14 @@ def main():
 
         checkpoint = torch.load(model_path, map_location="cpu", weights_only=False)
         evals = checkpoint.get("evals") or []
-        fit = fit_scorer(config["data"]["dataset_name"], part_1, part_2,
-                         args.fit_pairs, args.fit_imposters, args.seed)
+        relationships = fit_relationships(config["data"]["dataset_name"], part_1, part_2,
+                                          args.fit_pairs, args.targets, args.fit_imposters,
+                                          args.seed)
         models.append({
             "id": run,
             "part_1": part_1,
             "part_2": part_2,
-            "fit": fit,
+            "relationships": relationships,
             "n_params": sum(p.numel() for p in model.parameters()),
             "val_loss": round(evals[-1]["val_loss"], 4) if evals else None,
             "epochs": checkpoint.get("epoch"),

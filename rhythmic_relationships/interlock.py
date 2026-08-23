@@ -15,8 +15,18 @@ Both figures are sensitive to how the pairs were sampled, which is why load_co_o
 takes a per-file cap. Measured on 3,000 pairs from 3,000 songs these read 0.574 and 0.683; on 500
 pairs taken in order, which is ten songs, the same code reads 0.392 and 0.737.
 
+Being able to tell a real pairing from an arbitrary one is not the same as being able to choose
+one, and the difference decides what retrieval should optimise. "Which candidate is most likely a
+real partner rather than an arbitrary segment" is answered by whichever candidate doubles the
+input exactly: real partners share onsets more often than arbitrary ones, so more sharing is
+always stronger evidence, and among 30,000 candidates something always sits at the extreme. That
+is a property of the objective and not of the model - a linear discriminant, a quadratic one and a
+nearest-neighbour estimate of the same ratio all put around 40% unisons in their top ten. What a
+mashup wants instead is a pairing drawn from the population of real ones, which is a question about
+matching a distribution rather than maximising a ratio: see fit_relationship_targets.
+
 See scripts/relationship_retrieval.py, which measures all of this, and docs/index.html, which
-ports the two functions here into the browser.
+ports these functions into the browser.
 """
 
 import numpy as np
@@ -106,6 +116,50 @@ def lineup_accuracy(model, a, b, rng, n_imposters=40, features=interlock_feature
         wins += float((diff > 0).sum() + 0.5 * (diff == 0).sum())
         total += int(keep.sum())
     return wins / max(total, 1), total
+
+
+# A partner every one of whose onsets lands on one of the input's adds nothing rhythmically. It is
+# not rare - between 18% and 39% of real pairs are exactly this, depending on the parts - but it is
+# the one thing a mashup must not be, so these are the relationships retrieval does not aim at.
+# Nothing sits between 0.95 and 1.0 in the data, so this excludes exact doubles and nothing else.
+MAX_TOGETHER = 0.95
+
+
+def fit_relationship_targets(a, b, n_targets, seed, features=interlock_features):
+    """Relationships real pairs of these parts had, and the metric for comparing against them.
+
+    Retrieval aims at one of these rather than at the maximum of a score. Every target is a
+    relationship that some real pair actually stood in, so a candidate close to one is
+    complementary in a way real music is: measured over 50 inputs, the segments retrieved this way
+    cover 53% of the input's onsets and leave 42% of them alone, against 58% and 40% for real
+    pairs, where maximising the discriminator covers 85% and leaves 19%.
+
+    Sampling a target rather than aiming at the average also keeps the results varied. The average
+    relationship is one point, so every input walks toward the same few segments - 18 distinct
+    rhythms across 50 inputs, against 369 when the target is drawn.
+
+    Distances are Mahalanobis under the real pairs' own covariance, so "close" means close relative
+    to how much real relationships vary in that direction.
+
+    The covariance and the reported means describe every real pair, doubles included, since they
+    are what the page compares a result against; only the targets are drawn from the rest.
+    """
+    keep = usable(a, b)
+    f = features(a[keep], b[keep])
+    precision = np.linalg.inv(np.cov(f, rowvar=False) + 1e-9 * np.eye(f.shape[1]))
+
+    worth_aiming_at = f[f[:, 0] < MAX_TOGETHER]
+    rng = np.random.default_rng(seed)
+    targets = worth_aiming_at[
+        rng.choice(len(worth_aiming_at), size=min(n_targets, len(worth_aiming_at)), replace=False)
+    ]
+    return targets, precision, f.mean(axis=0)
+
+
+def relationship_distance(features, target, precision):
+    """How far a pairing sits from a target relationship, in units of how much real pairs vary."""
+    d = features - target
+    return np.einsum("ij,jk,ik->i", d, precision, d)
 
 
 def fit_pair_score(a, b, seed, features=interlock_features):
