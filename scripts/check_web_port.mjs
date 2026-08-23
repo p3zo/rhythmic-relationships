@@ -47,7 +47,6 @@ for (const [ix, c] of C.key_shift.entries()) {
   if (got !== c.shift) fail(`key_shift case ${ix}`, c.shift, got);
 }
 
-await ev(`document.getElementById('sampler').value = 'greedy'`);
 // Keys are "<model id>|<pattern>": each model has its own weights, so each is asked separately
 let current = null;
 for (const [key, want] of Object.entries(C.greedy)) {
