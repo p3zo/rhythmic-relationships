@@ -671,6 +671,8 @@ function drawSteerResult() {
 }
 
 function setMeta() {
+  $("inLabel").textContent = META.part_1;
+  $("outLabel").textContent = META.part_2;
   const bits = [
     `${META.part_1} → ${META.part_2}`,
     `${META.n_steps} steps`,
