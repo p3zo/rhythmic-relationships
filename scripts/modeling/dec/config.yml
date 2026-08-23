@@ -27,4 +27,3 @@ splits:
 seed: 13
 wandb: False
 save_checkpoints: False
-bento: False

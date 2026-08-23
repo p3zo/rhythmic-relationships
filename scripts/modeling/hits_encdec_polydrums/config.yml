@@ -34,7 +34,6 @@ weight_decay: 0
 
 n_eval_iters: 30
 wandb: True
-bento: False
 checkpoints: True
 
 n_eval_seqs: 30
