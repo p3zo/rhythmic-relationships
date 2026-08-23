@@ -17,7 +17,7 @@ from rhythmic_relationships.model_utils import (
 )
 from rhythmic_relationships.models.hits_encdec import TransformerEncoderDecoder
 from rhythmic_relationships.vocab import get_hits_vocab_size
-from torch.utils.data import DataLoader, random_split
+from torch.utils.data import DataLoader, Subset, random_split
 from tqdm import tqdm
 
 from .eval import evaluate_hits_encdec
@@ -44,17 +44,21 @@ def train_hits_encdec(
     model_name,
     model_dir,
     device,
+    start_epoch=1,
+    prior_evals=None,
 ):
     n_epochs = config["n_epochs"]
     eval_interval = config["eval_interval"]
 
-    evals = []
+    # A resumed run carries its eval history forward so eval_loss.png stays one curve. The
+    # per-batch losses are not in the checkpoint, so loss.png restarts at the resume point.
+    evals = list(prior_evals or [])
     train_losses = []
 
     model.train()
 
     ix = 0
-    for epoch in range(1, n_epochs + 1):
+    for epoch in range(start_epoch, n_epochs + 1):
         batches = tqdm(train_loader)
         for batch in batches:
             src, ctx, tgt = parse_batch(batch, device)
@@ -141,7 +145,7 @@ def train_hits_encdec(
     return evals
 
 
-def train(config, model_name, datasets_dir, model_dir, sweep=False):
+def train(config, model_name, datasets_dir, model_dir, sweep=False, resume=None):
     if config["wandb"]:
         wandb.init(project=WANDB_PROJECT_NAME, config=config, name=model_name)
         wandb.config.update(config)
@@ -153,10 +157,18 @@ def train(config, model_name, datasets_dir, model_dir, sweep=False):
     dataset = PartPairDataset(**config["data"], datasets_dir=datasets_dir)
 
     splits = config["splits"]
-    train_data, val_data, test_data = random_split(dataset, list(splits.values()))
-    for k, v in {"train": train_data, "val": val_data, "test": test_data}.items():
-        ix_path = os.path.join(model_dir, f"{k}_ixs.csv")
-        pd.Series(v.indices).to_csv(ix_path, index=False, header=False)
+    if resume:
+        # Re-splitting would put some of the original validation set into training, so the
+        # resumed run reads back the exact indices the first one wrote
+        train_data, val_data, test_data = (
+            Subset(dataset, pd.read_csv(os.path.join(model_dir, f"{k}_ixs.csv"), header=None)[0].tolist())
+            for k in ("train", "val", "test")
+        )
+    else:
+        train_data, val_data, test_data = random_split(dataset, list(splits.values()))
+        for k, v in {"train": train_data, "val": val_data, "test": test_data}.items():
+            ix_path = os.path.join(model_dir, f"{k}_ixs.csv")
+            pd.Series(v.indices).to_csv(ix_path, index=False, header=False)
     print(f"{splits=}: {len(train_data)}, {len(val_data)}, {len(test_data)}")
 
     train_loader = DataLoader(train_data, batch_size=config["batch_size"], shuffle=True)
@@ -182,6 +194,21 @@ def train(config, model_name, datasets_dir, model_dir, sweep=False):
     )
     loss_fn = get_loss_fn(config)
 
+    start_epoch, prior_evals = 1, None
+    if resume:
+        model.load_state_dict(resume["model_state_dict"])
+        # Adam's moment estimates go with it, so this continues the run rather than restarting
+        # the optimiser at the weights it had reached
+        optimizer.load_state_dict(resume["optimizer_state_dict"])
+        start_epoch = resume["epoch"] + 1
+        prior_evals = resume["evals"]
+        if start_epoch > config["n_epochs"]:
+            raise ValueError(
+                f"Checkpoint is at epoch {resume['epoch']} and n_epochs is "
+                f"{config['n_epochs']}; pass --epochs with a larger total to continue"
+            )
+        print(f"Resuming at epoch {start_epoch} of {config['n_epochs']}")
+
     print(yaml.dump(config))
 
     evals = train_hits_encdec(
@@ -194,6 +221,8 @@ def train(config, model_name, datasets_dir, model_dir, sweep=False):
         model_name=model_name,
         model_dir=model_dir,
         device=DEVICE,
+        start_epoch=start_epoch,
+        prior_evals=prior_evals,
     )
 
     model_path = os.path.join(model_dir, "model.pt")
