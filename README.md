@@ -22,6 +22,29 @@ uv run python scripts/modeling/run_train.py --model hits_encdec
 
 Change dependencies with `uv add` / `uv remove` rather than by hand, so the lockfile stays in step.
 
+## Play with a trained model
+
+Two ways, the same interface.
+
+**Hosted**, at [p3zo.github.io/rhythmic-relationships](https://p3zo.github.io/rhythmic-relationships/) — the model runs in the browser through onnxruntime-web, so there is nothing to install. It ships one exported model and 30,000 indexed segments to search.
+
+**Locally**, against any model you have trained, with the full rhythmtoolbox descriptors:
+
+```bash
+uv run python scripts/serve_model.py     # http://localhost:8765
+```
+
+To refresh the hosted site after training a new model, re-export and commit `docs/`:
+
+```bash
+uv run python scripts/export_web.py --model_path output/models/hits_encdec/<pair>/<run>/model.pt
+```
+
+The export cannot run in CI, since it needs both the checkpoint and the prepared dataset, so
+`.github/workflows/pages.yml` only publishes what is committed. The JavaScript reimplements the
+sampling loop, the hits vocabulary and the paired descriptors; `scripts/check_web_port.py` plus
+`scripts/check_web_port.mjs` check the browser against the Python for all three.
+
 ## Scripts
 
 See [scripts/README.md](scripts/README.md) for a list of scripts and notebooks.
