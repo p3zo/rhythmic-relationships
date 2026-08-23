@@ -2,18 +2,25 @@
 
 ## Environment
 
-- Install [PyTorch](https://pytorch.org/get-started/locally/) according to your OS and GPU.
-- Install this repo. Remove the `[experimental]` suffix if you aren't planning to do any development.
+This is a [uv](https://docs.astral.sh/uv/) project. To create `.venv` in the repo and install
+everything into it:
 
 ```bash
-pip install -e .[experimental]
+uv sync --extra experimental
 ```
 
-- Install [rhythmtoolbox](https://github.com/danielgomezmarin/rhythmtoolbox) from source.
+Versions come from the committed `uv.lock`, so every checkout resolves identically. `rhythmtoolbox`
+is pulled from git. The `experimental` extra is only needed by the analysis scripts; the test
+dependencies are in the default `dev` group, so they are always installed.
 
+Run anything in the environment with `uv run`, which re-syncs first if the lockfile has changed:
+
+```bash
+uv run pytest
+uv run python scripts/modeling/run_train.py --model hits_encdec
 ```
-pip install git+https://github.com/danielgomezmarin/rhythmtoolbox
-```
+
+Change dependencies with `uv add` / `uv remove` rather than by hand, so the lockfile stays in step.
 
 ## Scripts
 
