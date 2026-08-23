@@ -179,7 +179,12 @@ def compute_oa_kld_dists(gen_df, ref_df, train_df=None, train_dist=None):
 
 
 def compute_oa_and_kld(dists):
-    """Overlapping area and KL divergence for every pair in a `compute_oa_kld_dists` result"""
+    """Overlapping area and KL divergence for every pair in a `compute_oa_kld_dists` result
+
+    Either can come back `None`. Both are read off a kernel density estimate, which needs the
+    sample to vary; a reference set whose members are all identical gives one repeated distance
+    and no density to estimate. A sparse part on a small eval produces that easily.
+    """
     suffix = "_gen_dist"
 
     oa_klds = {}
@@ -187,8 +192,14 @@ def compute_oa_and_kld(dists):
         if not key.endswith(suffix):
             continue
         label = key[: -len(suffix)]
-        oa_klds[f"{label}_gen_oa"] = compute_oa(dists[f"{label}_dist"], dists[key])
-        oa_klds[f"{label}_gen_kld"] = compute_kld(dists[f"{label}_dist"], dists[key])
+        a, b = dists[f"{label}_dist"], dists[key]
+        if min(len(a), len(b)) < 2 or np.ptp(a) == 0 or np.ptp(b) == 0:
+            print(f"{label}: the distances do not vary, so OA and KLD are undefined here")
+            oa_klds[f"{label}_gen_oa"] = None
+            oa_klds[f"{label}_gen_kld"] = None
+            continue
+        oa_klds[f"{label}_gen_oa"] = compute_oa(a, b)
+        oa_klds[f"{label}_gen_kld"] = compute_kld(a, b)
 
     return oa_klds
 

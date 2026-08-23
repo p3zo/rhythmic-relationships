@@ -116,7 +116,7 @@ def check_fidelity(model, paths, n_steps, n_seqs=64):
     return agree
 
 
-def collect_segments(dataset_name, part, n_wanted, seed, with_pitches=True):
+def collect_segments(dataset_name, part, n_wanted, seed, per_file, with_pitches=True):
     dataset_dir = os.path.join(DATASETS_DIR, dataset_name)
     with open(os.path.join(dataset_dir, REPRESENTATIONS_FILENAME)) as f:
         names = f.read().split(",")
@@ -125,12 +125,17 @@ def collect_segments(dataset_name, part, n_wanted, seed, with_pitches=True):
     paths = glob.glob(
         os.path.join(dataset_dir, REPRESENTATIONS_DIRNAME, "**", "*.npz"), recursive=True
     )
-    random.Random(seed).shuffle(paths)
+    rng = random.Random(seed)
+    rng.shuffle(paths)
 
     out = []
     for path in paths:
         with np.load(path, allow_pickle=True) as npz:
-            for key in [k for k in npz.files if k.endswith(f"_{part}")]:
+            # A three-minute song holds dozens of two-bar segments. Taking them in order fills
+            # the whole quota from a handful of songs, so the page offers the same few pieces of
+            # music over and over; take a sample spread across the file instead.
+            keys = [k for k in npz.files if k.endswith(f"_{part}")]
+            for key in rng.sample(keys, min(per_file, len(keys))):
                 reprs = npz[key][0]
                 # Velocities are quantised to the model's four bins, so a byte each is lossless
                 hits = [int(round(float(v) * 4)) for v in reprs[hits_ix]]
@@ -152,8 +157,12 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("--model_path", type=str, required=True)
     parser.add_argument("--outdir", type=str, default="docs")
-    parser.add_argument("--examples", type=int, default=200)
+    parser.add_argument("--examples", type=int, default=2000)
     parser.add_argument("--index", type=int, default=30000)
+    # One example per song, so "Random real input" keeps offering something new. The index can
+    # afford a few per song: the search already caps its results at one per song.
+    parser.add_argument("--examples_per_file", type=int, default=1)
+    parser.add_argument("--index_per_file", type=int, default=4)
     parser.add_argument("--seed", type=int, default=13)
     parser.add_argument("--no_quantize", action="store_true")
     args = parser.parse_args()
@@ -173,9 +182,13 @@ def main():
     agree = check_fidelity(model, paths, n_steps)
 
     print(f"collecting {args.examples} {part_1} inputs")
-    examples = collect_segments(dataset_name, part_1, args.examples, args.seed)
+    examples = collect_segments(
+        dataset_name, part_1, args.examples, args.seed, args.examples_per_file
+    )
     print(f"collecting {args.index} {part_2} segments to search")
-    index = collect_segments(dataset_name, part_2, args.index, args.seed + 1)
+    index = collect_segments(
+        dataset_name, part_2, args.index, args.seed + 1, args.index_per_file
+    )
 
     checkpoint = torch.load(args.model_path, map_location="cpu", weights_only=False)
     evals = checkpoint.get("evals") or []

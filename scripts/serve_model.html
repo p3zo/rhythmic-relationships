@@ -132,6 +132,7 @@
     <div class="row" style="margin-top:14px">
       <div class="label">model</div>
       <span class="meta" id="meta">loading the model…</span>
+      <span class="meta" id="valLoss"></span>
     </div>
     <div class="row" style="margin-top:10px">
       <div class="label"></div>
@@ -677,16 +678,22 @@ function drawSteerResult() {
   });
 }
 
+// 3,334,176 -> "3.3M"
+const millions = (n) =>
+  n >= 1e6 ? `${(n / 1e6).toFixed(1)}M` : n >= 1e3 ? `${Math.round(n / 1e3)}K` : String(n);
+
 function setMeta() {
   $("inSeg").textContent = exampleName;
   $("mashupNote").textContent =
     `The closest matches out of ${META.n_index.toLocaleString()} searchable ${META.part_2} segments.`;
-  $("meta").textContent = [
-    `${META.part_1} → ${META.part_2}`,
-    `${META.n_params.toLocaleString()} params`,
-    `val ${META.final_eval.val_loss ?? "?"}`,
-    META.dataset_name,
-  ].join("  ·  ");
+  $("meta").textContent = `${millions(META.n_params)} params`;
+  setValLoss(META.final_eval.val_loss);
+}
+
+function setValLoss(loss) {
+  $("valLoss").textContent = loss === null || loss === undefined ? "" : `val loss ${(+loss).toFixed(2)}`;
+  $("valLoss").title =
+    "Mean cross-entropy per token on the validation split, which the model never trained on";
 }
 
 async function generate() {
