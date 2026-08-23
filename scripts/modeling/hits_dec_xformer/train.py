@@ -216,9 +216,9 @@ def train_hits_decoder(
 
             # Backprop
             optimizer.zero_grad(set_to_none=True)
+            loss.backward()
             if config["clip_gradients"]:
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
-            loss.backward()
             optimizer.step()
 
             # Save loss after each batch
@@ -249,7 +249,7 @@ def train_hits_decoder(
                 epoch=epoch,
                 model=model,
                 optimizer=optimizer,
-                loss=loss,
+                loss=loss.item(),
                 config=config,
                 evals=evals,
                 delete_prev=True,

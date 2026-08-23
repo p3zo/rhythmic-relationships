@@ -109,7 +109,7 @@ def train(
                 epoch=epoch,
                 model=model,
                 optimizer=optimizer,
-                loss=loss,
+                loss=loss.item(),
                 config=config,
             )
 
