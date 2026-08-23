@@ -22,17 +22,17 @@ import glob
 import itertools
 import json
 import os
-import random
 
 import numpy as np
 import torch
 from rhythmic_relationships import (
-    DATASETS_DIR,
     MODELS_DIR,
-    REPRESENTATIONS_DIRNAME,
-    REPRESENTATIONS_FILENAME,
 )
-from rhythmic_relationships.data import get_hits_from_hits_seq, tokenize_hits
+from rhythmic_relationships.data import (
+    get_hits_from_hits_seq,
+    load_co_occurring_hits,
+    tokenize_hits,
+)
 from rhythmic_relationships.evaluate import hits_inference
 from rhythmic_relationships.model_utils import load_model
 from rhythmic_relationships.models.hits_encdec import TransformerEncoderDecoder
@@ -56,39 +56,6 @@ def find_models(run_filter):
         if pair not in models or os.path.getmtime(path) > os.path.getmtime(models[pair]):
             models[pair] = path
     return models
-
-
-def load_triples(dataset_name, parts, n_seqs, seed):
-    """Segments where all of `parts` are present, so every route has a ground truth."""
-    dataset_dir = os.path.join(DATASETS_DIR, dataset_name)
-    with open(os.path.join(dataset_dir, REPRESENTATIONS_FILENAME)) as f:
-        hits_ix = f.read().split(",").index("hits")
-
-    paths = glob.glob(
-        os.path.join(dataset_dir, REPRESENTATIONS_DIRNAME, "**", "*.npz"), recursive=True
-    )
-    random.Random(seed).shuffle(paths)
-
-    found = {p: [] for p in parts}
-    for path in paths:
-        with np.load(path, allow_pickle=True) as npz:
-            by_segment = {}
-            for key in npz.files:
-                segment_id, _, part = key.partition("_")
-                if part in parts:
-                    by_segment.setdefault(segment_id, {})[part] = key
-            for segment_id, keys in by_segment.items():
-                if len(keys) < len(parts):
-                    continue
-                for part in parts:
-                    found[part].append(
-                        np.asarray(npz[keys[part]][0][hits_ix], dtype=np.float32)
-                    )
-                if len(found[parts[0]]) >= n_seqs:
-                    return {p: np.stack(v) for p, v in found.items()}
-    if not found[parts[0]]:
-        raise SystemExit(f"No segments carrying all of {parts} in {dataset_dir}")
-    return {p: np.stack(v) for p, v in found.items()}
 
 
 def run(model, hits_batch, part_out, n_steps, sampler, device):
@@ -162,7 +129,7 @@ def main():
         n_steps = n_steps or config["model"]["context_len"]
         print(f"  {pair:<16} {os.path.basename(os.path.dirname(path))}")
 
-    segments = load_triples(dataset_name, parts_used, args.n_seqs, args.seed)
+    segments = load_co_occurring_hits(dataset_name, parts_used, args.n_seqs, args.seed)
     n = len(segments[parts_used[0]])
     print(f"\n{n} segments carrying {', '.join(parts_used)}, sampler={args.sampler}\n")
 

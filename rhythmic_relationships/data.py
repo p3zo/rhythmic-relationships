@@ -1,5 +1,7 @@
+import glob
 import itertools
 import os
+import random
 
 import numpy as np
 import pandas as pd
@@ -179,6 +181,39 @@ def get_roll_from_sequence(seq, part):
             raise ValueError("Invalid token type")
 
     return roll
+
+
+def load_co_occurring_hits(dataset_name, parts, n_seqs, seed):
+    """Segments where all of `parts` are present, so every route has a ground truth."""
+    dataset_dir = os.path.join(DATASETS_DIR, dataset_name)
+    with open(os.path.join(dataset_dir, REPRESENTATIONS_FILENAME)) as f:
+        hits_ix = f.read().split(",").index("hits")
+
+    paths = glob.glob(
+        os.path.join(dataset_dir, REPRESENTATIONS_DIRNAME, "**", "*.npz"), recursive=True
+    )
+    random.Random(seed).shuffle(paths)
+
+    found = {p: [] for p in parts}
+    for path in paths:
+        with np.load(path, allow_pickle=True) as npz:
+            by_segment = {}
+            for key in npz.files:
+                segment_id, _, part = key.partition("_")
+                if part in parts:
+                    by_segment.setdefault(segment_id, {})[part] = key
+            for segment_id, keys in by_segment.items():
+                if len(keys) < len(parts):
+                    continue
+                for part in parts:
+                    found[part].append(
+                        np.asarray(npz[keys[part]][0][hits_ix], dtype=np.float32)
+                    )
+                if len(found[parts[0]]) >= n_seqs:
+                    return {p: np.stack(v) for p, v in found.items()}
+    if not found[parts[0]]:
+        raise SystemExit(f"No segments carrying all of {parts} in {dataset_dir}")
+    return {p: np.stack(v) for p, v in found.items()}
 
 
 def get_hits_from_hits_seq(seq, part, block_size=1, pitch=60, verbose=False):

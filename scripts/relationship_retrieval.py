@@ -6,10 +6,11 @@ picked at random did as well. So this asks the question directly - given a melod
 segment of the other part makes the most plausible pair? - and scores candidates on the
 relationship itself.
 
-Which features to score on is not obvious, and the ablation answered that too: the two paired
-descriptors from the thesis prefer a real partner over an imposter only 51.5% of the time, barely
-above chance, so retrieval built on them alone would be close to random by construction. Every
-feature set here is therefore measured the same way before being used to retrieve:
+Which features to score on is not obvious, and it is not the two paired descriptors: they prefer
+a real partner over an imposter 0.392 of the time, which is below chance because a direction
+fitted on them does not generalise, so retrieval built on them alone would be worse than random
+by construction. Every feature set here is therefore measured the same way before being used to
+retrieve:
 
   balance     onset_balance and antiphony - the thesis pair
   interlock   where the two parts' onsets fall relative to each other: both, only one, neither,
@@ -30,11 +31,17 @@ import os
 import numpy as np
 import pandas as pd
 import torch
-from chain_vs_direct import load_triples
 from export_web import collect_segments
 from pair_descriptors import get_antiphony, get_onset_balance
 from rhythmic_relationships import MODELS_DIR
+from rhythmic_relationships.data import load_co_occurring_hits
 from rhythmic_relationships.evaluate import compute_oa_and_kld, compute_oa_kld_dists
+from rhythmic_relationships.interlock import (
+    PairScore,
+    interlock_features,
+    lineup_accuracy,
+    usable,
+)
 
 
 def balance_features(a, b):
@@ -46,28 +53,6 @@ def balance_features(a, b):
     ], axis=1)
 
 
-def interlock_features(a, b, resolution=4):
-    """Where the two parts' onsets fall relative to each other, as rates rather than counts.
-
-    Counts would be dominated by how busy the two parts happen to be; these are shares, so two
-    parts that interlock the same way score the same however dense they are.
-    """
-    on_a, on_b = a > 0, b > 0
-    steps = a.shape[1]
-    beats = np.arange(steps) % resolution == 0
-    n_a = on_a.sum(axis=1).clip(1)
-    n_b = on_b.sum(axis=1).clip(1)
-    # "the share filling A's gaps" is one minus the first of these, so including it made the
-    # feature covariance singular and the scores that read it meaningless
-    return np.stack([
-        (on_a & on_b).sum(axis=1) / n_b,          # of B's onsets, the share landing with A
-        (on_a & ~on_b).sum(axis=1) / n_a,         # of A's onsets, the share B leaves alone
-        (on_b & beats).sum(axis=1) / n_b,         # how much of B is on the beat
-        (on_a & beats).sum(axis=1) / n_a,         # how much of A is on the beat
-        (~on_a & ~on_b).sum(axis=1) / steps,      # how much of the bar neither part touches
-    ], axis=1)
-
-
 FEATURES = {
     "balance": balance_features,
     "interlock": interlock_features,
@@ -75,63 +60,6 @@ FEATURES = {
         [balance_features(a, b), interlock_features(a, b)], axis=1
     ),
 }
-
-
-def usable(a, b):
-    """Rows where both parts sound. Neither feature set means anything against silence."""
-    return ((a > 0).sum(axis=1) > 0) & ((b > 0).sum(axis=1) > 0)
-
-
-class PairScore:
-    """How much a pairing looks like one that was actually recorded together.
-
-    Learned by contrast, not by typicality. Scoring closeness to the average real relationship
-    turns out to prefer *shuffled* pairs, because reassignment averages out the idiosyncrasies a
-    real pairing has; the question is not "is this a typical relationship" but "is this pairing
-    real or arbitrary". So the score is a linear discriminant fitted on real pairs against
-    shuffled ones, which is the same closed form either way but pointed at the right contrast.
-    """
-
-    def __init__(self, features_real, features_shuffled):
-        mu1, mu0 = features_real.mean(axis=0), features_shuffled.mean(axis=0)
-        pooled = np.cov(np.concatenate([features_real - mu1, features_shuffled - mu0]),
-                        rowvar=False)
-        if pooled.ndim == 0:
-            pooled = pooled.reshape(1, 1)
-        self.w = np.linalg.solve(pooled + 1e-9 * np.eye(len(pooled)), mu1 - mu0)
-        self.offset = float(self.w @ (mu1 + mu0) / 2)
-
-    def score(self, features):
-        return features @ self.w - self.offset
-
-
-def lineup_accuracy(fn, model, inputs, real, rng, n_imposters):
-    """How often the score prefers a real partner to an imposter, over `n_imposters` rounds.
-
-    Imposters are other melodies' real partners, not segments from the general pool. Drawing them
-    from the pool would let the score win on population - segments that co-occur with a melody at
-    all are not a random sample of the part - and that has nothing to do with who plays with whom.
-    Shuffling real partners leaves exactly one difference between the two candidates: which
-    melody this one was actually recorded with.
-    """
-    keep_real = usable(inputs, real)
-    real_score = np.full(len(inputs), np.nan)
-    real_score[keep_real] = model.score(fn(inputs[keep_real], real[keep_real]))
-
-    wins, total = 0.0, 0
-    for _ in range(n_imposters):
-        # A derangement is not required: a melody drawing its own partner is a genuine tie and
-        # the 0.5 credit below scores it as one
-        picks = rng.permutation(len(real))
-        cand = real[picks]
-        keep = usable(inputs, cand) & keep_real
-        if not keep.any():
-            continue
-        got = model.score(fn(inputs[keep], cand[keep]))
-        diff = real_score[keep] - got
-        wins += float((diff > 0).sum() + 0.5 * (diff == 0).sum())
-        total += int(keep.sum())
-    return wins / max(total, 1), total
 
 
 def retrieve(fn, model, inputs, pool, rng, top_k=1, chunk=4000):
@@ -177,7 +105,7 @@ def main():
                         default=os.path.join(MODELS_DIR, "hits_encdec", "relationship_retrieval"))
     args = parser.parse_args()
 
-    segments = load_triples(args.dataset, [args.part_1, args.part_2], args.n_seqs, args.seed)
+    segments = load_co_occurring_hits(args.dataset, [args.part_1, args.part_2], args.n_seqs, args.seed)
     inputs, real = segments[args.part_1], segments[args.part_2]
     pool_segs = collect_segments(args.dataset, args.part_2, args.pool, args.seed + 1, 4,
                                  with_pitches=False)
@@ -198,8 +126,9 @@ def main():
         a, b = fit_in[keep], fit_real[keep]
         shuffled = b[fit_rng.permutation(len(b))]
         model = PairScore(fn(a, b), fn(a, shuffled))
-        acc, n = lineup_accuracy(fn, model, test_in, test_real,
-                                 np.random.default_rng(args.seed + 2), args.imposters)
+        acc, n = lineup_accuracy(model, test_in, test_real,
+                                 np.random.default_rng(args.seed + 2), args.imposters,
+                                 features=fn)
         fitted[name] = (fn, model, acc, n)
         dims = fn(inputs[:2], real[:2]).shape[1]
         print(f"{name:<12}{dims:>6}{acc:>26.3f}{1.96 * (0.25 / max(n, 1)) ** 0.5:>10.3f}")
