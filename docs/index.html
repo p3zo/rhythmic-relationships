@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>rhythmic relationships</title>
+<title>p3zo/rhythmic-relationships</title>
 <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
 <style>
   :root {
@@ -12,10 +12,11 @@
   * { box-sizing: border-box; }
   body { margin: 0; padding: 24px; background: var(--bg); color: var(--text);
          font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
-  h1 { font-size: 17px; margin: 0 0 2px; font-weight: 600; }
-  h1 .repo { margin-left: 12px; font-size: 12px; font-weight: 400; color: var(--dim);
-             font-family: ui-monospace, monospace; text-decoration: none; }
-  h1 .repo:hover { color: var(--in); text-decoration: underline; }
+  .head { display: flex; align-items: baseline; gap: 16px; }
+  h1 { font-size: 21px; margin: 0; font-weight: 600; flex: 1;
+       font-family: ui-monospace, monospace; letter-spacing: -.02em; }
+  h1 a { color: var(--text); text-decoration: none; }
+  h1 a:hover { color: var(--in); }
   h2 { font-size: 13px; margin: 0 0 14px; font-weight: 600; letter-spacing: .07em;
        text-transform: uppercase; color: var(--dim); }
   .meta { color: var(--dim); font-size: 12px; font-family: ui-monospace, monospace; }
@@ -83,17 +84,10 @@
 </head>
 <body>
 <div class="wrap">
-  <h1>rhythmic relationships
-    <a class="repo" href="https://github.com/p3zo/rhythmic-relationships" target="_blank"
-       rel="noopener">p3zo/rhythmic-relationships</a></h1>
-  <div class="meta" id="meta">loading the model…</div>
-
-  <div class="panel">
-    <div class="row">
-      <div class="label">model</div>
-      <span id="modelName" class="hint" style="flex:1"></span>
-      <label class="check"><input type="checkbox" id="click"> click track</label>
-    </div>
+  <div class="head">
+    <h1><a href="https://github.com/p3zo/rhythmic-relationships" target="_blank"
+           rel="noopener">p3zo/rhythmic-relationships</a></h1>
+    <label class="check"><input type="checkbox" id="click"> click track</label>
   </div>
 
   <div class="panel">
@@ -105,6 +99,8 @@
     <div class="row" style="margin-top:12px">
       <div class="label"></div>
       <div id="inDesc"></div>
+      <span style="flex:1"></span>
+      <span class="hint" id="inSeg"></span>
     </div>
     <div class="row" style="margin-top:14px">
       <div class="label"></div>
@@ -128,6 +124,10 @@
       <div class="grid" id="probGrid"></div>
     </div>
     <div class="row" style="margin-top:14px">
+      <div class="label">model</div>
+      <span class="meta" id="meta">loading the model…</span>
+    </div>
+    <div class="row" style="margin-top:10px">
       <div class="label"></div>
       <button class="primary" id="gen">Generate ⏎</button>
       <select id="sampler">
@@ -160,6 +160,7 @@
 
   <div class="panel">
     <h2>Mashups</h2>
+    <div class="meta" id="mashupNote" style="margin-bottom:14px"></div>
     <div id="matches"><span class="hint">Generate to find real segments that move like the output.</span></div>
   </div>
 
@@ -703,7 +704,15 @@ const fmt = (v) => {
   if (v === null || v === undefined || Number.isNaN(v)) return "–";
   return Number.isInteger(+v) ? String(+v) : (+v).toFixed(3);
 };
-const statRow = (name, value) => `<span class="metric"><b>${fmt(value)}</b>${name}</span>`;
+// What the two paired descriptors from the thesis mean, shown on hover wherever they appear
+const DESCRIBES = {
+  onset_balance: "1 when both parts play the same number of onsets, 0 when one part plays all of them",
+  antiphony: "0 when both parts' onsets centre on the same point in the two bars, rising as one crowds the start and the other the end",
+};
+
+const statRow = (name, value) =>
+  `<span class="metric"${DESCRIBES[name] ? ` title="${DESCRIBES[name]}"` : ""}>` +
+  `<b>${fmt(value)}</b>${name}</span>`;
 
 // The per-part descriptors the local interface shows come from rhythmtoolbox, which is Python.
 // Rather than ship a reimplementation that could quietly disagree, this build reports the onset
@@ -723,7 +732,7 @@ function buildSteer() {
   $("steer").innerHTML =
     ["onset_balance", "antiphony"].map((k) => `
       <div class="line">
-        <label class="check nm"><input type="checkbox" data-on="${k}"> ${k}</label>
+        <label class="check nm" title="${DESCRIBES[k]}"><input type="checkbox" data-on="${k}"> ${k}</label>
         <input type="range" data-target="${k}" min="0" max="1" step="0.01" value="0.5">
         <span class="tv" id="tv-${k}">0.50</span>
         <span id="got-${k}"></span>
@@ -762,15 +771,16 @@ function drawSteerResult() {
 function setMeta() {
   $("inLabel").textContent = META.part_1;
   $("outLabel").textContent = META.part_2;
-  const bits = [
+  $("inSeg").textContent = exampleName;
+  $("mashupNote").textContent =
+    `The closest matches out of ${META.n_index.toLocaleString()} searchable ${META.part_2} segments.`;
+  $("meta").textContent = [
+    META.run,
     `${META.part_1} → ${META.part_2}`,
-    `${META.n_steps} steps`,
     `${META.n_params.toLocaleString()} params`,
     `val ${META.val_loss ?? "?"}`,
     META.dataset,
-  ];
-  if (exampleName) bits.push(exampleName);
-  $("meta").textContent = bits.join("  ·  ");
+  ].join("  ·  ");
 }
 
 // ---------- actions ----------
@@ -840,7 +850,6 @@ function loadExample() {
     const [meta, examples, index] = await Promise.all(
       ["meta", "examples", "index"].map((n) => fetch(`data/${n}.json`).then((r) => r.json())));
     META = meta; EXAMPLES = examples; INDEX = index;
-    $("modelName").textContent = `${META.run}  (${META.n_index.toLocaleString()} segments searchable)`;
 
     [encSession, decSession] = await Promise.all([
       ort.InferenceSession.create("data/encoder.onnx"),
