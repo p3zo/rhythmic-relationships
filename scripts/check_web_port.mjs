@@ -67,6 +67,16 @@ for (const [key, want] of Object.entries(C.greedy)) {
     const got = await ev(`META.run`);
     if (got !== model) fail(`selecting ${part_1} -> ${part_2}`, model, got);
     current = model;
+
+    // The score reads this model's exported weights out of META, so it can only be asked while
+    // this model is the selected one
+    const keys = Object.keys(C.interlock).filter((k) => k.startsWith(`${model}|`));
+    const pairs = keys.map((k) => { const [, a, b] = k.split("|"); return [P[a], P[b]]; });
+    const scores = JSON.parse(await ev(`JSON.stringify(${JSON.stringify(pairs)}.map(([a, b]) => interlockScore(a, b)))`));
+    keys.forEach((k, i) => {
+      checked++;
+      if (Math.abs(scores[i] - C.interlock[k]) > 1e-6) fail(`interlock ${k}`, C.interlock[k], scores[i]);
+    });
   }
   const got = JSON.parse(await ev(`generateBatch(${JSON.stringify(P[name])}, 1, 'greedy', 1.0, 0.92).then(r => JSON.stringify(r[0]))`));
   checked++;
