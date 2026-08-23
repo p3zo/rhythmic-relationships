@@ -27,7 +27,11 @@ from rhythmic_relationships.data import (
 )
 from rhythmic_relationships.models.tvae import VAETransformer
 from rhythmic_relationships.io import write_midi_from_roll
-from rhythmic_relationships.vocab import get_vocab_encoder_decoder, get_vocab_sizes
+from rhythmic_relationships.vocab import (
+    PAD_IX,
+    get_vocab_encoder_decoder,
+    get_vocab_sizes,
+)
 
 DEFAULT_CONFIG_FILEPATH = "config.yml"
 WANDB_PROJECT_NAME = "rhythmic-relationships"
@@ -326,31 +330,13 @@ def train_mma(
     return evals
 
 
-if __name__ == "__main__":
-    print(f"{DEVICE=}")
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--datasets_dir", type=str, default=DATASETS_DIR)
-    parser.add_argument("--config_path", type=str, default=DEFAULT_CONFIG_FILEPATH)
-    args = parser.parse_args()
-
-    datasets_dir = args.datasets_dir
-    config = load_config(args.config_path)
-
-    torch.manual_seed(config["seed"])
-
-    model_name = get_model_name()
-    print(f"{model_name=}")
-
-    model_dir = os.path.join(MODELS_DIR, model_name)
-    if not os.path.isdir(model_dir):
-        os.makedirs(model_dir)
-
+def train(config, model_name, datasets_dir, model_dir):
     dataset = PartPairDatasetSequential(
         **config["data"],
         datasets_dir=datasets_dir,
         with_ctx=True,
     )
+
     splits = config["splits"]
     train_data, val_data, test_data = random_split(dataset, list(splits.values()))
     for k, v in {"train": train_data, "val": val_data, "test": test_data}.items():
@@ -362,10 +348,9 @@ if __name__ == "__main__":
     val_loader = DataLoader(val_data, batch_size=config["batch_size"], shuffle=True)
 
     vocab_sizes = get_vocab_sizes()
-    encode, _ = get_vocab_encoder_decoder(config["data"]["part_2"])
     config["model"]["src_vocab_size"] = vocab_sizes[config["data"]["part_1"]]
     config["model"]["tgt_vocab_size"] = vocab_sizes[config["data"]["part_2"]]
-    config["model"]["pad_ix"] = encode(["pad"])[0]
+    config["model"]["pad_ix"] = PAD_IX
     # Add 1 to the context length to account for the start token
     config["model"]["context_len"] = config["sequence_len"] + 1
     print(yaml.dump(config))
@@ -392,9 +377,8 @@ if __name__ == "__main__":
         model_dir=model_dir,
     )
 
-    model_path = os.path.join(model_dir, "model.pt")
     save_model(
-        model_path=model_path,
+        model_path=os.path.join(model_dir, "model.pt"),
         model=model,
         config=config,
         model_name=model_name,

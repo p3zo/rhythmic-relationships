@@ -10,7 +10,8 @@ import torch
 from rhythmic_relationships import MODELS_DIR, CHECKPOINTS_DIRNAME
 from rhythmic_relationships.data import PartDataset
 from rhythmic_relationships.evaluate import (
-    compute_oa_and_kld,
+    compute_oa,
+    compute_kld,
     get_flat_nonzero_dissimilarity_matrix,
     make_oa_kld_plot,
     mk_descriptor_dist_plot,
@@ -171,7 +172,8 @@ if __name__ == "__main__":
         train_gen_dist = get_flat_nonzero_dissimilarity_matrix(train_gen)
 
         # Compute distribution comparison metrics
-        oa, kld = compute_oa_and_kld(train_dist, train_gen_dist)
+        oa = compute_oa(train_dist, train_gen_dist)
+        kld = compute_kld(train_dist, train_gen_dist)
         print(f"  oa={round(oa, 3)}, kld={round(kld, 3)}")
 
         make_oa_kld_plot(

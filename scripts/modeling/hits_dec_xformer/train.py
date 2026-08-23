@@ -29,7 +29,7 @@ from rhythmic_relationships.data import (
 )
 from rhythmic_relationships.models.hits_decoder_xformer import HitsDecoder
 from rhythmic_relationships.io import write_midi_from_hits
-from rhythmic_relationships.vocab import get_hits_vocab
+from rhythmic_relationships.vocab import PAD_IX, START_IX, get_hits_vocab_size
 
 DEFAULT_CONFIG_FILEPATH = "config.yml"
 WANDB_PROJECT_NAME = "rhythmic-relationships"
@@ -43,19 +43,19 @@ DEVICE = torch.device(
 )
 
 
-def parse_sequential_batch(batch, device):
-    xb, yb = batch
-    x = xb.to(device).view(xb.shape[0] * xb.shape[1], xb.shape[2])
-    y = yb.to(device).view(yb.shape[0] * yb.shape[1], yb.shape[2])
-    return x, y
+def parse_batch(batch, device):
+    yb = batch
+
+    # Teacher forcing: the decoder reads the target shifted right by one, seeded with `start`
+    yb_shifted = torch.roll(yb, 1, dims=1)
+    yb_shifted[:, 0] = START_IX
+
+    return yb_shifted.to(device), yb.to(device)
 
 
-def inference(model, n_samples, n_tokens, temperature, device):
-    hits_vocab = get_hits_vocab()
-    ttoi = {v: k for k, v in hits_vocab.items()}
-    start_ix = ttoi["start"]
+def inference(model, n_tokens, temperature, device):
     y = torch.tensor(
-        [[start_ix]],
+        [[START_IX]],
         dtype=torch.long,
         requires_grad=False,
         device=device,
@@ -121,15 +121,10 @@ def evaluate_hits_decoder(
     evals_loss = []
 
     for k in range(n_eval_iters):
-        # src, tgt = parse_sequential_batch(next(iter(val_loader)), device)
-        # with torch.no_grad():
-        #     logits = model(src)
-        #     loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
-        #     evals_loss.append(loss.item())
-
-        batch = next(iter(val_loader)).to(device)
+        ctx, tgt = parse_batch(next(iter(val_loader)), device)
         with torch.no_grad():
-            loss = model(batch)
+            logits = model(ctx)
+            loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
             evals_loss.append(loss.item())
 
     n_generated = 0
@@ -144,9 +139,14 @@ def evaluate_hits_decoder(
 
     n_seqs = 1
     for ix in range(n_seqs):
-        seq = model.generate(device=device)
+        seq, _ = inference(
+            model=model,
+            n_tokens=config["sequence_len"],
+            temperature=1.2,
+            device=device,
+        )
 
-        gen_hits = get_hits_from_hits_seq(seq.cpu().numpy(), part=part)
+        gen_hits = get_hits_from_hits_seq(seq.squeeze(0).cpu().numpy(), part=part)
 
         n_generated += 1
         if max(gen_hits) == 0:
@@ -203,11 +203,9 @@ def train_hits_decoder(
     for epoch in range(1, n_epochs + 1):
         batches = tqdm(train_loader)
         for batch in batches:
-            batch = batch.to(device)
-            loss = model(batch)
-            # src, tgt = parse_sequential_batch(batch, device)
-            # logits = model(src)
-            # loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
+            ctx, tgt = parse_batch(batch, device)
+            logits = model(ctx)
+            loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
 
             train_losses.append(loss.item())
             batches.set_postfix({"loss": f"{loss.item():.4f}"})
@@ -262,8 +260,10 @@ def train_hits_decoder(
             model=model,
             config=config,
             epoch=epoch,
+            loss_fn=loss_fn,
             model_name=model_name,
             model_dir=model_dir,
+            device=DEVICE,
         )
     )
 
@@ -283,10 +283,9 @@ def train(config, model_name, datasets_dir, model_dir):
     train_loader = DataLoader(train_data, batch_size=config["batch_size"], shuffle=True)
     val_loader = DataLoader(val_data, batch_size=config["batch_size"], shuffle=True)
 
-    hits_vocab = get_hits_vocab()
-    pad_ix = {v: k for k, v in hits_vocab.items()}["pad"]
+    pad_ix = PAD_IX
 
-    config["model"]["vocab_size"] = 5
+    config["model"]["vocab_size"] = get_hits_vocab_size(config["data"].get("block_size", 1))
     config["model"]["context_len"] = config["sequence_len"]
     config["model"]["pad_ix"] = pad_ix
 
@@ -323,32 +322,4 @@ def train(config, model_name, datasets_dir, model_dir):
         config=config,
         model_name=model_name,
         evals=evals,
-    )
-
-
-if __name__ == "__main__":
-    print(f"{DEVICE=}")
-
-    parser = argparse.ArgumentParser()
-    parser.add_argument("--datasets_dir", type=str, default=DATASETS_DIR)
-    parser.add_argument("--config_path", type=str, default=DEFAULT_CONFIG_FILEPATH)
-    args = parser.parse_args()
-
-    datasets_dir = args.datasets_dir
-    config = load_config(args.config_path)
-
-    torch.manual_seed(config["seed"])
-
-    model_name = get_model_name()
-    print(f"{model_name=}")
-
-    model_dir = os.path.join(MODELS_DIR, model_name)
-    if not os.path.isdir(model_dir):
-        os.makedirs(model_dir)
-
-    train(
-        config=config,
-        model_name=model_name,
-        datasets_dir=datasets_dir,
-        model_dir=model_dir,
     )

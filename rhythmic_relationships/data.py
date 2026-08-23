@@ -523,16 +523,23 @@ class PartPairDatasetRSP(Dataset):
         self.p1_rsps = None
         self.p2_rsps = None
         if repr_1 == "rsp":
-            self.p1_rsps = pd.read_csv(
-                os.path.join(self.dataset_dir, "plots", part_1, f"t-SNE_{part_1}.csv")
-            )
+            self.p1_rsps = self.load_rsps(part_1, embedding_method)
         if repr_2 == "rsp":
-            self.p2_rsps = pd.read_csv(
-                os.path.join(self.dataset_dir, "plots", part_2, f"t-SNE_{part_2}.csv")
-            )
+            self.p2_rsps = self.load_rsps(part_2, embedding_method)
 
         self.loaded_segments = []
         self.tokenize_hits = tokenize_hits
+
+    def load_rsps(self, part, embedding_method):
+        path = os.path.join(
+            self.dataset_dir, "plots", part, f"{embedding_method}_{part}.csv"
+        )
+        if not os.path.isfile(path):
+            raise FileNotFoundError(
+                f"No {embedding_method} rhythm space for {part} at {path}. "
+                "Run scripts/create_rhythm_space.py for this dataset first."
+            )
+        return pd.read_csv(path)
 
     def __len__(self):
         return len(self.p1_pairs)
@@ -561,8 +568,8 @@ class PartPairDatasetRSP(Dataset):
                 .split("representations/")[1]
                 .split(".npz")[0]
             )
-            sdf = self.p1_rsps.set_index(["filename", "segment_id"]).loc[
-                fname, p1_seg.segment_id
+            sdf = self.p2_rsps.set_index(["filename", "segment_id"]).loc[
+                fname, p2_seg.segment_id
             ]
             p2_seg_repr = sdf.values
         else:
