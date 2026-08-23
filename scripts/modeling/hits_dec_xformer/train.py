@@ -53,10 +53,9 @@ def parse_sequential_batch(batch, device):
 def inference(model, n_samples, n_tokens, temperature, device):
     hits_vocab = get_hits_vocab()
     ttoi = {v: k for k, v in hits_vocab.items()}
-    pad_ix = ttoi["pad"]
-    generated_tokens = []
+    start_ix = ttoi["start"]
     y = torch.tensor(
-        [[pad_ix] * n_tokens],
+        [[start_ix]],
         dtype=torch.long,
         requires_grad=False,
         device=device,
@@ -64,7 +63,7 @@ def inference(model, n_samples, n_tokens, temperature, device):
 
     entropies = []
 
-    for ix in range(n_tokens):
+    for _ in range(n_tokens):
         # Get the predictions
         with torch.no_grad():
             logits = model(y)
@@ -77,13 +76,14 @@ def inference(model, n_samples, n_tokens, temperature, device):
         entropies.append(entropy(probs))
 
         y_next = torch.multinomial(
-            torch.tensor(probs, dtype=torch.float32, device=DEVICE),
+            torch.tensor(probs, dtype=torch.float32, device=device),
             num_samples=1,
         )
 
-        y[:, ix] = y_next.item()
+        y = torch.cat([y, y_next], dim=1)
 
-    return y, np.array(entropies)
+    # Drop the start token the sequence was seeded with
+    return y[:, 1:], np.array(entropies)
 
 
 def compute_loss(logits, y, loss_fn):
