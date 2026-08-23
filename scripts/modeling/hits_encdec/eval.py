@@ -209,7 +209,6 @@ def get_sampler_eval(
     if sampler == "nucleus":
         title_suffix += f" {nucleus_p=}"
 
-    train_gen_df = pd.concat((train_df, gen_df))
     target_gen_df = pd.concat((target_df, gen_df))
 
     for col in list(target_df.columns):
@@ -222,23 +221,35 @@ def get_sampler_eval(
             target_gen_df[col].mean().round(3),
             target_gen_df[col].std().round(3),
         )
-        print("train", col, train_df[col].mean().round(3), train_df[col].std().round(3))
-        print(
-            "train_gen",
-            col,
-            train_gen_df[col].mean().round(3),
-            train_gen_df[col].std().round(3),
-        )
 
-    mk_descriptor_dist_plot(
-        gen_df=train_df,
-        ref_df=gen_df,
-        model_name=model_name,
-        outdir=eval_dir,
-        label="Train",
-        title_suffix=title_suffix,
-        filename_suffix=f"rel_{sampler}_train_vs_gen",
-    )
+    # `evaluate_*` does not have a training-set distribution to hand, so it calls this without
+    # one. Everything that reads `train_df` has to stay behind this guard.
+    if train_df is not None:
+        train_gen_df = pd.concat((train_df, gen_df))
+
+        for col in list(target_df.columns):
+            print(
+                "train",
+                col,
+                train_df[col].mean().round(3),
+                train_df[col].std().round(3),
+            )
+            print(
+                "train_gen",
+                col,
+                train_gen_df[col].mean().round(3),
+                train_gen_df[col].std().round(3),
+            )
+
+        mk_descriptor_dist_plot(
+            gen_df=train_df,
+            ref_df=gen_df,
+            model_name=model_name,
+            outdir=eval_dir,
+            label="Train",
+            title_suffix=title_suffix,
+            filename_suffix=f"rel_{sampler}_train_vs_gen",
+        )
 
     mk_descriptor_dist_plot(
         gen_df=target_df,
@@ -314,8 +325,9 @@ def eval_gen_hits_encdec(
     gen_srcs = torch.stack(gen_srcs)
     gen_tgts = torch.stack(gen_tgts)
 
+    gen_eval["sampler_stats"] = {}
+
     for sampler in samplers:
-        gen_eval["sampler_stats"] = {}
         gen_eval["sampler_stats"][sampler] = get_sampler_eval(
             srcs=gen_srcs,
             tgts=gen_tgts,
