@@ -104,8 +104,10 @@ def evaluate_transformer_decoder(
 
     print(f"Evaluating train loss for {n_eval_iters} iters")
     eval_train_losses = torch.zeros(n_eval_iters)
-    for k in range(n_eval_iters):
-        x, y = parse_sequential_batch(next(iter(train_loader)), device)
+    for k, batch in enumerate(train_loader):
+        if k == n_eval_iters:
+            break
+        x, y = parse_sequential_batch(batch, device)
         with torch.no_grad():
             logits = model(x)
             loss = compute_loss(logits, y, loss_fn)
@@ -113,8 +115,10 @@ def evaluate_transformer_decoder(
 
     print(f"Evaluating val loss for {n_eval_iters} iters")
     eval_val_losses = torch.zeros(n_eval_iters)
-    for k in range(n_eval_iters):
-        x, y = parse_sequential_batch(next(iter(val_loader)), device)
+    for k, batch in enumerate(val_loader):
+        if k == n_eval_iters:
+            break
+        x, y = parse_sequential_batch(batch, device)
         with torch.no_grad():
             logits = model(x)
             loss = compute_loss(logits, y, loss_fn)

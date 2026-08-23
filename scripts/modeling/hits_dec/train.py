@@ -136,16 +136,20 @@ def evaluate_hits_decoder(
     print(f"Evaluating for {n_eval_iters} iters")
 
     evals_train_loss = []
-    for k in range(n_eval_iters):
-        src, tgt = parse_sequential_batch(next(iter(train_loader)), device)
+    for k, batch in enumerate(train_loader):
+        if k == n_eval_iters:
+            break
+        src, tgt = parse_sequential_batch(batch, device)
         with torch.no_grad():
             logits = model(src)
             loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
             evals_train_loss.append(loss.item())
 
     evals_val_loss = []
-    for k in range(n_eval_iters):
-        src, tgt = parse_sequential_batch(next(iter(val_loader)), device)
+    for k, batch in enumerate(val_loader):
+        if k == n_eval_iters:
+            break
+        src, tgt = parse_sequential_batch(batch, device)
         with torch.no_grad():
             logits = model(src)
             loss = compute_loss(logits=logits, y=tgt, loss_fn=loss_fn)
@@ -243,12 +247,6 @@ def train_hits_decoder(
                 torch.nn.utils.clip_grad_norm_(model.parameters(), 0.25)
             optimizer.step()
 
-            # Save loss after each batch
-            plt.plot(train_losses)
-            loss_plot_path = os.path.join(model_dir, "loss.png")
-            plt.tight_layout()
-            plt.savefig(loss_plot_path)
-            plt.clf()
 
             ix += 1
 
@@ -280,6 +278,12 @@ def train_hits_decoder(
                 plt.tight_layout()
                 plt.savefig(eval_loss_plot_path)
                 plt.clf()
+
+        # Save the batch loss curve once per epoch rather than once per batch
+        plt.plot(train_losses)
+        plt.tight_layout()
+        plt.savefig(os.path.join(model_dir, "loss.png"))
+        plt.clf()
 
         if config["checkpoints"]:
             save_checkpoint(
