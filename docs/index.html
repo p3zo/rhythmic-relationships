@@ -76,6 +76,9 @@
   .hdr .mid { flex: 1; min-width: 160px; }
   .hdr .who { width: 300px; flex: none; }
   .hdr .spacer { width: 44px; flex: none; }
+  .match .shift { width: 40px; flex: none; text-align: right; color: var(--dim);
+                  font-family: ui-monospace, monospace; font-size: 12px; }
+  .hdr .shift { width: 40px; flex: none; text-align: right; }
 </style>
 </head>
 <body>
@@ -347,34 +350,54 @@ function noiseBuffer(ac) {
   return noise;
 }
 
-// A note you can hear the pitch of: triangle fundamental plus two quiet partials, soft attack,
-// and a tail long enough to register as a pitch rather than a click
-function pitchedNote(ac, at, freq, gain, pan, decay, cutoff) {
-  const out = ac.createGain();
-  out.gain.setValueAtTime(0, at);
-  out.gain.linearRampToValueAtTime(gain, at + 0.01);
-  out.gain.exponentialRampToValueAtTime(0.0001, at + decay);
-  const lp = ac.createBiquadFilter();
-  lp.type = "lowpass";
-  lp.frequency.value = cutoff;
+// A struck string, per partial: [harmonic number, level, how much of the note it lasts].
+// The upper partials dying away while the fundamental is still ringing is what reads as a
+// piano; give them all the same envelope and it turns into an organ.
+const PIANO_PARTIALS = [
+  [1, 1.00, 1.00], [2, 0.50, 0.62], [3, 0.26, 0.45], [4, 0.15, 0.34],
+  [5, 0.09, 0.26], [6, 0.05, 0.20], [7, 0.03, 0.16],
+];
+// Real strings are stiff, so their partials sit slightly above whole multiples of the
+// fundamental. This is why a piano sounds bright rather than perfectly in tune with itself.
+const INHARMONICITY = 0.0004;
+
+function pianoNote(ac, at, midi, gain, pan, ring) {
   const p = ac.createStereoPanner();
   p.pan.value = pan;
-  out.connect(lp); lp.connect(p); p.connect(ac.destination);
+  p.connect(ac.destination);
 
-  // Fundamental plus four partials: enough harmonic structure that the pitch is clear even
-  // when the fundamental itself is barely reproduced
-  for (const [type, mult, level] of [
-    ["triangle", 1, 1], ["sawtooth", 2, 0.30], ["sine", 3, 0.20],
-    ["sine", 4, 0.11], ["sine", 6, 0.05],
-  ]) {
-    const osc = ac.createOscillator();
-    osc.type = type;
-    osc.frequency.value = freq * mult;
+  // Bass strings ring far longer than treble ones
+  const seconds = Math.max(0.5, Math.min(3, ring * Math.pow(2, (60 - midi) / 24)));
+  const freq = midiHz(midi);
+
+  for (const [n, level, lasts] of PIANO_PARTIALS) {
+    const f = freq * n * Math.sqrt(1 + INHARMONICITY * n * n);
+    if (f > 16000) continue;
+    const decay = seconds * lasts;
     const g = ac.createGain();
-    g.gain.value = level;
-    osc.connect(g); g.connect(out);
-    osc.start(at); osc.stop(at + decay + 0.05);
+    g.gain.setValueAtTime(0, at);
+    // Hammer-fast: any slower and it reads as a bowed or blown note instead of a struck one
+    g.gain.linearRampToValueAtTime(gain * level, at + 0.004);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + decay);
+    const osc = ac.createOscillator();
+    osc.type = "sine";
+    osc.frequency.value = f;
+    osc.connect(g); g.connect(p);
+    osc.start(at); osc.stop(at + decay + 0.02);
   }
+
+  // The thud of the hammer itself, which is most of what makes the attack sound like wood
+  const hammer = ac.createBufferSource();
+  hammer.buffer = noiseBuffer(ac);
+  const bp = ac.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.frequency.value = Math.min(5000, freq * 6);
+  bp.Q = 0.8;
+  const hg = ac.createGain();
+  hg.gain.setValueAtTime(gain * 0.7, at);
+  hg.gain.exponentialRampToValueAtTime(0.0001, at + 0.035);
+  hammer.connect(bp); bp.connect(hg); hg.connect(p);
+  hammer.start(at); hammer.stop(at + 0.05);
 }
 
 // A stick tap: a filtered noise burst with no pitch in it at all
@@ -397,12 +420,14 @@ function stickTap(ac, at, gain, pan) {
   src.start(at); src.stop(at + 0.14);
 }
 
+// Both parts are the same grand piano, kept apart in the stereo field so it stays clear which
+// one you are hearing.
 const VOICES = {
-  melody: { decay: 0.42, cutoff: 3400, gain: 0.30, pan: -0.6, lift: 0 },
-  // A bassline's fundamental is often below what a laptop speaker reproduces at all, so this
-  // voice is deliberately bright - the upper partials are what make the pitch audible - and
-  // notes under MIDI 45 are lifted by octaves into a register that can actually be heard.
-  bass:   { decay: 0.38, cutoff: 5200, gain: 0.26, pan: 0.55, lift: 45 },
+  melody: { gain: 0.13, pan: -0.45, lift: 0, ring: 1.3 },
+  // A bassline's fundamental is often below what a laptop speaker reproduces at all, so notes
+  // under MIDI 45 are folded up by octaves into a register that can be heard. Folding by whole
+  // octaves keeps the pitch class, so it cannot undo a mashup's transposition.
+  bass:   { gain: 0.14, pan: 0.40, lift: 45, ring: 1.3 },
 };
 
 // Fold a note up by whole octaves until it clears `floorNote`, preserving its pitch class
@@ -434,8 +459,8 @@ function play(parts) {
           stickTap(ac, at, level * 0.5, part.pan ?? 0.55);
         } else {
           const v = VOICES[part.voice];
-          pitchedNote(ac, at, midiHz(lift(pitch, v.lift)), level * v.gain,
-                      part.pan ?? v.pan, v.decay, v.cutoff);
+          pianoNote(ac, at, lift(pitch, v.lift), level * v.gain,
+                    part.pan ?? v.pan, v.ring);
         }
       }
     }
@@ -453,7 +478,7 @@ function play(parts) {
       }
     }
   }
-  return loops * META.n_steps * step + 0.6;
+  return loops * META.n_steps * step + 1.6;
 }
 
 // Any play button is also its own stop button while it is the thing playing
@@ -532,6 +557,8 @@ function drawInput() {
   const cells = $("inGrid").children;
   for (let i = 0; i < input.length; i++) cells[i].style.background = shade(input[i], "in");
   drawDescriptors();
+  // Editing the grid changes what the mashups have to fit, so their shifts are recomputed
+  if (matches.length) drawMatches();
 }
 
 function drawOutput() {
@@ -553,6 +580,54 @@ function drawOutput() {
   }
 }
 
+// ---------- key fit ----------
+// Segments arrive in whatever key they were recorded in, so each is moved to sit with the input
+// before it is heard against it. Two terms, both measured against the input as it will actually
+// sound: how much of the segment lands on a pitch class the input uses, less what collides with
+// it on the same step. Semitones and tritones are the collisions that read as wrong.
+const CLASH_PENALTY = 2;
+const pitchClass = (p) => ((p % 12) + 12) % 12;
+const intervalClass = (a, b) => {
+  const d = Math.abs(a - b) % 12;
+  return Math.min(d, 12 - d);
+};
+
+function keyShift(heard, segNotes) {
+  if (!segNotes.length || !heard.length) return 0;
+
+  const share = new Array(12).fill(0);
+  for (const [, p, v] of heard) share[pitchClass(p)] += v;
+  const total = share.reduce((a, b) => a + b, 0);
+  if (!total) return 0;
+
+  const byStep = new Map();
+  for (const [s, p, v] of heard) byStep.set(s, (byStep.get(s) || []).concat([[p, v]]));
+
+  let best = 0, bestScore = -Infinity;
+  // Half an octave either way, so a part stays in the register it was recorded in
+  for (let t = -6; t <= 5; t++) {
+    let score = 0;
+    for (const [s, p, v] of segNotes) {
+      const pc = pitchClass(p + t);
+      score += (v * share[pc]) / total;
+      for (const [q, w] of byStep.get(s) || []) {
+        const cls = intervalClass(pc, pitchClass(q));
+        if (cls === 1 || cls === 6) score -= CLASH_PENALTY * v * w;
+      }
+    }
+    // Ties go to the smaller move
+    if (score > bestScore + 1e-9 ||
+        (Math.abs(score - bestScore) < 1e-9 && Math.abs(t) < Math.abs(best))) {
+      bestScore = score;
+      best = t;
+    }
+  }
+  return best;
+}
+
+const transpose = (notes, semitones) =>
+  semitones ? notes.map(([s, p, v]) => [s, p + semitones, v]) : notes;
+
 // ---------- mashups ----------
 function drawMatches() {
   const box = $("matches");
@@ -562,18 +637,23 @@ function drawMatches() {
   }
   box.innerHTML =
     `<div class="hdr"><span class="spacer"></span><span class="apart">apart</span>` +
-    `<span class="mid">${META.part_2} rhythm</span><span class="who">segment</span></div>`;
+    `<span class="mid">${META.part_2} rhythm</span><span class="shift">shift</span>` +
+    `<span class="who">segment</span></div>`;
+
+  const heard = inputPart().notes;
 
   matches.forEach((m, ix) => {
     const rowEl = document.createElement("div");
     rowEl.className = "match";
+
+    const shift = keyShift(heard, m.pitched);
 
     const btn = document.createElement("button");
     btn.textContent = "▶";
     btn.title = "Play this against the input";
     btn.onclick = () => playFrom(btn, [
       inputPart(),
-      { notes: m.pitched, voice: "bass" },
+      { notes: transpose(m.pitched, shift), voice: "bass" },
     ]);
     rowEl.appendChild(btn);
 
@@ -597,6 +677,15 @@ function drawMatches() {
       mini.appendChild(c);
     }
     rowEl.appendChild(mini);
+
+    const shiftEl = document.createElement("span");
+    shiftEl.className = "shift";
+    shiftEl.textContent = shift > 0 ? `+${shift}` : `${shift}`;
+    shiftEl.title = shift
+      ? `Moved ${Math.abs(shift)} semitone${Math.abs(shift) === 1 ? "" : "s"} ` +
+        `${shift > 0 ? "up" : "down"} to fit the input`
+      : "Already fits the input";
+    rowEl.appendChild(shiftEl);
 
     const who = document.createElement("span");
     who.className = "who";

@@ -41,6 +41,12 @@ for (const [key, want] of Object.entries(C.paired)) {
   if (!close(want[0], got[0]) || !close(want[1], got[1])) fail(`paired ${key}`, want, got);
 }
 
+for (const [ix, c] of C.key_shift.entries()) {
+  const got = await ev(`keyShift(${JSON.stringify(c.heard)}, ${JSON.stringify(c.seg)})`);
+  checked++;
+  if (got !== c.shift) fail(`key_shift case ${ix}`, c.shift, got);
+}
+
 await ev(`document.getElementById('sampler').value = 'greedy'`);
 for (const [name, want] of Object.entries(C.greedy)) {
   const got = JSON.parse(await ev(`generateBatch(${JSON.stringify(P[name])}, 1, 'greedy', 1.0, 0.92).then(r => JSON.stringify(r[0]))`));
