@@ -132,6 +132,10 @@
     <div class="row" style="margin-top:14px">
       <div class="label"></div>
       <button class="primary" id="gen">Generate ⏎</button>
+      <select id="sampler" title="multinomial draws from everything the model predicts; nucleus drops the unlikeliest tail at each step, which plays safer and sparser">
+        <option value="multinomial">multinomial</option>
+        <option value="nucleus">nucleus</option>
+      </select>
       <span style="flex:1"></span>
       <button id="playOut" disabled>▶ output</button>
       <button id="playBoth" disabled>▶ both</button>
@@ -153,12 +157,12 @@
 
   <div class="panel">
     <h2>Mashups</h2>
-    <h3>Ten ways real pairs sit together</h3>
-    <div class="meta" id="fitNote" style="margin-bottom:14px"></div>
-    <div id="fits"><span class="hint">Draw or load an input to search for segments to sit with it.</span></div>
-    <h3 class="next">Closest to the generated rhythm</h3>
+    <h3>Closest to the generated rhythm</h3>
     <div class="meta" id="mashupNote" style="margin-bottom:14px"></div>
     <div id="matches"><span class="hint">Generate to find real segments that move like the output.</span></div>
+    <h3 class="next">Closest to a real relationship</h3>
+    <div class="meta" id="fitNote" style="margin-bottom:14px"></div>
+    <div id="fits"><span class="hint">Draw or load an input to search for segments to sit with it.</span></div>
   </div>
 
 </div>
@@ -194,11 +198,15 @@ const decode = (tokens) => tokens.map((t) => {
 });
 
 // ---------- sampling (rhythmic_relationships/evaluate.py) ----------
-// The page draws from the model's distribution as it is, with no temperature and no truncation.
-// Measured over 300 real inputs per pair, that reproduces the real parts' variety almost exactly
-// (239 distinct patterns against the real 238, 281 against 276, 173 against 172) and their onset
-// density; nucleus sampling at p=0.92 cuts the tail and undershoots density by around a fifth,
-// and greedy collapses to one or two patterns for every input there is.
+// Two ways to draw, both from the model's own distribution with no temperature. Multinomial takes
+// it whole: measured over 300 real inputs per pair that reproduces the real parts' variety almost
+// exactly (239 distinct patterns against the real 238, 281 against 276, 173 against 172) and their
+// onset density. Nucleus keeps only the likeliest tokens covering NUCLEUS_P of the mass, which at
+// a step the model expects to be a rest mostly deletes the chance of an onset: sparser by about a
+// fifth, and less varied. Greedy, which is neither, collapsed to one or two patterns for every
+// input in the dataset, which is why it is not on offer.
+const NUCLEUS_P = 0.92;
+
 function softmax(logits) {
   const max = Math.max(...logits);
   const exp = logits.map((v) => Math.exp(v - max));
@@ -212,10 +220,27 @@ function multinomialPick(probs) {
   return probs.length - 1;
 }
 
+function nucleusPick(probs, p) {
+  const order = probs.map((v, i) => i).sort((a, b) => probs[b] - probs[a]);
+  let cum = 0, cutoff = order.length - 1;
+  for (let i = 0; i < order.length; i++) {
+    cum += probs[order[i]];
+    // The first index whose running total covers p is the smallest pool that does
+    if (cum > p) { cutoff = i; break; }
+  }
+  const pool = order.slice(0, cutoff + 1);
+  const mass = pool.reduce((a, i) => a + probs[i], 0);
+  let r = Math.random() * mass;
+  for (const i of pool) { r -= probs[i]; if (r <= 0) return i; }
+  return pool[pool.length - 1];
+}
+
 // Greedy is kept because it is the only deterministic path, which is what makes the port
 // checkable against the Python; nothing on the page asks for it.
 function pick(probs, sampler) {
-  return sampler === "greedy" ? probs.indexOf(Math.max(...probs)) : multinomialPick(probs);
+  if (sampler === "greedy") return probs.indexOf(Math.max(...probs));
+  if (sampler === "nucleus") return nucleusPick(probs, NUCLEUS_P);
+  return multinomialPick(probs);
 }
 
 // ---------- paired descriptors (scripts/pair_descriptors.py) ----------
@@ -402,6 +427,11 @@ function bestFits() {
       hits: seg.h.map((v) => v / 4),
       pitched: seg.p.map(([step, pitch, vel]) => [step, pitch, vel / 127]),
       together: feats[best][0],
+      features: feats[best],
+      target,
+      // Mahalanobis distances are squared, so the root reads in standard deviations of how much
+      // real relationships vary
+      away: Math.sqrt(bestDistance),
     });
   }
   // Read as a spectrum, from the row that doubles the input most to the one that fills its gaps
@@ -778,6 +808,7 @@ function renderMatches(boxId, rows, metric, against) {
 
     const mini = document.createElement("div");
     mini.className = "mini";
+    if (metric.detail) mini.title = metric.detail(m);
     mini.style.gridTemplateColumns = `repeat(${META.n_steps}, 1fr)`;
     for (let i = 0; i < META.n_steps; i++) {
       const c = document.createElement("i");
@@ -820,6 +851,13 @@ function drawMatches() {
   }, output && output.gen_hits);
 }
 
+// What the three interlock features mean, for a row accounting for how it was chosen
+const FEATURE_NAMES = [
+  "of its onsets land on one of yours",
+  "of your onsets it leaves alone",
+  "of the bar neither of you touches",
+];
+
 function drawFits() {
   const average = Math.round(META.relationships.real_means[0] * 100);
   renderMatches("fits", fits, {
@@ -827,6 +865,15 @@ function drawFits() {
     of: (m) => `${Math.round(m.together * 100)}%`,
     title: `The share of this segment's onsets that land on one of the input's. Real ` +
            `${META.part_1}/${META.part_2} pairs average ${average}%.`,
+    detail: (m) => {
+      const pct = (v) => `${String(Math.round(v * 100)).padStart(3)}%`;
+      const lines = FEATURE_NAMES.map((name, i) =>
+        `${pct(m.target[i])} aimed at, ${pct(m.features[i])} got  -  ${name}`);
+      return `Aiming at one real ${META.part_1}/${META.part_2} pair's relationship:\n` +
+        lines.join("\n") +
+        `\nNothing in the 30,000 came closer than ${m.away.toFixed(2)} standard deviations ` +
+        `of how much real relationships vary.`;
+    },
     empty: "Nothing to sit with an empty input.",
   }, input);
 }
@@ -920,7 +967,7 @@ async function generate() {
   try {
     const targets = steerTargets();
     const batch = targets ? parseInt($("nCand").value, 10) : 1;
-    const candidates = await generateBatch(input, batch);
+    const candidates = await generateBatch(input, batch, $("sampler").value);
 
     const paired = candidates.map((c) => describePair(input, c));
     let best = 0, search = null;
