@@ -47,7 +47,6 @@ for (const [ix, c] of C.key_shift.entries()) {
   if (got !== c.shift) fail(`key_shift case ${ix}`, c.shift, got);
 }
 
-await ev(`document.getElementById('sampler').value = 'greedy'`);
 // Keys are "<model id>|<pattern>": each model has its own weights, so each is asked separately
 let current = null;
 for (const [key, want] of Object.entries(C.greedy)) {
@@ -67,10 +66,30 @@ for (const [key, want] of Object.entries(C.greedy)) {
     const got = await ev(`META.run`);
     if (got !== model) fail(`selecting ${part_1} -> ${part_2}`, model, got);
     current = model;
+
+    // The distance reads this model's exported covariance out of META, so it can only be asked
+    // while this model is the selected one
+    const keys = Object.keys(C.relationship).filter((k) => k.startsWith(`${model}|`));
+    const cases = keys.map((k) => { const [, t, a, b] = k.split("|"); return [+t, P[a], P[b]]; });
+    const distances = JSON.parse(await ev(`JSON.stringify(${JSON.stringify(cases)}.map(([t, a, b]) =>
+      relationshipDistance(interlockFeatures(a, b), META.relationships.targets[t])))`));
+    keys.forEach((k, i) => {
+      checked++;
+      if (Math.abs(distances[i] - C.relationship[k]) > 1e-6)
+        fail(`relationship ${k}`, C.relationship[k], distances[i]);
+    });
   }
-  const got = JSON.parse(await ev(`generateBatch(${JSON.stringify(P[name])}, 1, 'greedy', 1.0, 0.92).then(r => JSON.stringify(r[0]))`));
-  checked++;
-  if (JSON.stringify(want) !== JSON.stringify(got)) fail(`greedy ${key}`, want, got);
+  const got = JSON.parse(await ev(`generateBatch(${JSON.stringify(P[name])}, 1, 'greedy').then(r =>
+    JSON.stringify([r[0].hits, r[0].onsetProbs]))`));
+  checked += 2;
+  if (JSON.stringify(want.hits) !== JSON.stringify(got[0])) fail(`greedy ${key}`, want.hits, got[0]);
+  // The tokens have to match exactly, because they are decisions. The probabilities cannot: the
+  // int8 graph is the same but onnxruntime's native kernels and its WASM ones do not accumulate
+  // identically, which moves a logit by a few thousandths and this sum by up to 0.015 in the
+  // worst of these 512 steps. For context the export itself reports the int8 weights moving a
+  // logit by up to 0.146 against the float ones.
+  if (want.onset_probs.some((v, i) => Math.abs(v - got[1][i]) > 0.03))
+    fail(`greedy onset probabilities ${key}`, want.onset_probs, got[1]);
 }
 
 console.log(`${checked} checks, ${failed} failed`);

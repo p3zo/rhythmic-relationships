@@ -1,5 +1,7 @@
+import glob
 import itertools
 import os
+import random
 
 import numpy as np
 import pandas as pd
@@ -179,6 +181,46 @@ def get_roll_from_sequence(seq, part):
             raise ValueError("Invalid token type")
 
     return roll
+
+
+def load_co_occurring_hits(dataset_name, parts, n_seqs, seed, per_file):
+    """Segments where all of `parts` are present, so a pairing has a ground truth.
+
+    `per_file` caps how many segments come from one song, and matters more than it looks. A
+    three-minute song holds dozens of two-bar segments, so taking them in order fills 500 pairs
+    from ten songs; anything measured on that sample is measuring ten pieces of music. Fitting on
+    one sample of it and testing on another also puts the same song on both sides of the split.
+    """
+    dataset_dir = os.path.join(DATASETS_DIR, dataset_name)
+    with open(os.path.join(dataset_dir, REPRESENTATIONS_FILENAME)) as f:
+        hits_ix = f.read().split(",").index("hits")
+
+    paths = glob.glob(
+        os.path.join(dataset_dir, REPRESENTATIONS_DIRNAME, "**", "*.npz"), recursive=True
+    )
+    rng = random.Random(seed)
+    rng.shuffle(paths)
+
+    found = {p: [] for p in parts}
+    for path in paths:
+        with np.load(path, allow_pickle=True) as npz:
+            by_segment = {}
+            for key in npz.files:
+                segment_id, _, part = key.partition("_")
+                if part in parts:
+                    by_segment.setdefault(segment_id, {})[part] = key
+            complete = sorted(s for s, keys in by_segment.items() if len(keys) == len(parts))
+            for segment_id in rng.sample(complete, min(per_file, len(complete))):
+                for part in parts:
+                    found[part].append(
+                        np.asarray(npz[by_segment[segment_id][part]][0][hits_ix],
+                                   dtype=np.float32)
+                    )
+                if len(found[parts[0]]) >= n_seqs:
+                    return {p: np.stack(v) for p, v in found.items()}
+    if not found[parts[0]]:
+        raise SystemExit(f"No segments carrying all of {parts} in {dataset_dir}")
+    return {p: np.stack(v) for p, v in found.items()}
 
 
 def get_hits_from_hits_seq(seq, part, block_size=1, pitch=60, verbose=False):

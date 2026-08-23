@@ -1,8 +1,9 @@
 """Reference values for the JavaScript in docs/index.html to be checked against.
 
-The static build reimplements three things that already exist in Python: the sampling loop, the
-hits vocabulary, and the paired descriptors. Two implementations of one definition drift, so this
-emits what the Python says for a fixed set of cases and the browser is asked the same questions.
+The static build reimplements four things that already exist in Python: the sampling loop, the
+hits vocabulary, the paired descriptors, and the relationship distance the mashup search ranks by.
+Two implementations of one definition drift, so this emits what the Python says for a fixed set of
+cases and the browser is asked the same questions.
 
 The mashup transposition is the exception: it lives only in the page, so `key_shift` below is a
 second implementation written from the same definition rather than a call into shipped code. It
@@ -20,7 +21,8 @@ import torch
 
 from pair_descriptors import get_antiphony, get_onset_balance
 from rhythmic_relationships.data import get_hits_from_hits_seq, tokenize_hits
-from rhythmic_relationships.vocab import START_IX
+from rhythmic_relationships.interlock import interlock_features, relationship_distance
+from rhythmic_relationships.vocab import START_IX, get_hits_vocab
 
 # Deliberately awkward: empty, full, single onset, and uneven densities
 PATTERNS = {
@@ -77,20 +79,33 @@ def key_shift(heard, seg_notes):
 
 
 def greedy_from_onnx(model_dir, hits, n_steps, part_2):
-    """The same fixed-length-buffer generation the page does, in Python."""
+    """The same fixed-length-buffer generation the page does, in Python.
+
+    Also the onset probability the page draws its P(onset) row from, which is the mass the step's
+    own distribution puts on the tokens that decode to an onset.
+    """
     encoder = ort.InferenceSession(os.path.join(model_dir, "encoder.onnx"))
     decoder = ort.InferenceSession(os.path.join(model_dir, "decoder.onnx"))
+    onset_tokens = [k for k, v in get_hits_vocab().items()
+                    if not isinstance(v, str) and v > 0]
 
     src = np.array([tokenize_hits(np.array(hits), block_size=1)], dtype=np.int64)
     enc = encoder.run(None, {"src": src})[0]
 
     tgt = np.zeros((1, n_steps), dtype=np.int64)
-    seq = [START_IX]
+    seq, onset_probs = [START_IX], []
     for t in range(n_steps):
         tgt[0, t] = seq[t]
         logits = decoder.run(None, {"tgt": tgt, "enc": enc})[0]
-        seq.append(int(logits[0, t].argmax()))
-    return get_hits_from_hits_seq(np.array(seq[1:]), part=part_2, block_size=1)
+        row = logits[0, t]
+        probs = np.exp(row - row.max())
+        probs /= probs.sum()
+        onset_probs.append(round(float(probs[onset_tokens].sum()), 6))
+        seq.append(int(row.argmax()))
+    return {
+        "hits": get_hits_from_hits_seq(np.array(seq[1:]), part=part_2, block_size=1),
+        "onset_probs": onset_probs,
+    }
 
 
 def key_shift_cases(data_dir, drawn_pitch, part_1, part_2):
@@ -132,7 +147,7 @@ def main():
         meta = json.load(f)
     n_steps = meta["n_steps"]
 
-    cases = {"tokenize": {}, "greedy": {}, "paired": {}}
+    cases = {"tokenize": {}, "greedy": {}, "paired": {}, "relationship": {}}
 
     for name, hits in PATTERNS.items():
         cases["tokenize"][name] = tokenize_hits(np.array(hits), block_size=1)
@@ -144,6 +159,19 @@ def main():
             cases["greedy"][f"{model['id']}|{name}"] = greedy_from_onnx(
                 model_dir, PATTERNS[name], n_steps, model["part_2"]
             )
+
+    # Per model, because each ships its own targets and covariance for the page to measure
+    # against. Silent patterns are left out: the page skips them, as usable() does in the Python.
+    for model in meta["models"]:
+        precision = np.array(model["relationships"]["precision"])
+        # Three of the shipped targets rather than all of them; the arithmetic is the same one
+        for t, target in enumerate(np.array(model["relationships"]["targets"][:3])):
+            for a, b in ((a, b) for a in PATTERNS for b in PATTERNS
+                         if any(PATTERNS[a]) and any(PATTERNS[b])):
+                features = interlock_features(np.array([PATTERNS[a]]), np.array([PATTERNS[b]]))
+                cases["relationship"][f"{model['id']}|{t}|{a}|{b}"] = round(
+                    float(relationship_distance(features, target, precision)[0]), 6
+                )
 
     for a in PATTERNS:
         for b in PATTERNS:
@@ -170,7 +198,9 @@ def main():
         json.dump({"patterns": PATTERNS, "cases": cases, "models": models}, f, indent=1)
     print(f"Saved {args.outfile}")
     print(f"  {len(cases['tokenize'])} tokenizations, {len(cases['greedy'])} greedy generations, "
-          f"{len(cases['paired'])} descriptor pairs, {len(cases['key_shift'])} key shifts")
+          f"{len(cases['paired'])} descriptor pairs, "
+          f"{len(cases['relationship'])} relationship distances, "
+          f"{len(cases['key_shift'])} key shifts")
 
 
 if __name__ == "__main__":
