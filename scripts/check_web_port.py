@@ -22,7 +22,7 @@ import torch
 from pair_descriptors import get_antiphony, get_onset_balance
 from rhythmic_relationships.data import get_hits_from_hits_seq, tokenize_hits
 from rhythmic_relationships.interlock import interlock_features, relationship_distance
-from rhythmic_relationships.vocab import START_IX
+from rhythmic_relationships.vocab import START_IX, get_hits_vocab
 
 # Deliberately awkward: empty, full, single onset, and uneven densities
 PATTERNS = {
@@ -79,20 +79,33 @@ def key_shift(heard, seg_notes):
 
 
 def greedy_from_onnx(model_dir, hits, n_steps, part_2):
-    """The same fixed-length-buffer generation the page does, in Python."""
+    """The same fixed-length-buffer generation the page does, in Python.
+
+    Also the onset probability the page draws its P(onset) row from, which is the mass the step's
+    own distribution puts on the tokens that decode to an onset.
+    """
     encoder = ort.InferenceSession(os.path.join(model_dir, "encoder.onnx"))
     decoder = ort.InferenceSession(os.path.join(model_dir, "decoder.onnx"))
+    onset_tokens = [k for k, v in get_hits_vocab().items()
+                    if not isinstance(v, str) and v > 0]
 
     src = np.array([tokenize_hits(np.array(hits), block_size=1)], dtype=np.int64)
     enc = encoder.run(None, {"src": src})[0]
 
     tgt = np.zeros((1, n_steps), dtype=np.int64)
-    seq = [START_IX]
+    seq, onset_probs = [START_IX], []
     for t in range(n_steps):
         tgt[0, t] = seq[t]
         logits = decoder.run(None, {"tgt": tgt, "enc": enc})[0]
-        seq.append(int(logits[0, t].argmax()))
-    return get_hits_from_hits_seq(np.array(seq[1:]), part=part_2, block_size=1)
+        row = logits[0, t]
+        probs = np.exp(row - row.max())
+        probs /= probs.sum()
+        onset_probs.append(round(float(probs[onset_tokens].sum()), 6))
+        seq.append(int(row.argmax()))
+    return {
+        "hits": get_hits_from_hits_seq(np.array(seq[1:]), part=part_2, block_size=1),
+        "onset_probs": onset_probs,
+    }
 
 
 def key_shift_cases(data_dir, drawn_pitch, part_1, part_2):

@@ -57,8 +57,6 @@
   .metrics { display: flex; gap: 22px; flex-wrap: wrap; font-family: ui-monospace, monospace;
              font-size: 11px; color: var(--dim); }
   .metrics b { display: block; font-size: 15px; font-weight: 600; color: var(--text); }
-  .metrics.paired { margin-top: 12px; padding-top: 12px; border-top: 1px solid #23272f; }
-  .metrics.paired b { color: #b98cff; }
   .steer { display: flex; flex-direction: column; gap: 6px; }
   .steer .line { display: flex; align-items: center; gap: 10px; font-size: 12px;
                  color: var(--dim); font-family: ui-monospace, monospace; }
@@ -66,6 +64,7 @@
   .steer .tv { width: 34px; }
   .steer .got { color: var(--text); }
   .steer .miss { color: #ff9a6a; }
+  .steer .pv { width: 52px; color: #b98cff; }
   /* mashup rows */
   .match { display: flex; align-items: center; gap: 12px; padding: 5px 0;
            border-top: 1px solid #23272f; }
@@ -126,15 +125,15 @@
       <div class="grid" id="outGrid"></div>
     </div>
     <div class="row" style="margin-top:8px">
-      <div class="label">P(onset)</div>
+      <div class="label" title="How likely the model thought an onset was at that step, given the steps it had already chosen">P(onset)</div>
       <div class="grid" id="probGrid"></div>
     </div>
     <div class="row" style="margin-top:14px">
       <div class="label"></div>
       <button class="primary" id="gen">Generate ⏎</button>
       <select id="sampler" title="multinomial draws from everything the model predicts; nucleus drops the unlikeliest tail at each step, which plays safer and sparser">
-        <option value="multinomial">multinomial</option>
         <option value="nucleus">nucleus</option>
+        <option value="multinomial">multinomial</option>
       </select>
       <span style="flex:1"></span>
       <button id="playOut" disabled>▶ output</button>
@@ -148,10 +147,6 @@
     <div class="row" style="margin-top:14px">
       <div class="label">steer</div>
       <div id="steer" class="steer"></div>
-    </div>
-    <div class="row" style="margin-top:14px">
-      <div class="label"></div>
-      <div id="outDesc"></div>
     </div>
   </div>
 
@@ -187,6 +182,9 @@ let input = [], output = null, pitched = null, exampleName = "", matches = [], f
 let targets = [];
 
 const $ = (id) => document.getElementById(id);
+// The segment pools are round numbers by construction, so this is exact; anything else falls
+// back to the full count rather than rounding it away
+const compact = (n) => (n % 1000 === 0 ? `${n / 1000}k` : n.toLocaleString());
 const midiHz = (n) => 440 * Math.pow(2, (n - 69) / 12);
 
 // ---------- vocabulary ----------
@@ -286,8 +284,13 @@ function tileEnc(enc, batch) {
   return new ort.Tensor("float32", out, [batch, T, d]);
 }
 
-async function generateBatch(hits, batch, sampler = "multinomial") {
+async function generateBatch(hits, batch, sampler = "nucleus") {
   const T = META.n_steps;
+  // Every token that decodes to an onset, so the chance of one at a step is the sum over them.
+  // Read off the same distribution the step is drawn from, which is what makes it the model's
+  // probability given the steps already chosen rather than given some other sequence.
+  const onsetTokens = Object.entries(META.hits_tokens)
+    .filter(([, v]) => v > 0).map(([token]) => +token);
   const srcTokens = tokenize(hits);
   const src = new ort.Tensor("int64", BigInt64Array.from(srcTokens.map(BigInt)), [1, T]);
   const enc = (await encSession.run({ src })).enc;
@@ -297,6 +300,7 @@ async function generateBatch(hits, batch, sampler = "multinomial") {
   // the position being read, so this matches growing the sequence
   const buf = new BigInt64Array(batch * T);
   const seqs = Array.from({ length: batch }, () => [META.start_ix]);
+  const onsetProbs = Array.from({ length: batch }, () => []);
 
   for (let t = 0; t < T; t++) {
     for (let b = 0; b < batch; b++) buf[b * T + t] = BigInt(seqs[b][t]);
@@ -306,10 +310,12 @@ async function generateBatch(hits, batch, sampler = "multinomial") {
     for (let b = 0; b < batch; b++) {
       const start = b * T * V + t * V;
       const row = Array.from(out.data.subarray(start, start + V));
-      seqs[b].push(pick(softmax(row), sampler));
+      const probs = softmax(row);
+      onsetProbs[b].push(onsetTokens.reduce((a, token) => a + probs[token], 0));
+      seqs[b].push(pick(probs, sampler));
     }
   }
-  return seqs.map((s) => decode(s.slice(1)));
+  return seqs.map((s, b) => ({ hits: decode(s.slice(1)), onsetProbs: onsetProbs[b] }));
 }
 
 // ---------- nearest rhythms ----------
@@ -703,6 +709,7 @@ function drawInput() {
 }
 
 function drawOutput() {
+  drawSteerResult();
   const cells = $("outGrid").children;
   const bars = $("probGrid").children;
   $("playOut").disabled = !output;
@@ -834,7 +841,7 @@ function renderMatches(boxId, rows, metric, against) {
 
     const who = document.createElement("span");
     who.className = "who";
-    who.textContent = `${m.name}  (${m.pitched.length} notes)`;
+    who.textContent = m.name;
     who.title = m.name;
     rowEl.appendChild(who);
 
@@ -869,10 +876,10 @@ function drawFits() {
       const pct = (v) => `${String(Math.round(v * 100)).padStart(3)}%`;
       const lines = FEATURE_NAMES.map((name, i) =>
         `${pct(m.target[i])} aimed at, ${pct(m.features[i])} got  -  ${name}`);
-      return `Aiming at one real ${META.part_1}/${META.part_2} pair's relationship:\n` +
+      return `Matching one real ${META.part_1} and ${META.part_2} that played together:\n` +
         lines.join("\n") +
-        `\nNothing in the 30,000 came closer than ${m.away.toFixed(2)} standard deviations ` +
-        `of how much real relationships vary.`;
+        `\nNothing in the ${compact(META.n_index)} came closer than ${m.away.toFixed(2)} ` +
+        `standard deviations of how much real pairs vary.`;
     },
     empty: "Nothing to sit with an empty input.",
   }, input);
@@ -900,13 +907,11 @@ const statRow = (name, value) =>
 function drawDescriptors() {
   $("inDesc").innerHTML =
     `<div class="metrics">${statRow("onsets", input.filter((v) => v > 0).length)}</div>`;
-  if (!output) { $("outDesc").innerHTML = ""; return; }
-  $("outDesc").innerHTML =
-    `<div class="metrics">${statRow("onsets", output.out_onsets.length)}</div>` +
-    `<div class="metrics paired">` +
-    ["onset_balance", "antiphony"].map((k) => statRow(k, output.paired[k])).join("") +
-    `</div>`;
 }
+
+// How many candidates a steered search draws from. Wide enough to reach most targets without
+// making a click feel slow, and there is no reason for a reader of the page to pick a number.
+const CANDIDATES = 16;
 
 function buildSteer() {
   $("steer").innerHTML =
@@ -915,10 +920,9 @@ function buildSteer() {
         <label class="check nm" title="${DESCRIBES[k]}"><input type="checkbox" data-on="${k}"> ${k}</label>
         <input type="range" data-target="${k}" min="0" max="1" step="0.01" value="0.5">
         <span class="tv" id="tv-${k}">0.50</span>
+        <span class="pv" id="pv-${k}"></span>
         <span id="got-${k}"></span>
-      </div>`).join("") +
-    `<div class="line"><span class="nm">candidates</span>
-       <select id="nCand"><option>8</option><option selected>16</option><option>32</option></select></div>`;
+      </div>`).join("");
   ["onset_balance", "antiphony"].forEach((k) => {
     document.querySelector(`[data-target="${k}"]`).oninput = (e) => {
       $(`tv-${k}`).textContent = (+e.target.value).toFixed(2);
@@ -938,6 +942,7 @@ function steerTargets() {
 
 function drawSteerResult() {
   ["onset_balance", "antiphony"].forEach((k) => {
+    $(`pv-${k}`).textContent = output ? fmt(output.paired[k]) : "";
     const el = $(`got-${k}`);
     const search = output && output.search;
     if (!search || !(k in search.targets)) { el.textContent = ""; return; }
@@ -953,11 +958,12 @@ function setMeta() {
   $("outPart").value = META.part_2;
   $("inSeg").textContent = exampleName;
   $("mashupNote").textContent =
-    `The closest matches out of ${META.n_index.toLocaleString()} searchable ${META.part_2} segments.`;
+    `The closest matches out of ${compact(META.n_index)} searchable ${META.part_2} segments.`;
   $("fitNote").textContent =
-    `Each row aims at a relationship some real ${META.part_1} and ${META.part_2} actually stood ` +
-    `in, and holds the segment out of ${META.n_index.toLocaleString()} that comes closest to ` +
-    `sitting that way with the input.`;
+    `Each row finds the segment out of ${compact(META.n_index)} that fits the input the way one ` +
+    `real ${META.part_1} and ${META.part_2} fit each other.`;
+  $("rand").title =
+    `One of ${compact(META.n_examples)} real ${META.part_1} segments, one per song`;
 }
 
 // ---------- actions ----------
@@ -966,10 +972,10 @@ async function generate() {
   $("gen").textContent = "…";
   try {
     const targets = steerTargets();
-    const batch = targets ? parseInt($("nCand").value, 10) : 1;
+    const batch = targets ? CANDIDATES : 1;
     const candidates = await generateBatch(input, batch, $("sampler").value);
 
-    const paired = candidates.map((c) => describePair(input, c));
+    const paired = candidates.map((c) => describePair(input, c.hits));
     let best = 0, search = null;
     if (targets) {
       const cost = (p) => Object.entries(targets).reduce(
@@ -983,13 +989,13 @@ async function generate() {
       }
     }
 
-    const gen = candidates[best];
+    const gen = candidates[best].hits;
     const inOnsets = [], outOnsets = [];
     input.forEach((v, i) => { if (v > 0) inOnsets.push(i); });
     gen.forEach((v, i) => { if (v > 0) outOnsets.push(i); });
     output = {
       gen_hits: gen,
-      onset_probs: new Array(META.n_steps).fill(0),
+      onset_probs: candidates[best].onsetProbs,
       in_onsets: inOnsets,
       out_onsets: outOnsets,
       together: outOnsets.filter((i) => inOnsets.includes(i)),
@@ -999,7 +1005,6 @@ async function generate() {
     };
     drawOutput();
     drawDescriptors();
-    drawSteerResult();
     matches = nearestRhythms(gen, 10);
     drawMatches();
   } finally {

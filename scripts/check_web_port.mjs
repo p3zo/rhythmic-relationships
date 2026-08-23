@@ -79,9 +79,17 @@ for (const [key, want] of Object.entries(C.greedy)) {
         fail(`relationship ${k}`, C.relationship[k], distances[i]);
     });
   }
-  const got = JSON.parse(await ev(`generateBatch(${JSON.stringify(P[name])}, 1, 'greedy', 1.0, 0.92).then(r => JSON.stringify(r[0]))`));
-  checked++;
-  if (JSON.stringify(want) !== JSON.stringify(got)) fail(`greedy ${key}`, want, got);
+  const got = JSON.parse(await ev(`generateBatch(${JSON.stringify(P[name])}, 1, 'greedy').then(r =>
+    JSON.stringify([r[0].hits, r[0].onsetProbs]))`));
+  checked += 2;
+  if (JSON.stringify(want.hits) !== JSON.stringify(got[0])) fail(`greedy ${key}`, want.hits, got[0]);
+  // The tokens have to match exactly, because they are decisions. The probabilities cannot: the
+  // int8 graph is the same but onnxruntime's native kernels and its WASM ones do not accumulate
+  // identically, which moves a logit by a few thousandths and this sum by up to 0.015 in the
+  // worst of these 512 steps. For context the export itself reports the int8 weights moving a
+  // logit by up to 0.146 against the float ones.
+  if (want.onset_probs.some((v, i) => Math.abs(v - got[1][i]) > 0.03))
+    fail(`greedy onset probabilities ${key}`, want.onset_probs, got[1]);
 }
 
 console.log(`${checked} checks, ${failed} failed`);
