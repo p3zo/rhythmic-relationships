@@ -7,14 +7,13 @@ segment of the other part makes the most plausible pair? - and scores candidates
 relationship itself.
 
 Which features to score on is not obvious, and it is not the two paired descriptors: they prefer
-a real partner over an imposter 0.392 of the time, which is below chance because a direction
-fitted on them does not generalise, so retrieval built on them alone would be worse than random
-by construction. Every feature set here is therefore measured the same way before being used to
-retrieve:
+a real partner over an imposter 0.574 of the time, weakly enough that retrieval built on them
+alone would be close to random. Every feature set here is therefore measured the same way before
+being used to retrieve:
 
   balance     onset_balance and antiphony - the thesis pair
-  interlock   where the two parts' onsets fall relative to each other: both, only one, neither,
-              and how much of each part lands on the beat
+  interlock   where the two parts' onsets fall relative to each other: onsets together, onsets
+              only in one part, onsets in neither
   combined    both of the above
 
 The headline is the lineup accuracy - shown a melody, its real partner and one imposter, how
@@ -105,7 +104,8 @@ def main():
                         default=os.path.join(MODELS_DIR, "hits_encdec", "relationship_retrieval"))
     args = parser.parse_args()
 
-    segments = load_co_occurring_hits(args.dataset, [args.part_1, args.part_2], args.n_seqs, args.seed)
+    segments = load_co_occurring_hits(args.dataset, [args.part_1, args.part_2], args.n_seqs,
+                                      args.seed, per_file=1)
     inputs, real = segments[args.part_1], segments[args.part_2]
     pool_segs = collect_segments(args.dataset, args.part_2, args.pool, args.seed + 1, 4,
                                  with_pitches=False)

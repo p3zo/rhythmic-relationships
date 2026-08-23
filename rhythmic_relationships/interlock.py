@@ -5,12 +5,15 @@ segment: conditioning it on the input melody or on someone else's produced relat
 close to real ones, and a segment drawn at random did as well. Retrieval on the relationship
 itself does much better, but only on the right features. Shown a melody, its real partner and an
 imposter drawn from another melody's real partners, the two paired descriptors from the thesis
-prefer the real one 0.392 of the time - below chance, because the direction fitted on them does
-not generalise - while the features here prefer it 0.737 of the time.
+prefer the real one 0.574 of the time, while the features here prefer it 0.683.
 
 What separates them is that these read where the two parts' onsets fall relative to each other,
 step by step, rather than summarising each part and comparing the summaries. Of a real bass's
-onsets, 68.2% land on a melody onset, against 54.2% once partners are reassigned at random.
+onsets, 57.6% land on a melody onset, against 46.3% once partners are reassigned at random.
+
+Both figures are sensitive to how the pairs were sampled, which is why load_co_occurring_hits
+takes a per-file cap. Measured on 3,000 pairs from 3,000 songs these read 0.574 and 0.683; on 500
+pairs taken in order, which is ten songs, the same code reads 0.392 and 0.737.
 
 See scripts/relationship_retrieval.py, which measures all of this, and docs/index.html, which
 ports the two functions here into the browser.
@@ -18,30 +21,29 @@ ports the two functions here into the browser.
 
 import numpy as np
 
-RESOLUTION = 4
 
-
-def interlock_features(a, b, resolution=RESOLUTION):
+def interlock_features(a, b):
     """Where the two parts' onsets fall relative to each other, as rates rather than counts.
 
     Counts would be dominated by how busy the two parts happen to be; these are shares, so two
     parts that interlock the same way score the same however dense they are.
 
     `a` is the part being played against and `b` the candidate partner; the two are not
-    interchangeable, since three of the five features are shares of one part or the other.
+    interchangeable, since two of the three features are shares of one part or the other.
+
+    How much of each part lands on the beat was here too, and is not, because it is a property of
+    one part on its own: reassigning partners at random leaves both means unmoved, and dropping
+    the pair of them costs 0.001 of lineup accuracy. "The share filling A's gaps" is also absent,
+    being one minus the first of these; including it made the feature covariance singular and the
+    scores that read it meaningless.
     """
     on_a, on_b = a > 0, b > 0
     steps = a.shape[1]
-    beats = np.arange(steps) % resolution == 0
     n_a = on_a.sum(axis=1).clip(1)
     n_b = on_b.sum(axis=1).clip(1)
-    # "the share filling A's gaps" is one minus the first of these, so including it made the
-    # feature covariance singular and the scores that read it meaningless
     return np.stack([
         (on_a & on_b).sum(axis=1) / n_b,          # of B's onsets, the share landing with A
         (on_a & ~on_b).sum(axis=1) / n_a,         # of A's onsets, the share B leaves alone
-        (on_b & beats).sum(axis=1) / n_b,         # how much of B is on the beat
-        (on_a & beats).sum(axis=1) / n_a,         # how much of A is on the beat
         (~on_a & ~on_b).sum(axis=1) / steps,      # how much of the bar neither part touches
     ], axis=1)
 

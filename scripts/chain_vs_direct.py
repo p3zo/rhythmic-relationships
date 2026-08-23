@@ -129,7 +129,8 @@ def main():
         n_steps = n_steps or config["model"]["context_len"]
         print(f"  {pair:<16} {os.path.basename(os.path.dirname(path))}")
 
-    segments = load_co_occurring_hits(dataset_name, parts_used, args.n_seqs, args.seed)
+    segments = load_co_occurring_hits(dataset_name, parts_used, args.n_seqs, args.seed,
+                                      per_file=1)
     n = len(segments[parts_used[0]])
     print(f"\n{n} segments carrying {', '.join(parts_used)}, sampler={args.sampler}\n")
 
