@@ -41,12 +41,14 @@
   th, td { text-align: right; padding: 3px 12px 3px 0; }
   th { color: var(--dim); font-weight: 500; }
   td.name { text-align: left; color: var(--dim); }
-  .stats { display: flex; gap: 26px; flex-wrap: wrap; font-family: ui-monospace, monospace;
-           font-size: 12px; }
-  .stat b { display: block; font-size: 20px; font-family: inherit; font-weight: 600; }
   .key { color: var(--dim); font-size: 11px; margin-top: 10px; font-family: ui-monospace, monospace; }
   .sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin: 0 4px 0 12px; }
   .hint { color: var(--dim); font-size: 12px; }
+  .metrics { display: flex; gap: 22px; flex-wrap: wrap; font-family: ui-monospace, monospace;
+             font-size: 11px; color: var(--dim); }
+  .metrics b { display: block; font-size: 15px; font-weight: 600; color: var(--text); }
+  .metrics.paired { margin-top: 12px; padding-top: 12px; border-top: 1px solid #23272f; }
+  .metrics.paired b { color: #b98cff; }
   /* mashup rows */
   .match { display: flex; align-items: center; gap: 12px; padding: 5px 0;
            border-top: 1px solid #23272f; }
@@ -83,6 +85,10 @@
     <div class="row">
       <div class="label" id="inLabel"></div>
       <div class="grid in" id="inGrid"></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <div class="label"></div>
+      <div id="inDesc"></div>
     </div>
     <div class="row" style="margin-top:14px">
       <div class="label"></div>
@@ -126,6 +132,10 @@
       <span class="sw" style="background:rgb(255,140,90)"></span>onset in an input gap
       <span class="sw" style="background:#4b5563"></span>the model's onset probability at that step
     </div>
+    <div class="row" style="margin-top:14px">
+      <div class="label"></div>
+      <div id="outDesc"></div>
+    </div>
   </div>
 
   <div class="panel">
@@ -133,10 +143,6 @@
     <div id="matches"><span class="hint">Generate to find real segments that move like the output.</span></div>
   </div>
 
-  <div class="panel">
-    <div class="stats" id="stats"><span class="hint">Generate to see how the output relates to the input.</span></div>
-    <div style="margin-top:18px" id="descTable"></div>
-  </div>
 </div>
 
 <script>
@@ -191,7 +197,12 @@ function pitchedNote(ac, at, freq, gain, pan, decay, cutoff) {
   p.pan.value = pan;
   out.connect(lp); lp.connect(p); p.connect(ac.destination);
 
-  for (const [type, mult, level] of [["triangle", 1, 1], ["sine", 2, 0.32], ["sine", 3, 0.1]]) {
+  // Fundamental plus four partials: enough harmonic structure that the pitch is clear even
+  // when the fundamental itself is barely reproduced
+  for (const [type, mult, level] of [
+    ["triangle", 1, 1], ["sawtooth", 2, 0.30], ["sine", 3, 0.20],
+    ["sine", 4, 0.11], ["sine", 6, 0.05],
+  ]) {
     const osc = ac.createOscillator();
     osc.type = type;
     osc.frequency.value = freq * mult;
@@ -223,9 +234,19 @@ function stickTap(ac, at, gain, pan) {
 }
 
 const VOICES = {
-  melody: { decay: 0.42, cutoff: 3400, gain: 0.30, pan: -0.6 },
-  bass:   { decay: 0.30, cutoff: 1500, gain: 0.34, pan: 0.55 },
+  melody: { decay: 0.42, cutoff: 3400, gain: 0.30, pan: -0.6, lift: 0 },
+  // A bassline's fundamental is often below what a laptop speaker reproduces at all, so this
+  // voice is deliberately bright - the upper partials are what make the pitch audible - and
+  // notes under MIDI 45 are lifted by octaves into a register that can actually be heard.
+  bass:   { decay: 0.38, cutoff: 5200, gain: 0.26, pan: 0.55, lift: 45 },
 };
+
+// Fold a note up by whole octaves until it clears `floorNote`, preserving its pitch class
+function lift(pitch, floorNote) {
+  let p = pitch;
+  while (floorNote && p < floorNote) p += 12;
+  return p;
+}
 
 // `parts` are {notes: [[step, pitch, velocity]], voice: "melody"|"bass"|"tap", pan?}
 function play(parts) {
@@ -249,7 +270,7 @@ function play(parts) {
           stickTap(ac, at, level * 0.5, part.pan ?? 0.55);
         } else {
           const v = VOICES[part.voice];
-          pitchedNote(ac, at, midiHz(pitch), level * v.gain,
+          pitchedNote(ac, at, midiHz(lift(pitch, v.lift)), level * v.gain,
                       part.pan ?? v.pan, v.decay, v.cutoff);
         }
       }
@@ -346,6 +367,7 @@ function shade(v, hue) {
 function drawInput() {
   const cells = $("inGrid").children;
   for (let i = 0; i < input.length; i++) cells[i].style.background = shade(input[i], "in");
+  drawDescriptors();
 }
 
 function drawOutput() {
@@ -367,28 +389,33 @@ function drawOutput() {
   }
 }
 
-function drawRelationship() {
-  if (!output) return;
-  const nIn = output.in_onsets.length, nOut = output.out_onsets.length;
-  const both = output.together.length;
-  const withInput = nOut ? (100 * both / nOut).toFixed(0) : "–";
-  const covered = nIn ? (100 * both / nIn).toFixed(0) : "–";
-  $("stats").innerHTML = `
-    <div class="stat"><b>${nIn}</b>input onsets</div>
-    <div class="stat"><b>${nOut}</b>model onsets</div>
-    <div class="stat"><b>${both}</b>shared steps</div>
-    <div class="stat"><b>${withInput}%</b>of model onsets on an input onset</div>
-    <div class="stat"><b>${covered}%</b>of input onsets answered</div>
-    <div class="stat"><b>${output.in_gaps.length}</b>model onsets in gaps</div>`;
+const fmt = (v) => {
+  if (v === null || v === undefined || Number.isNaN(v)) return "–";
+  return Number.isInteger(+v) ? String(+v) : (+v).toFixed(3);
+};
 
-  const d = output.descriptors;
-  const f = (v) => (v === null || v === undefined) ? "–" : (+v).toFixed(3);
-  const rows = META.descriptors.map((k) =>
-    `<tr><td class="name">${k}</td><td>${f(d.input[k])}</td><td>${f(d.output[k])}</td></tr>`
-  ).join("");
-  $("descTable").innerHTML =
-    `<table><tr><th class="name" style="text-align:left">descriptor</th>
-     <th>${META.part_1}</th><th>${META.part_2}</th></tr>${rows}</table>`;
+function statRow(name, value) {
+  return `<span class="metric"><b>${fmt(value)}</b>${name}</span>`;
+}
+
+function drawDescriptors() {
+  const onsets = input.filter((v) => v > 0).length;
+  $("inDesc").innerHTML =
+    `<div class="metrics">${statRow("onsets", onsets)}` +
+    META.descriptors.map((k) => statRow(k, output ? output.descriptors.input[k] : null)).join("") +
+    `</div>`;
+
+  if (!output) {
+    $("outDesc").innerHTML = "";
+    return;
+  }
+  $("outDesc").innerHTML =
+    `<div class="metrics">` +
+    statRow("onsets", output.out_onsets.length) +
+    META.descriptors.map((k) => statRow(k, output.descriptors.output[k])).join("") +
+    `</div><div class="metrics paired">` +
+    META.paired_descriptors.map((k) => statRow(k, output.paired[k])).join("") +
+    `</div>`;
 }
 
 // ---------- mashups ----------
@@ -493,7 +520,7 @@ async function generate() {
     if (body.error) { alert(body.error); return; }
     output = body;
     drawOutput();
-    drawRelationship();
+    drawDescriptors();
   } finally {
     $("gen").disabled = false;
   }
@@ -527,6 +554,7 @@ async function selectModel(modelId) {
   buildGrids();
   drawInput();
   drawOutput();
+  drawDescriptors();
   setMeta();
   if (META.has_examples) { await loadExample(); await generate(); }
 }
