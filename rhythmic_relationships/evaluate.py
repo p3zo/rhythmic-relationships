@@ -102,8 +102,10 @@ def hits_inference(
                 num_samples=1,
             )
         else:
+            # Per row. A flat argmax over (batch, vocab) returns one index for the whole batch,
+            # which both picks the wrong token and collapses the batch to a single row.
             y_next = torch.tensor(
-                [probs.argmax()], dtype=torch.long, device=device
+                probs.argmax(axis=-1), dtype=torch.long, device=device
             ).unsqueeze(1)
 
         y = torch.cat([y, y_next], dim=1)
