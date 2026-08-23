@@ -85,7 +85,7 @@ def get_sampler_eval(
             device=device,
             sampler=sampler,
             nucleus_p=nucleus_p,
-        )
+        )[0]
 
         gen_hits = get_hits_from_hits_seq(
             seq.cpu().numpy(),

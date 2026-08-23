@@ -10,6 +10,10 @@ from torch.utils.data import DataLoader
 
 from rhythmic_relationships import DATASETS_DIR, PLOTS_DIRNAME, MODELS_DIR
 from rhythmic_relationships.data import PartPairDataset
+from rhythmic_relationships.vocab import get_hits_vocab
+
+# The hits token standing for "no hit"
+REST_IX = next(ix for ix, value in get_hits_vocab().items() if value == 0)
 
 sns.set_style("white")
 sns.set_context("paper")
@@ -109,14 +113,16 @@ if __name__ == "__main__":
         os.makedirs(plots_dir)
 
     part_pair_tensors = next(iter(loader))
-    p1_tensor = (part_pair_tensors[0] > 1).to(int)
-    p2_tensor = (part_pair_tensors[1] > 1).to(int)
+    # These hold hits *token ids*, and the hits vocabulary puts a rest at 2, so an onset is a
+    # token above 2. `> 1` passes rests too, which makes every segment an all-ones pattern and
+    # both descriptors below constant.
+    p1_tensor = (part_pair_tensors[0] > REST_IX).to(int)
+    p2_tensor = (part_pair_tensors[1] > REST_IX).to(int)
 
     onset_balance = get_onset_balance(p1_tensor, p2_tensor)
     antiphony = get_antiphony(p1_tensor, p2_tensor)
 
-    # TODO: 2 antiphonies are > 1
-    # This happens when one is all 1s.
+    # TODO: antiphony can still exceed 1 when a pattern is all 1s.
     # Antiphony was expected to be [0, 1]
     # If abs(max_center(a) - min_center(b)) < 1 and abs(center(a) - center(b)) > 1
     # min possible max_center is 0 (pattern is empty)

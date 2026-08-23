@@ -38,6 +38,10 @@ from rhythmic_relationships.models.hits_encdec import TransformerEncoderDecoder
 from rhythmic_relationships.vocab import START_IX, get_hits_vocab
 from rhythmtoolbox import pianoroll2descriptors
 
+# `run_train` and this server both run from `scripts/`, so the thesis's paired descriptors are
+# importable as a sibling. Using them rather than reimplementing keeps one definition of each.
+from pair_descriptors import get_antiphony, get_onset_balance
+
 THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 PAGE_PATH = os.path.join(THIS_DIR, "serve_model.html")
 
@@ -46,6 +50,9 @@ REST_IX = next(ix for ix, value in get_hits_vocab().items() if value == 0)
 
 # Only these carry a value for a part on one pitch; the rest need a real pitch spread
 DESCRIPTORS = ["stepDensity", "sync", "syness", "balance", "evenness"]
+
+# The two descriptors of a *pair* of parts, from scripts/pair_descriptors.py
+PAIRED_DESCRIPTORS = ["onset_balance", "antiphony"]
 
 STATE = {"models": {}, "loaded": {}, "examples": {}, "indexes": {}}
 
@@ -267,7 +274,30 @@ def describe(hits, pitch, resolution):
     return {k: descriptors[k] for k in DESCRIPTORS}
 
 
-def generate(model_id, hits, sampler, temperature, nucleus_p):
+def describe_pair(a_hits, b_hits):
+    """The paired descriptors for two parts heard together.
+
+    Both are undefined for a part with no onsets - `get_center` divides by the onset count - so
+    they are reported as absent rather than as a nan that would render as a number.
+    """
+    a = (torch.tensor([a_hits], dtype=torch.float32) > 0).to(int)
+    b = (torch.tensor([b_hits], dtype=torch.float32) > 0).to(int)
+    if int(a.sum()) == 0 or int(b.sum()) == 0:
+        return {name: None for name in PAIRED_DESCRIPTORS}
+    return {
+        "onset_balance": round(float(get_onset_balance(a, b)[0]), 4),
+        "antiphony": round(float(get_antiphony(a, b)[0]), 4),
+    }
+
+
+def generate(model_id, hits, sampler, temperature, nucleus_p, targets=None, n_candidates=1):
+    """Generate one answer to `hits`, optionally steered toward paired-descriptor targets.
+
+    Steering is rejection sampling, not conditioning: draw a batch of candidates and keep the one
+    whose relationship to the input lands closest to what was asked for. The model is unchanged,
+    so a target it cannot reach for a given input simply will not be reached - the search spread
+    is returned so that is visible rather than implied.
+    """
     entry = get_model(model_id)
     model, config = entry["model"], entry["config"]
     device = STATE["device"]
@@ -282,9 +312,10 @@ def generate(model_id, hits, sampler, temperature, nucleus_p):
         device=device,
     )
 
-    seq = hits_inference(
+    n_candidates = max(1, int(n_candidates)) if targets else 1
+    seqs = hits_inference(
         model=model,
-        src=src,
+        src=src.repeat(n_candidates, 1),
         n_tokens=n_steps,
         temperature=temperature,
         device=device,
@@ -292,11 +323,46 @@ def generate(model_id, hits, sampler, temperature, nucleus_p):
         nucleus_p=nucleus_p,
     )
 
-    gen_hits = get_hits_from_hits_seq(
-        seq.cpu().numpy(),
-        part=config["data"]["part_2"],
-        block_size=config["data"]["block_size"],
-    )
+    candidates = []
+    for row in seqs:
+        candidate_hits = get_hits_from_hits_seq(
+            row.cpu().numpy(),
+            part=config["data"]["part_2"],
+            block_size=config["data"]["block_size"],
+        )
+        candidates.append((row, candidate_hits, describe_pair(hits, candidate_hits)))
+
+    search = None
+    best = 0
+    if targets:
+        def cost(paired):
+            total = 0.0
+            for name, target in targets.items():
+                value = paired.get(name)
+                if value is None:
+                    return float("inf")
+                total += abs(value - target)
+            return total
+
+        costs = [cost(c[2]) for c in candidates]
+        best = min(range(len(candidates)), key=costs.__getitem__)
+        search = {
+            "n_candidates": n_candidates,
+            "targets": targets,
+            "cost": None if costs[best] == float("inf") else round(costs[best], 4),
+            # What the batch could actually reach, so an unreachable target is visible
+            "reachable": {
+                name: {
+                    "min": round(min(vals), 4),
+                    "max": round(max(vals), 4),
+                }
+                for name in targets
+                for vals in [[c[2][name] for c in candidates if c[2][name] is not None]]
+                if vals
+            },
+        }
+
+    seq, gen_hits, paired = candidates[best]
 
     # Replay the sampled sequence to recover the distribution each step was drawn from
     shifted = torch.roll(seq.unsqueeze(0), 1, dims=1)
@@ -321,6 +387,8 @@ def generate(model_id, hits, sampler, temperature, nucleus_p):
             "input": describe(hits, STATE["part_1_pitch"], resolution),
             "output": describe(gen_hits, STATE["part_2_pitch"], resolution),
         },
+        "paired": paired,
+        "search": search,
     }
 
 
@@ -349,6 +417,7 @@ def meta_for(model_id):
         "has_examples": STATE["n_examples"] > 0,
         "n_index": STATE["n_index"],
         "descriptors": DESCRIPTORS,
+        "paired_descriptors": PAIRED_DESCRIPTORS,
     }
 
 
@@ -419,6 +488,8 @@ class Handler(http.server.BaseHTTPRequestHandler):
                         sampler=payload.get("sampler", "nucleus"),
                         temperature=float(payload.get("temperature", 1.0)),
                         nucleus_p=float(payload.get("nucleus_p", 0.92)),
+                        targets=payload.get("targets") or None,
+                        n_candidates=payload.get("n_candidates", 32),
                     ),
                 )
                 return

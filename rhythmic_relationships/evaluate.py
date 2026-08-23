@@ -69,8 +69,11 @@ def hits_inference(
     ttoi = {v: k for k, v in hits_vocab.items()}
     start_ix = ttoi["start"]
 
-    y = torch.tensor(
-        [[start_ix]],
+    # One start token per sequence in the batch. The sampling below already handles a batch,
+    # but a fixed (1, 1) seed made anything past the first source row a shape error.
+    y = torch.full(
+        (src.shape[0], 1),
+        start_ix,
         dtype=torch.long,
         requires_grad=False,
         device=device,
@@ -105,7 +108,8 @@ def hits_inference(
 
         y = torch.cat([y, y_next], dim=1)
 
-    return y.squeeze(0)[1:]
+    # (batch, n_tokens), dropping the start token the caller did not ask for
+    return y[:, 1:]
 
 
 def get_flat_nonzero_dissimilarity_matrix(x, y=None):
