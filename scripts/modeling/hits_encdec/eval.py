@@ -162,15 +162,29 @@ def get_sampler_eval(
             pitch=part_1_pitch,
         )
 
+    # The `dropna` has already removed any of `drop_cols` that were None for every segment,
+    # which parts other than Bass and Melody hit routinely, so the drop has to tolerate them
+    # being gone already
     target_df = pd.DataFrame(target_descs).dropna(how="all", axis=1)
-    target_df.drop(drop_cols, axis=1, inplace=True)
+    target_df.drop(columns=drop_cols, inplace=True, errors="ignore")
 
     oa_klds = {}
-    if n_seqs == all_zeros:
+    sample_stats = {
+        "pct_all_zero": 100 * round(all_zeros / n_seqs, 2),
+        "pct_all_same": 100 * round(all_same / n_seqs, 2),
+        "oa_klds": oa_klds,
+    }
+
+    # Early on, a model for a sparse part answers with silence and every generation is dropped
+    # above. There is then nothing to compare descriptors against, but the counts saying so are
+    # the useful part of this eval, so they are still recorded.
+    if not generated_descs:
+        print(f"No usable generations: {all_zeros} all zero, {all_same} all one value")
+        sampler_eval["sampler_stats"] = sample_stats
         return sampler_eval
 
     gen_df = pd.DataFrame(generated_descs).dropna(how="all", axis=1)
-    gen_df.drop(drop_cols, axis=1, inplace=True)
+    gen_df.drop(columns=drop_cols, inplace=True, errors="ignore")
 
     title_suffix = f"\n{temperature=}"
     if sampler == "nucleus":
@@ -247,10 +261,13 @@ def get_sampler_eval(
         ref_df=target_df,
         train_df=train_df,
     )
-    oa_klds = compute_oa_and_kld(oa_kld_dists)
+    # Updated in place: `sample_stats` above already holds this dict
+    oa_klds.update(compute_oa_and_kld(oa_kld_dists))
 
     labels = ["ref"] if train_df is None else ["ref", "train"]
     for label in labels:
+        if oa_klds[f"{label}_gen_oa"] is None:
+            continue
         make_oa_kld_plot(
             dist_1=oa_kld_dists[f"{label}_dist"],
             dist_2=oa_kld_dists[f"{label}_gen_dist"],
@@ -262,11 +279,6 @@ def get_sampler_eval(
             suffix=sampler,
         )
 
-    sample_stats = {
-        "pct_all_zero": 100 * round(all_zeros / n_seqs, 2),
-        "pct_all_same": 100 * round(all_same / n_seqs, 2),
-        "oa_klds": oa_klds,
-    }
     print(sample_stats)
 
     sampler_eval["sampler_stats"] = sample_stats
