@@ -162,8 +162,12 @@ def main():
         args.data_dir, meta["input_pitch"], first["part_1"], first["part_2"]
     )
 
+    # The page has no model menu - the two part dropdowns are the chooser - so the check needs
+    # to know which pair each model is
+    models = [{"id": m["id"], "part_1": m["part_1"], "part_2": m["part_2"]} for m in meta["models"]]
+
     with open(args.outfile, "w") as f:
-        json.dump({"patterns": PATTERNS, "cases": cases}, f, indent=1)
+        json.dump({"patterns": PATTERNS, "cases": cases, "models": models}, f, indent=1)
     print(f"Saved {args.outfile}")
     print(f"  {len(cases['tokenize'])} tokenizations, {len(cases['greedy'])} greedy generations, "
           f"{len(cases['paired'])} descriptor pairs, {len(cases['key_shift'])} key shifts")
