@@ -1,0 +1,801 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>rhythmic relationships</title>
+<script src="https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/ort.min.js"></script>
+<style>
+  :root {
+    --bg: #14161a; --panel: #1c1f25; --line: #2c313a; --text: #e6e8ec;
+    --dim: #8b93a1; --in: #6aa9ff;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; padding: 24px; background: var(--bg); color: var(--text);
+         font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
+  h1 { font-size: 17px; margin: 0 0 2px; font-weight: 600; }
+  h1 .repo { margin-left: 12px; font-size: 12px; font-weight: 400; color: var(--dim);
+             font-family: ui-monospace, monospace; text-decoration: none; }
+  h1 .repo:hover { color: var(--in); text-decoration: underline; }
+  h2 { font-size: 13px; margin: 0 0 14px; font-weight: 600; letter-spacing: .07em;
+       text-transform: uppercase; color: var(--dim); }
+  .meta { color: var(--dim); font-size: 12px; font-family: ui-monospace, monospace; }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
+           padding: 18px; margin-top: 16px; }
+  .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+  .label { width: 120px; flex: none; color: var(--dim); font-size: 12px; text-align: right; }
+  .grid { display: grid; gap: 2px; flex: 1; min-width: 0; }
+  .cell { height: 34px; border-radius: 3px; background: #23272f; }
+  .cell.beat, .prob.beat, .mini i.beat { margin-left: 3px; }
+  .cell.bar, .prob.bar, .mini i.bar { margin-left: 9px; }
+  .in .cell { cursor: pointer; }
+  .in .cell:hover { outline: 1px solid var(--in); }
+  .prob { height: 26px; background: #23272f; border-radius: 3px; display: flex;
+          align-items: flex-end; overflow: hidden; }
+  .prob i { display: block; width: 100%; background: #4b5563; }
+  button, select { background: #262b33; color: var(--text); border: 1px solid var(--line);
+                   border-radius: 6px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
+  button:hover:not(:disabled) { border-color: #4a5568; }
+  button:disabled { opacity: .38; cursor: default; }
+  button.primary { background: var(--in); color: #08121f; border-color: var(--in); font-weight: 600; }
+  button.playing { background: #3b2226; border-color: #a24a54; color: #ffd9dc; }
+  input[type=range] { width: 130px; vertical-align: middle; }
+  label.check { color: var(--dim); font-size: 12px; cursor: pointer; user-select: none; }
+  table { border-collapse: collapse; font-family: ui-monospace, monospace; font-size: 12px; }
+  th, td { text-align: right; padding: 3px 12px 3px 0; }
+  th { color: var(--dim); font-weight: 500; }
+  td.name { text-align: left; color: var(--dim); }
+  .key { color: var(--dim); font-size: 11px; margin-top: 10px; font-family: ui-monospace, monospace; }
+  .sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin: 0 4px 0 12px; }
+  .hint { color: var(--dim); font-size: 12px; }
+  .metrics { display: flex; gap: 22px; flex-wrap: wrap; font-family: ui-monospace, monospace;
+             font-size: 11px; color: var(--dim); }
+  .metrics b { display: block; font-size: 15px; font-weight: 600; color: var(--text); }
+  .metrics.paired { margin-top: 12px; padding-top: 12px; border-top: 1px solid #23272f; }
+  .metrics.paired b { color: #b98cff; }
+  .steer { display: flex; flex-direction: column; gap: 6px; }
+  .steer .line { display: flex; align-items: center; gap: 10px; font-size: 12px;
+                 color: var(--dim); font-family: ui-monospace, monospace; }
+  .steer .nm { width: 152px; flex: none; white-space: nowrap; }
+  .steer .tv { width: 34px; }
+  .steer .got { color: var(--text); }
+  .steer .miss { color: #ff9a6a; }
+  /* mashup rows */
+  .match { display: flex; align-items: center; gap: 12px; padding: 5px 0;
+           border-top: 1px solid #23272f; }
+  .match:first-of-type { border-top: none; }
+  .match .apart { width: 62px; flex: none; text-align: right; color: var(--dim);
+                  font-family: ui-monospace, monospace; font-size: 12px; }
+  .mini { display: grid; gap: 1px; flex: 1; min-width: 160px; }
+  .mini i { display: block; height: 14px; border-radius: 2px; background: #23272f; }
+  .match .who { width: 300px; flex: none; overflow: hidden; text-overflow: ellipsis;
+                white-space: nowrap; font-size: 12px; color: var(--dim); }
+  .hdr { display: flex; gap: 12px; color: var(--dim); font-size: 11px;
+         font-family: ui-monospace, monospace; padding-bottom: 6px; }
+  .hdr .apart { width: 62px; flex: none; text-align: right; }
+  .hdr .mid { flex: 1; min-width: 160px; }
+  .hdr .who { width: 300px; flex: none; }
+  .hdr .spacer { width: 44px; flex: none; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>rhythmic relationships
+    <a class="repo" href="https://github.com/p3zo/rhythmic-relationships" target="_blank"
+       rel="noopener">p3zo/rhythmic-relationships</a></h1>
+  <div class="meta" id="meta">loading the model…</div>
+
+  <div class="panel">
+    <div class="row">
+      <div class="label">model</div>
+      <span id="modelName" class="hint" style="flex:1"></span>
+      <label class="check"><input type="checkbox" id="click"> click track</label>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Input</h2>
+    <div class="row">
+      <div class="label" id="inLabel"></div>
+      <div class="grid in" id="inGrid"></div>
+    </div>
+    <div class="row" style="margin-top:12px">
+      <div class="label"></div>
+      <div id="inDesc"></div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <div class="label"></div>
+      <button id="clear">Clear</button>
+      <button id="rand">Random real input</button>
+      <button id="preset">Straight 8ths</button>
+      <span style="flex:1"></span>
+      <button id="playIn">▶ rhythm</button>
+      <button id="playPitched" disabled title="Load a real input to hear its pitches">▶ with pitches</button>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Output</h2>
+    <div class="row">
+      <div class="label" id="outLabel"></div>
+      <div class="grid" id="outGrid"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div class="label">P(onset)</div>
+      <div class="grid" id="probGrid"></div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <div class="label"></div>
+      <button class="primary" id="gen">Generate ⏎</button>
+      <select id="sampler">
+        <option value="nucleus">nucleus</option>
+        <option value="multinomial">multinomial</option>
+        <option value="greedy">greedy</option>
+      </select>
+      <span class="hint">temperature <input type="range" id="temp" min="0.3" max="2" step="0.05" value="1">
+        <span id="tempV">1.00</span></span>
+      <span class="hint">nucleus p <input type="range" id="pp" min="0.5" max="1" step="0.01" value="0.92">
+        <span id="ppV">0.92</span></span>
+      <span style="flex:1"></span>
+      <button id="playOut" disabled>▶ output</button>
+      <button id="playBoth" disabled>▶ both</button>
+    </div>
+    <div class="key">
+      <span class="sw" style="background:rgb(86,211,100)"></span>onset on an input onset
+      <span class="sw" style="background:rgb(255,140,90)"></span>onset in an input gap
+      <span class="sw" style="background:#4b5563"></span>the model's onset probability at that step
+    </div>
+    <div class="row" style="margin-top:14px">
+      <div class="label">steer</div>
+      <div id="steer" class="steer"></div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <div class="label"></div>
+      <div id="outDesc"></div>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Mashups</h2>
+    <div id="matches"><span class="hint">Generate to find real segments that move like the output.</span></div>
+  </div>
+
+</div>
+
+<script>
+// Everything the server used to do happens here instead: the model runs in the browser through
+// onnxruntime-web, and the segment index it searches is a file. The sampling, the paired
+// descriptors and the nearest-rhythm search are ports of the Python in this repo; where a
+// definition lives in two languages the Python one is authoritative and the port is checked
+// against it (see scripts/check_web_port.py).
+
+let META = null, EXAMPLES = [], INDEX = [], encSession = null, decSession = null;
+let input = [], output = null, pitched = null, exampleName = "", matches = [];
+
+const $ = (id) => document.getElementById(id);
+const midiHz = (n) => 440 * Math.pow(2, (n - 69) / 12);
+
+// ---------- vocabulary ----------
+// np.digitize(hits, [0, .25, .5, .75, 1], right=True) offset past pad and start
+const tokenize = (hits) => hits.map((v) => (v <= 0 ? 0 : Math.ceil(v / 0.25 - 1e-9)) + 2);
+const decode = (tokens) => tokens.map((t) => {
+  const v = META.hits_tokens[String(t)];
+  return v === undefined ? 0 : v;   // pad and start read as a rest, as get_hits_from_hits_seq does
+});
+
+// ---------- sampling (rhythmic_relationships/evaluate.py) ----------
+function temperaturedSoftmax(logits, temperature) {
+  const scaled = logits.map((v) => v / temperature);
+  const max = Math.max(...scaled);
+  const exp = scaled.map((v) => Math.exp(v - max));
+  const total = exp.reduce((a, b) => a + b, 0);
+  return exp.map((v) => v / total);
+}
+
+function nucleusPick(probs, p) {
+  const order = probs.map((v, i) => i).sort((a, b) => probs[b] - probs[a]);
+  let cum = 0, cutoff = order.length - 1;
+  for (let i = 0; i < order.length; i++) {
+    cum += probs[order[i]];
+    // The first index whose running total covers p is the smallest pool that does
+    if (cum > p) { cutoff = i; break; }
+  }
+  const pool = order.slice(0, cutoff + 1);
+  const mass = pool.reduce((a, i) => a + probs[i], 0);
+  let r = Math.random() * mass;
+  for (const i of pool) { r -= probs[i]; if (r <= 0) return i; }
+  return pool[pool.length - 1];
+}
+
+function multinomialPick(probs) {
+  let r = Math.random();
+  for (let i = 0; i < probs.length; i++) { r -= probs[i]; if (r <= 0) return i; }
+  return probs.length - 1;
+}
+
+function pick(probs, sampler, nucleusP) {
+  if (sampler === "greedy") return probs.indexOf(Math.max(...probs));
+  if (sampler === "nucleus") return nucleusPick(probs, nucleusP);
+  return multinomialPick(probs);
+}
+
+// ---------- paired descriptors (scripts/pair_descriptors.py) ----------
+function center(onsets) {
+  const ixs = [];
+  onsets.forEach((v, i) => { if (v) ixs.push(i); });
+  const density = ixs.length;
+  if (!density) return null;
+  const c = ixs.reduce((a, b) => a + b, 0) / density;
+  // sum(range(density + 1)) / density
+  const minCenter = (density * (density + 1) / 2) / density;
+  return { c, minCenter, maxCenter: onsets.length - minCenter };
+}
+
+function onsetBalance(a, b) {
+  const da = a.filter((v) => v > 0).length, db = b.filter((v) => v > 0).length;
+  if (!(da + db)) return null;
+  return 1 - Math.abs(da - db) / (da + db);
+}
+
+function antiphony(a, b) {
+  const ca = center(a.map((v) => (v > 0 ? 1 : 0)));
+  const cb = center(b.map((v) => (v > 0 ? 1 : 0)));
+  if (!ca || !cb) return null;
+  return Math.abs(ca.c - cb.c) / Math.abs(ca.maxCenter - cb.minCenter);
+}
+
+// Matches describe_pair in scripts/serve_model.py: with a silent part there is no centroid, so
+// antiphony is undefined, and reporting a balance of 0 on its own would read as a measurement
+// rather than as an absence.
+function describePair(a, b) {
+  if (!a.some((v) => v > 0) || !b.some((v) => v > 0)) {
+    return { onset_balance: null, antiphony: null };
+  }
+  return { onset_balance: onsetBalance(a, b), antiphony: antiphony(a, b) };
+}
+
+// ---------- generation ----------
+function tileEnc(enc, batch) {
+  const [, T, d] = enc.dims;
+  const out = new Float32Array(batch * T * d);
+  for (let b = 0; b < batch; b++) out.set(enc.data, b * T * d);
+  return new ort.Tensor("float32", out, [batch, T, d]);
+}
+
+async function generateBatch(hits, batch, sampler, temperature, nucleusP) {
+  const T = META.n_steps;
+  const srcTokens = tokenize(hits);
+  const src = new ort.Tensor("int64", BigInt64Array.from(srcTokens.map(BigInt)), [1, T]);
+  const enc = (await encSession.run({ src })).enc;
+  const encBatched = batch === 1 ? enc : tileEnc(enc, batch);
+
+  // A fixed-length buffer refilled each step: under a causal mask, trailing pad cannot reach
+  // the position being read, so this matches growing the sequence
+  const buf = new BigInt64Array(batch * T);
+  const seqs = Array.from({ length: batch }, () => [META.start_ix]);
+
+  for (let t = 0; t < T; t++) {
+    for (let b = 0; b < batch; b++) buf[b * T + t] = BigInt(seqs[b][t]);
+    const tgt = new ort.Tensor("int64", buf.slice(), [batch, T]);
+    const out = (await decSession.run({ tgt, enc: encBatched })).logits;
+    const V = out.dims[2];
+    for (let b = 0; b < batch; b++) {
+      const start = b * T * V + t * V;
+      const row = Array.from(out.data.subarray(start, start + V));
+      seqs[b].push(pick(temperaturedSoftmax(row, temperature), sampler, nucleusP));
+    }
+  }
+  return seqs.map((s) => decode(s.slice(1)));
+}
+
+// ---------- nearest rhythms ----------
+function nearestRhythms(target, k) {
+  const wanted = target.map((v) => v > 0);
+  const scored = INDEX.map((seg, ix) => {
+    let apart = 0, vel = 0;
+    for (let i = 0; i < wanted.length; i++) {
+      const v = seg.h[i] / 4;
+      if ((v > 0) !== wanted[i]) apart++;
+      vel += Math.abs(v - target[i]);
+    }
+    return { ix, apart, vel };
+  });
+  scored.sort((a, b) => a.apart - b.apart || a.vel - b.vel);
+
+  const out = [], seenFiles = new Set();
+  for (const s of scored) {
+    const seg = INDEX[s.ix];
+    const file = seg.n.split(" seg ")[0];
+    if (seenFiles.has(file)) continue;
+    seenFiles.add(file);
+    out.push({
+      name: seg.n,
+      hits: seg.h.map((v) => v / 4),
+      pitched: seg.p.map(([step, pitch, vel]) => [step, pitch, vel / 127]),
+      steps_apart: s.apart,
+    });
+    if (out.length >= k) break;
+  }
+  return out;
+}
+
+// ===== shared verbatim with scripts/serve_model.html =====
+// ---------- audio ----------
+// One context at a time: starting anything stops whatever was playing, and the button that
+// started it becomes its own stop button, so what you hear is always attributable.
+let ctx = null;
+let playing = null;
+let noise = null;
+
+function stopAll() {
+  if (ctx) { ctx.close(); ctx = null; }
+  noise = null;
+  if (playing) {
+    playing.btn.textContent = playing.label;
+    playing.btn.classList.remove("playing");
+    clearTimeout(playing.timer);
+    playing = null;
+  }
+}
+
+function noiseBuffer(ac) {
+  if (!noise) {
+    noise = ac.createBuffer(1, ac.sampleRate * 0.25, ac.sampleRate);
+    const data = noise.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  return noise;
+}
+
+// A note you can hear the pitch of: triangle fundamental plus two quiet partials, soft attack,
+// and a tail long enough to register as a pitch rather than a click
+function pitchedNote(ac, at, freq, gain, pan, decay, cutoff) {
+  const out = ac.createGain();
+  out.gain.setValueAtTime(0, at);
+  out.gain.linearRampToValueAtTime(gain, at + 0.01);
+  out.gain.exponentialRampToValueAtTime(0.0001, at + decay);
+  const lp = ac.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.value = cutoff;
+  const p = ac.createStereoPanner();
+  p.pan.value = pan;
+  out.connect(lp); lp.connect(p); p.connect(ac.destination);
+
+  // Fundamental plus four partials: enough harmonic structure that the pitch is clear even
+  // when the fundamental itself is barely reproduced
+  for (const [type, mult, level] of [
+    ["triangle", 1, 1], ["sawtooth", 2, 0.30], ["sine", 3, 0.20],
+    ["sine", 4, 0.11], ["sine", 6, 0.05],
+  ]) {
+    const osc = ac.createOscillator();
+    osc.type = type;
+    osc.frequency.value = freq * mult;
+    const g = ac.createGain();
+    g.gain.value = level;
+    osc.connect(g); g.connect(out);
+    osc.start(at); osc.stop(at + decay + 0.05);
+  }
+}
+
+// A stick tap: a filtered noise burst with no pitch in it at all
+function stickTap(ac, at, gain, pan) {
+  const src = ac.createBufferSource();
+  src.buffer = noiseBuffer(ac);
+  const bp = ac.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.frequency.value = 2600;
+  bp.Q = 1.1;
+  const hp = ac.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = 800;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(gain, at);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + 0.06);
+  const p = ac.createStereoPanner();
+  p.pan.value = pan;
+  src.connect(bp); bp.connect(hp); hp.connect(g); g.connect(p); p.connect(ac.destination);
+  src.start(at); src.stop(at + 0.14);
+}
+
+const VOICES = {
+  melody: { decay: 0.42, cutoff: 3400, gain: 0.30, pan: -0.6, lift: 0 },
+  // A bassline's fundamental is often below what a laptop speaker reproduces at all, so this
+  // voice is deliberately bright - the upper partials are what make the pitch audible - and
+  // notes under MIDI 45 are lifted by octaves into a register that can actually be heard.
+  bass:   { decay: 0.38, cutoff: 5200, gain: 0.26, pan: 0.55, lift: 45 },
+};
+
+// Fold a note up by whole octaves until it clears `floorNote`, preserving its pitch class
+function lift(pitch, floorNote) {
+  let p = pitch;
+  while (floorNote && p < floorNote) p += 12;
+  return p;
+}
+
+// `parts` are {notes: [[step, pitch, velocity]], voice: "melody"|"bass"|"tap", pan?}
+function play(parts) {
+  stopAll();
+  const ac = new (window.AudioContext || window.webkitAudioContext)();
+  ctx = ac;
+  const step = 1 / (META.resolution * 2);
+  const loops = 2;
+  const barSteps = META.resolution * META.n_beat_bars;
+  const t0 = ac.currentTime + 0.1;
+
+  for (let loop = 0; loop < loops; loop++) {
+    const base = t0 + loop * META.n_steps * step;
+    for (const part of parts) {
+      if (!part || !part.notes) continue;
+      for (const [i, pitch, vel] of part.notes) {
+        if (vel <= 0) continue;
+        const at = base + i * step;
+        const level = Math.min(vel, 1);
+        if (part.voice === "tap") {
+          stickTap(ac, at, level * 0.5, part.pan ?? 0.55);
+        } else {
+          const v = VOICES[part.voice];
+          pitchedNote(ac, at, midiHz(lift(pitch, v.lift)), level * v.gain,
+                      part.pan ?? v.pan, v.decay, v.cutoff);
+        }
+      }
+    }
+    if ($("click").checked) {
+      for (let i = 0; i < META.n_steps; i += META.resolution) {
+        const downbeat = i % barSteps === 0;
+        const osc = ac.createOscillator();
+        osc.type = "square";
+        osc.frequency.value = downbeat ? 2000 : 1400;
+        const g = ac.createGain();
+        g.gain.setValueAtTime(downbeat ? 0.13 : 0.07, base + i * step);
+        g.gain.exponentialRampToValueAtTime(0.0001, base + i * step + 0.03);
+        osc.connect(g); g.connect(ac.destination);
+        osc.start(base + i * step); osc.stop(base + i * step + 0.05);
+      }
+    }
+  }
+  return loops * META.n_steps * step + 0.6;
+}
+
+// Any play button is also its own stop button while it is the thing playing
+function playFrom(btn, parts) {
+  const wasThisOne = playing && playing.btn === btn;
+  stopAll();
+  if (wasThisOne) return;
+  const seconds = play(parts);
+  playing = { btn, label: btn.textContent, timer: setTimeout(stopAll, seconds * 1000) };
+  btn.textContent = "■ stop";
+  btn.classList.add("playing");
+}
+
+const asNotes = (hits, pitch) =>
+  hits.map((v, i) => [i, pitch, v]).filter(([, , v]) => v > 0);
+
+const inputPart = () =>
+  pitched ? { notes: pitched, voice: "melody" }
+          : { notes: asNotes(input, META.part_1_pitch), voice: "melody" };
+
+// ---------- grid ----------
+function spacing(i) {
+  if (i === 0) return "";
+  if (i % (META.resolution * META.n_beat_bars) === 0) return "bar";
+  if (i % META.resolution === 0) return "beat";
+  return "";
+}
+
+function buildGrids() {
+  const n = META.n_steps;
+  for (const [id, editable] of [["inGrid", true], ["outGrid", false], ["probGrid", false]]) {
+    const g = $(id);
+    g.style.gridTemplateColumns = `repeat(${n}, 1fr)`;
+    g.innerHTML = "";
+    for (let i = 0; i < n; i++) {
+      const d = document.createElement("div");
+      const cls = spacing(i);
+      if (id === "probGrid") {
+        d.className = ("prob " + cls).trim();
+        d.appendChild(document.createElement("i")).style.height = "0%";
+      } else {
+        d.className = ("cell " + cls).trim();
+      }
+      if (editable) d.onclick = () => cycle(i);
+      g.appendChild(d);
+    }
+  }
+}
+
+// Click cycles a step through the velocity bins the model was trained on
+const LEVELS = [0, 0.25, 0.5, 0.75, 1.0];
+function cycle(i) {
+  const at = LEVELS.indexOf(Math.min(...LEVELS.filter((l) => l >= input[i] - 1e-6)));
+  input[i] = LEVELS[(at + 1) % LEVELS.length];
+  dropPitches();
+  drawInput();
+}
+
+// The pitches belong to the segment that was loaded; an edited grid is no longer that segment
+function dropPitches() {
+  if (!pitched) return;
+  pitched = null;
+  exampleName = "";
+  $("playPitched").disabled = true;
+  setMeta();
+}
+
+// Velocity is the alpha; for the output the hue carries the relationship to the input
+const HUES = { in: "106,169,255", together: "86,211,100", gap: "255,140,90" };
+function shade(v, hue) {
+  if (v <= 0) return "#23272f";
+  return `rgba(${HUES[hue]},${0.28 + 0.72 * Math.min(v, 1)})`;
+}
+
+function drawInput() {
+  const cells = $("inGrid").children;
+  for (let i = 0; i < input.length; i++) cells[i].style.background = shade(input[i], "in");
+  drawDescriptors();
+}
+
+function drawOutput() {
+  const cells = $("outGrid").children;
+  const bars = $("probGrid").children;
+  $("playOut").disabled = !output;
+  $("playBoth").disabled = !output;
+  for (let i = 0; i < META.n_steps; i++) {
+    if (!output) {
+      cells[i].style.background = "#23272f";
+      bars[i].firstChild.style.height = "0%";
+      continue;
+    }
+    cells[i].style.background = shade(
+      output.gen_hits[i], output.together.includes(i) ? "together" : "gap");
+    const bar = bars[i].firstChild;
+    bar.style.height = `${Math.round(output.onset_probs[i] * 100)}%`;
+    bar.style.background = output.onset_probs[i] > 0.5 ? "#6b7686" : "#3f4754";
+  }
+}
+
+// ---------- mashups ----------
+function drawMatches() {
+  const box = $("matches");
+  if (!matches.length) {
+    box.innerHTML = '<span class="hint">No matches.</span>';
+    return;
+  }
+  box.innerHTML =
+    `<div class="hdr"><span class="spacer"></span><span class="apart">apart</span>` +
+    `<span class="mid">${META.part_2} rhythm</span><span class="who">segment</span></div>`;
+
+  matches.forEach((m, ix) => {
+    const rowEl = document.createElement("div");
+    rowEl.className = "match";
+
+    const btn = document.createElement("button");
+    btn.textContent = "▶";
+    btn.title = "Play this against the input";
+    btn.onclick = () => playFrom(btn, [
+      inputPart(),
+      { notes: m.pitched, voice: "bass" },
+    ]);
+    rowEl.appendChild(btn);
+
+    const apart = document.createElement("span");
+    apart.className = "apart";
+    apart.textContent = `${m.steps_apart} step${m.steps_apart === 1 ? "" : "s"}`;
+    rowEl.appendChild(apart);
+
+    const mini = document.createElement("div");
+    mini.className = "mini";
+    mini.style.gridTemplateColumns = `repeat(${META.n_steps}, 1fr)`;
+    for (let i = 0; i < META.n_steps; i++) {
+      const c = document.createElement("i");
+      c.className = spacing(i);
+      const mine = m.hits[i] > 0;
+      const theirs = output && output.gen_hits[i] > 0;
+      // Where this segment and the generated rhythm agree, and where they part company
+      if (mine && theirs) c.style.background = "rgba(86,211,100,0.85)";
+      else if (mine) c.style.background = "rgba(255,140,90,0.85)";
+      else if (theirs) c.style.background = "#3b4250";
+      mini.appendChild(c);
+    }
+    rowEl.appendChild(mini);
+
+    const who = document.createElement("span");
+    who.className = "who";
+    who.textContent = `${m.name}  (${m.pitched.length} notes)`;
+    who.title = m.name;
+    rowEl.appendChild(who);
+
+    box.appendChild(rowEl);
+  });
+}
+
+
+// ---------- readouts ----------
+const fmt = (v) => {
+  if (v === null || v === undefined || Number.isNaN(v)) return "–";
+  return Number.isInteger(+v) ? String(+v) : (+v).toFixed(3);
+};
+const statRow = (name, value) => `<span class="metric"><b>${fmt(value)}</b>${name}</span>`;
+
+// The per-part descriptors the local interface shows come from rhythmtoolbox, which is Python.
+// Rather than ship a reimplementation that could quietly disagree, this build reports the onset
+// count and the two paired descriptors, which are ported and checked against the Python.
+function drawDescriptors() {
+  $("inDesc").innerHTML =
+    `<div class="metrics">${statRow("onsets", input.filter((v) => v > 0).length)}</div>`;
+  if (!output) { $("outDesc").innerHTML = ""; return; }
+  $("outDesc").innerHTML =
+    `<div class="metrics">${statRow("onsets", output.out_onsets.length)}</div>` +
+    `<div class="metrics paired">` +
+    ["onset_balance", "antiphony"].map((k) => statRow(k, output.paired[k])).join("") +
+    `</div>`;
+}
+
+function buildSteer() {
+  $("steer").innerHTML =
+    ["onset_balance", "antiphony"].map((k) => `
+      <div class="line">
+        <label class="check nm"><input type="checkbox" data-on="${k}"> ${k}</label>
+        <input type="range" data-target="${k}" min="0" max="1" step="0.01" value="0.5">
+        <span class="tv" id="tv-${k}">0.50</span>
+        <span id="got-${k}"></span>
+      </div>`).join("") +
+    `<div class="line"><span class="nm">candidates</span>
+       <select id="nCand"><option>8</option><option selected>16</option><option>32</option></select></div>`;
+  ["onset_balance", "antiphony"].forEach((k) => {
+    document.querySelector(`[data-target="${k}"]`).oninput = (e) => {
+      $(`tv-${k}`).textContent = (+e.target.value).toFixed(2);
+    };
+  });
+}
+
+function steerTargets() {
+  const targets = {};
+  ["onset_balance", "antiphony"].forEach((k) => {
+    if (document.querySelector(`[data-on="${k}"]`).checked) {
+      targets[k] = parseFloat(document.querySelector(`[data-target="${k}"]`).value);
+    }
+  });
+  return Object.keys(targets).length ? targets : null;
+}
+
+function drawSteerResult() {
+  ["onset_balance", "antiphony"].forEach((k) => {
+    const el = $(`got-${k}`);
+    const search = output && output.search;
+    if (!search || !(k in search.targets)) { el.textContent = ""; return; }
+    const got = output.paired[k], reach = search.reachable[k];
+    el.className = (got === null || Math.abs(got - search.targets[k]) > 0.05) ? "miss" : "got";
+    el.textContent = `got ${fmt(got)}` +
+      (reach ? `   (${search.n} candidates spanned ${fmt(reach.min)}–${fmt(reach.max)})` : "");
+  });
+}
+
+function setMeta() {
+  const bits = [
+    `${META.part_1} → ${META.part_2}`,
+    `${META.n_steps} steps`,
+    `${META.n_params.toLocaleString()} params`,
+    `val ${META.val_loss ?? "?"}`,
+    META.dataset,
+  ];
+  if (exampleName) bits.push(exampleName);
+  $("meta").textContent = bits.join("  ·  ");
+}
+
+// ---------- actions ----------
+async function generate() {
+  $("gen").disabled = true;
+  $("gen").textContent = "…";
+  try {
+    const targets = steerTargets();
+    const batch = targets ? parseInt($("nCand").value, 10) : 1;
+    const sampler = $("sampler").value;
+    const candidates = await generateBatch(
+      input, batch, sampler,
+      parseFloat($("temp").value), parseFloat($("pp").value));
+
+    const paired = candidates.map((c) => describePair(input, c));
+    let best = 0, search = null;
+    if (targets) {
+      const cost = (p) => Object.entries(targets).reduce(
+        (a, [k, t]) => a + (p[k] === null ? Infinity : Math.abs(p[k] - t)), 0);
+      const costs = paired.map(cost);
+      best = costs.indexOf(Math.min(...costs));
+      search = { n: batch, targets, reachable: {} };
+      for (const k of Object.keys(targets)) {
+        const vals = paired.map((p) => p[k]).filter((v) => v !== null);
+        if (vals.length) search.reachable[k] = { min: Math.min(...vals), max: Math.max(...vals) };
+      }
+    }
+
+    const gen = candidates[best];
+    const inOnsets = [], outOnsets = [];
+    input.forEach((v, i) => { if (v > 0) inOnsets.push(i); });
+    gen.forEach((v, i) => { if (v > 0) outOnsets.push(i); });
+    output = {
+      gen_hits: gen,
+      onset_probs: new Array(META.n_steps).fill(0),
+      in_onsets: inOnsets,
+      out_onsets: outOnsets,
+      together: outOnsets.filter((i) => inOnsets.includes(i)),
+      in_gaps: outOnsets.filter((i) => !inOnsets.includes(i)),
+      paired: paired[best],
+      search,
+    };
+    drawOutput();
+    drawDescriptors();
+    drawSteerResult();
+    matches = nearestRhythms(gen, 10);
+    drawMatches();
+  } finally {
+    $("gen").disabled = false;
+    $("gen").textContent = "Generate ⏎";
+  }
+}
+
+function loadExample() {
+  const pick = EXAMPLES[Math.floor(Math.random() * EXAMPLES.length)];
+  input = pick.h.map((v) => v / 4);
+  pitched = pick.p.map(([s, p, v]) => [s, p, v / 127]);
+  exampleName = pick.n;
+  $("playPitched").disabled = !pitched.length;
+  drawInput();
+  setMeta();
+}
+
+(async function init() {
+  try {
+    ort.env.wasm.wasmPaths = "https://cdn.jsdelivr.net/npm/onnxruntime-web@1.20.1/dist/";
+    const [meta, examples, index] = await Promise.all(
+      ["meta", "examples", "index"].map((n) => fetch(`data/${n}.json`).then((r) => r.json())));
+    META = meta; EXAMPLES = examples; INDEX = index;
+    $("modelName").textContent = `${META.run}  (${META.n_index.toLocaleString()} segments searchable)`;
+
+    [encSession, decSession] = await Promise.all([
+      ort.InferenceSession.create("data/encoder.onnx"),
+      ort.InferenceSession.create("data/decoder.onnx"),
+    ]);
+  } catch (e) {
+    $("meta").textContent = `Could not load the model: ${e}`;
+    throw e;
+  }
+
+  input = new Array(META.n_steps).fill(0);
+  buildGrids();
+  buildSteer();
+  drawInput();
+  drawOutput();
+  setMeta();
+
+  $("clear").onclick = () => {
+    input.fill(0); output = null; matches = []; dropPitches();
+    drawInput(); drawOutput(); drawMatches();
+  };
+  $("rand").onclick = loadExample;
+  $("preset").onclick = () => {
+    input = input.map((_, i) => (i % 2 === 0 ? 1.0 : 0));
+    dropPitches(); drawInput();
+  };
+  $("gen").onclick = generate;
+  $("playIn").onclick = () => playFrom($("playIn"),
+    [{ notes: asNotes(input, META.part_1_pitch), voice: "melody" }]);
+  $("playPitched").onclick = () => pitched &&
+    playFrom($("playPitched"), [{ notes: pitched, voice: "melody" }]);
+  $("playOut").onclick = () => output &&
+    playFrom($("playOut"), [{ notes: asNotes(output.gen_hits, 0), voice: "tap" }]);
+  $("playBoth").onclick = () => output && playFrom($("playBoth"), [
+    inputPart(), { notes: asNotes(output.gen_hits, 0), voice: "tap" },
+  ]);
+  $("temp").oninput = (e) => $("tempV").textContent = (+e.target.value).toFixed(2);
+  $("pp").oninput = (e) => $("ppV").textContent = (+e.target.value).toFixed(2);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") generate();
+    if (e.key === "Escape") stopAll();
+  });
+
+  loadExample();
+  await generate();
+})();
+</script>
+</body>
+</html>

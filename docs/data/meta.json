@@ -1,0 +1,1 @@
+{"run":"youthfulness_2608221606","part_1":"Melody","part_2":"Bass","dataset":"lmdc_17243_2bar_4res","n_steps":32,"resolution":4,"n_beat_bars":4,"part_1_pitch":55,"part_2_pitch":72,"n_params":3334176,"val_loss":0.4627,"start_ix":1,"hits_tokens":{"2":0,"3":0.25,"4":0.5,"5":0.75,"6":1.0},"greedy_agreement":0.9912,"n_examples":200,"n_index":30000}

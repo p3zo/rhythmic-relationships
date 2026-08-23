@@ -1,0 +1,50 @@
+// Ask the served page the questions scripts/check_web_port.py answered, and compare.
+// Usage: python scripts/check_web_port.py && node scripts/check_web_port.mjs [pageUrl]
+const PAGE = process.argv[2] || "8099";
+const t = (await (await fetch("http://127.0.0.1:9222/json")).json())
+  .find((x) => x.type === "page" && x.url.includes(PAGE));
+if (!t) { console.error(`No page matching ${PAGE} on the debug port`); process.exit(1); }
+
+const ws = new WebSocket(t.webSocketDebuggerUrl);
+await new Promise((r) => (ws.onopen = r));
+let id = 0; const pending = new Map();
+ws.onmessage = (e) => { const m = JSON.parse(e.data); if (m.id && pending.has(m.id)) { pending.get(m.id)(m); pending.delete(m.id); } };
+const send = (method, params = {}) => { const i = ++id; ws.send(JSON.stringify({ id: i, method, params })); return new Promise((r) => pending.set(i, r)); };
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+async function ev(expr) {
+  const r = await send("Runtime.evaluate", { expression: expr, returnByValue: true, awaitPromise: true });
+  if (r.result?.exceptionDetails) throw new Error(r.result.exceptionDetails.exception?.description || "eval failed");
+  return r.result.result.value;
+}
+await send("Runtime.enable");
+for (let i = 0; i < 120; i++) { if (await ev(`!!window.ort && !!document.querySelector('[data-on]')`)) break; await sleep(500); }
+
+const ref = await (await fetch(`http://localhost:${PAGE}/data/.port_check.json`)).json();
+const P = ref.patterns, C = ref.cases;
+let checked = 0, failed = 0;
+const fail = (what, want, got) => { failed++; console.log(`  FAIL ${what}\n    python: ${JSON.stringify(want)}\n    js    : ${JSON.stringify(got)}`); };
+
+for (const [name, want] of Object.entries(C.tokenize)) {
+  const got = await ev(`JSON.stringify(tokenize(${JSON.stringify(P[name])}))`);
+  checked++;
+  if (JSON.stringify(want) !== got) fail(`tokenize ${name}`, want, JSON.parse(got));
+}
+
+for (const [key, want] of Object.entries(C.paired)) {
+  const [a, b] = key.split("|");
+  const got = JSON.parse(await ev(`(function(){const d=describePair(${JSON.stringify(P[a])},${JSON.stringify(P[b])});return JSON.stringify([d.onset_balance,d.antiphony]);})()`));
+  checked++;
+  const close = (x, y) => (x === null || y === null) ? x === y : Math.abs(x - y) < 1e-6;
+  if (!close(want[0], got[0]) || !close(want[1], got[1])) fail(`paired ${key}`, want, got);
+}
+
+await ev(`document.getElementById('sampler').value = 'greedy'`);
+for (const [name, want] of Object.entries(C.greedy)) {
+  const got = JSON.parse(await ev(`generateBatch(${JSON.stringify(P[name])}, 1, 'greedy', 1.0, 0.92).then(r => JSON.stringify(r[0]))`));
+  checked++;
+  if (JSON.stringify(want) !== JSON.stringify(got)) fail(`greedy ${name}`, want, got);
+}
+
+console.log(`${checked} checks, ${failed} failed`);
+ws.close();
+process.exit(failed ? 1 : 0);
