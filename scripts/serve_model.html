@@ -6,23 +6,24 @@
 <style>
   :root {
     --bg: #14161a; --panel: #1c1f25; --line: #2c313a; --text: #e6e8ec;
-    --dim: #8b93a1; --in: #6aa9ff; --out: #ffb454; --both: #56d364; --gap: #ff7b72;
+    --dim: #8b93a1; --in: #6aa9ff;
   }
   * { box-sizing: border-box; }
   body { margin: 0; padding: 24px; background: var(--bg); color: var(--text);
          font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif; }
   h1 { font-size: 17px; margin: 0 0 2px; font-weight: 600; }
+  h2 { font-size: 13px; margin: 0 0 14px; font-weight: 600; letter-spacing: .07em;
+       text-transform: uppercase; color: var(--dim); }
   .meta { color: var(--dim); font-size: 12px; font-family: ui-monospace, monospace; }
   .wrap { max-width: 1080px; margin: 0 auto; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px;
            padding: 18px; margin-top: 16px; }
   .row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
-  .label { width: 132px; flex: none; color: var(--dim); font-size: 12px; text-align: right; }
+  .label { width: 120px; flex: none; color: var(--dim); font-size: 12px; text-align: right; }
   .grid { display: grid; gap: 2px; flex: 1; min-width: 0; }
-  .cell { height: 34px; border-radius: 3px; background: #23272f; position: relative;
-          border: 1px solid transparent; }
-  .cell.beat, .prob.beat { margin-left: 3px; }
-  .cell.bar, .prob.bar { margin-left: 9px; }
+  .cell { height: 34px; border-radius: 3px; background: #23272f; }
+  .cell.beat, .prob.beat, .mini i.beat { margin-left: 3px; }
+  .cell.bar, .prob.bar, .mini i.bar { margin-left: 9px; }
   .in .cell { cursor: pointer; }
   .in .cell:hover { outline: 1px solid var(--in); }
   .prob { height: 26px; background: #23272f; border-radius: 3px; display: flex;
@@ -30,9 +31,12 @@
   .prob i { display: block; width: 100%; background: #4b5563; }
   button, select { background: #262b33; color: var(--text); border: 1px solid var(--line);
                    border-radius: 6px; padding: 7px 12px; font-size: 13px; cursor: pointer; }
-  button:hover { border-color: #4a5568; }
+  button:hover:not(:disabled) { border-color: #4a5568; }
+  button:disabled { opacity: .38; cursor: default; }
   button.primary { background: var(--in); color: #08121f; border-color: var(--in); font-weight: 600; }
+  button.playing { background: #3b2226; border-color: #a24a54; color: #ffd9dc; }
   input[type=range] { width: 130px; vertical-align: middle; }
+  label.check { color: var(--dim); font-size: 12px; cursor: pointer; user-select: none; }
   table { border-collapse: collapse; font-family: ui-monospace, monospace; font-size: 12px; }
   th, td { text-align: right; padding: 3px 12px 3px 0; }
   th { color: var(--dim); font-weight: 500; }
@@ -43,6 +47,22 @@
   .key { color: var(--dim); font-size: 11px; margin-top: 10px; font-family: ui-monospace, monospace; }
   .sw { display: inline-block; width: 9px; height: 9px; border-radius: 2px; margin: 0 4px 0 12px; }
   .hint { color: var(--dim); font-size: 12px; }
+  /* mashup rows */
+  .match { display: flex; align-items: center; gap: 12px; padding: 5px 0;
+           border-top: 1px solid #23272f; }
+  .match:first-of-type { border-top: none; }
+  .match .apart { width: 62px; flex: none; text-align: right; color: var(--dim);
+                  font-family: ui-monospace, monospace; font-size: 12px; }
+  .mini { display: grid; gap: 1px; flex: 1; min-width: 160px; }
+  .mini i { display: block; height: 14px; border-radius: 2px; background: #23272f; }
+  .match .who { width: 300px; flex: none; overflow: hidden; text-overflow: ellipsis;
+                white-space: nowrap; font-size: 12px; color: var(--dim); }
+  .hdr { display: flex; gap: 12px; color: var(--dim); font-size: 11px;
+         font-family: ui-monospace, monospace; padding-bottom: 6px; }
+  .hdr .apart { width: 62px; flex: none; text-align: right; }
+  .hdr .mid { flex: 1; min-width: 160px; }
+  .hdr .who { width: 300px; flex: none; }
+  .hdr .spacer { width: 44px; flex: none; }
 </style>
 </head>
 <body>
@@ -52,7 +72,16 @@
 
   <div class="panel">
     <div class="row">
-      <div class="label" id="inLabel">input</div>
+      <div class="label">model</div>
+      <select id="model" style="flex:1;max-width:560px"></select>
+      <label class="check"><input type="checkbox" id="click"> click track</label>
+    </div>
+  </div>
+
+  <div class="panel">
+    <h2>Input</h2>
+    <div class="row">
+      <div class="label" id="inLabel"></div>
       <div class="grid in" id="inGrid"></div>
     </div>
     <div class="row" style="margin-top:14px">
@@ -60,14 +89,25 @@
       <button id="clear">Clear</button>
       <button id="rand">Random real input</button>
       <button id="preset">Straight 8ths</button>
-      <button class="primary" id="gen">Generate ⏎</button>
       <span style="flex:1"></span>
-      <button id="playIn">▶ input</button>
-      <button id="playOut">▶ model</button>
-      <button id="playBoth">▶ both</button>
+      <button id="playIn">▶ rhythm</button>
+      <button id="playPitched" disabled title="Load a real input to hear its pitches">▶ with pitches</button>
     </div>
-    <div class="row" style="margin-top:12px">
-      <div class="label">sampler</div>
+  </div>
+
+  <div class="panel">
+    <h2>Output</h2>
+    <div class="row">
+      <div class="label" id="outLabel"></div>
+      <div class="grid" id="outGrid"></div>
+    </div>
+    <div class="row" style="margin-top:8px">
+      <div class="label">P(onset)</div>
+      <div class="grid" id="probGrid"></div>
+    </div>
+    <div class="row" style="margin-top:14px">
+      <div class="label"></div>
+      <button class="primary" id="gen">Generate ⏎</button>
       <select id="sampler">
         <option value="nucleus">nucleus</option>
         <option value="multinomial">multinomial</option>
@@ -77,17 +117,9 @@
         <span id="tempV">1.00</span></span>
       <span class="hint">nucleus p <input type="range" id="pp" min="0.5" max="1" step="0.01" value="0.92">
         <span id="ppV">0.92</span></span>
-    </div>
-  </div>
-
-  <div class="panel">
-    <div class="row">
-      <div class="label" id="outLabel">output</div>
-      <div class="grid" id="outGrid"></div>
-    </div>
-    <div class="row" style="margin-top:8px">
-      <div class="label">P(onset)</div>
-      <div class="grid" id="probGrid"></div>
+      <span style="flex:1"></span>
+      <button id="playOut" disabled>▶ output</button>
+      <button id="playBoth" disabled>▶ both</button>
     </div>
     <div class="key">
       <span class="sw" style="background:rgb(86,211,100)"></span>onset on an input onset
@@ -96,7 +128,12 @@
     </div>
   </div>
 
-  <div class="panel" id="rel">
+  <div class="panel">
+    <h2>Mashups</h2>
+    <div id="matches"><span class="hint">Generate to find real segments that move like the output.</span></div>
+  </div>
+
+  <div class="panel">
     <div class="stats" id="stats"><span class="hint">Generate to see how the output relates to the input.</span></div>
     <div style="margin-top:18px" id="descTable"></div>
   </div>
@@ -106,15 +143,157 @@
 let META = null;
 let input = [];
 let output = null;
+let pitched = null;      // the real segment's notes, dropped as soon as the grid is edited
+let exampleName = "";
+let matches = [];
 
 const $ = (id) => document.getElementById(id);
 const midiHz = (n) => 440 * Math.pow(2, (n - 69) / 12);
 
-// Group the grid into beats and bars by spacing, so the divisions survive a filled cell
+// ---------- audio ----------
+// One context at a time: starting anything stops whatever was playing, and the button that
+// started it becomes its own stop button, so what you hear is always attributable.
+let ctx = null;
+let playing = null;
+let noise = null;
+
+function stopAll() {
+  if (ctx) { ctx.close(); ctx = null; }
+  noise = null;
+  if (playing) {
+    playing.btn.textContent = playing.label;
+    playing.btn.classList.remove("playing");
+    clearTimeout(playing.timer);
+    playing = null;
+  }
+}
+
+function noiseBuffer(ac) {
+  if (!noise) {
+    noise = ac.createBuffer(1, ac.sampleRate * 0.25, ac.sampleRate);
+    const data = noise.getChannelData(0);
+    for (let i = 0; i < data.length; i++) data[i] = Math.random() * 2 - 1;
+  }
+  return noise;
+}
+
+// A note you can hear the pitch of: triangle fundamental plus two quiet partials, soft attack,
+// and a tail long enough to register as a pitch rather than a click
+function pitchedNote(ac, at, freq, gain, pan, decay, cutoff) {
+  const out = ac.createGain();
+  out.gain.setValueAtTime(0, at);
+  out.gain.linearRampToValueAtTime(gain, at + 0.01);
+  out.gain.exponentialRampToValueAtTime(0.0001, at + decay);
+  const lp = ac.createBiquadFilter();
+  lp.type = "lowpass";
+  lp.frequency.value = cutoff;
+  const p = ac.createStereoPanner();
+  p.pan.value = pan;
+  out.connect(lp); lp.connect(p); p.connect(ac.destination);
+
+  for (const [type, mult, level] of [["triangle", 1, 1], ["sine", 2, 0.32], ["sine", 3, 0.1]]) {
+    const osc = ac.createOscillator();
+    osc.type = type;
+    osc.frequency.value = freq * mult;
+    const g = ac.createGain();
+    g.gain.value = level;
+    osc.connect(g); g.connect(out);
+    osc.start(at); osc.stop(at + decay + 0.05);
+  }
+}
+
+// A stick tap: a filtered noise burst with no pitch in it at all
+function stickTap(ac, at, gain, pan) {
+  const src = ac.createBufferSource();
+  src.buffer = noiseBuffer(ac);
+  const bp = ac.createBiquadFilter();
+  bp.type = "bandpass";
+  bp.frequency.value = 2600;
+  bp.Q = 1.1;
+  const hp = ac.createBiquadFilter();
+  hp.type = "highpass";
+  hp.frequency.value = 800;
+  const g = ac.createGain();
+  g.gain.setValueAtTime(gain, at);
+  g.gain.exponentialRampToValueAtTime(0.0001, at + 0.06);
+  const p = ac.createStereoPanner();
+  p.pan.value = pan;
+  src.connect(bp); bp.connect(hp); hp.connect(g); g.connect(p); p.connect(ac.destination);
+  src.start(at); src.stop(at + 0.14);
+}
+
+const VOICES = {
+  melody: { decay: 0.42, cutoff: 3400, gain: 0.30, pan: -0.6 },
+  bass:   { decay: 0.30, cutoff: 1500, gain: 0.34, pan: 0.55 },
+};
+
+// `parts` are {notes: [[step, pitch, velocity]], voice: "melody"|"bass"|"tap", pan?}
+function play(parts) {
+  stopAll();
+  const ac = new (window.AudioContext || window.webkitAudioContext)();
+  ctx = ac;
+  const step = 1 / (META.resolution * 2);
+  const loops = 2;
+  const barSteps = META.resolution * META.n_beat_bars;
+  const t0 = ac.currentTime + 0.1;
+
+  for (let loop = 0; loop < loops; loop++) {
+    const base = t0 + loop * META.n_steps * step;
+    for (const part of parts) {
+      if (!part || !part.notes) continue;
+      for (const [i, pitch, vel] of part.notes) {
+        if (vel <= 0) continue;
+        const at = base + i * step;
+        const level = Math.min(vel, 1);
+        if (part.voice === "tap") {
+          stickTap(ac, at, level * 0.5, part.pan ?? 0.55);
+        } else {
+          const v = VOICES[part.voice];
+          pitchedNote(ac, at, midiHz(pitch), level * v.gain,
+                      part.pan ?? v.pan, v.decay, v.cutoff);
+        }
+      }
+    }
+    if ($("click").checked) {
+      for (let i = 0; i < META.n_steps; i += META.resolution) {
+        const downbeat = i % barSteps === 0;
+        const osc = ac.createOscillator();
+        osc.type = "square";
+        osc.frequency.value = downbeat ? 2000 : 1400;
+        const g = ac.createGain();
+        g.gain.setValueAtTime(downbeat ? 0.13 : 0.07, base + i * step);
+        g.gain.exponentialRampToValueAtTime(0.0001, base + i * step + 0.03);
+        osc.connect(g); g.connect(ac.destination);
+        osc.start(base + i * step); osc.stop(base + i * step + 0.05);
+      }
+    }
+  }
+  return loops * META.n_steps * step + 0.6;
+}
+
+// Any play button is also its own stop button while it is the thing playing
+function playFrom(btn, parts) {
+  const wasThisOne = playing && playing.btn === btn;
+  stopAll();
+  if (wasThisOne) return;
+  const seconds = play(parts);
+  playing = { btn, label: btn.textContent, timer: setTimeout(stopAll, seconds * 1000) };
+  btn.textContent = "■ stop";
+  btn.classList.add("playing");
+}
+
+const asNotes = (hits, pitch) =>
+  hits.map((v, i) => [i, pitch, v]).filter(([, , v]) => v > 0);
+
+const inputPart = () =>
+  pitched ? { notes: pitched, voice: "melody" }
+          : { notes: asNotes(input, META.part_1_pitch), voice: "melody" };
+
+// ---------- grid ----------
 function spacing(i) {
   if (i === 0) return "";
-  if (i % (META.resolution * META.n_beat_bars) === 0) return " bar";
-  if (i % META.resolution === 0) return " beat";
+  if (i % (META.resolution * META.n_beat_bars) === 0) return "bar";
+  if (i % META.resolution === 0) return "beat";
   return "";
 }
 
@@ -126,16 +305,14 @@ function buildGrids() {
     g.innerHTML = "";
     for (let i = 0; i < n; i++) {
       const d = document.createElement("div");
+      const cls = spacing(i);
       if (id === "probGrid") {
-        d.className = "prob" + spacing(i);
-        const bar = document.createElement("i");
-        bar.style.height = "0%";
-        bar.style.background = "#4b5563";
-        d.appendChild(bar);
+        d.className = ("prob " + cls).trim();
+        d.appendChild(document.createElement("i")).style.height = "0%";
       } else {
-        d.className = "cell" + spacing(i);
+        d.className = ("cell " + cls).trim();
       }
-      if (editable) d.onclick = () => { cycle(i); };
+      if (editable) d.onclick = () => cycle(i);
       g.appendChild(d);
     }
   }
@@ -144,9 +321,19 @@ function buildGrids() {
 // Click cycles a step through the velocity bins the model was trained on
 const LEVELS = [0, 0.25, 0.5, 0.75, 1.0];
 function cycle(i) {
-  const at = LEVELS.indexOf(Math.min(...LEVELS.filter(l => l >= input[i] - 1e-6)));
+  const at = LEVELS.indexOf(Math.min(...LEVELS.filter((l) => l >= input[i] - 1e-6)));
   input[i] = LEVELS[(at + 1) % LEVELS.length];
+  dropPitches();
   drawInput();
+}
+
+// The pitches belong to the segment that was loaded; an edited grid is no longer that segment
+function dropPitches() {
+  if (!pitched) return;
+  pitched = null;
+  exampleName = "";
+  $("playPitched").disabled = true;
+  setMeta();
 }
 
 // Velocity is the alpha; for the output the hue carries the relationship to the input
@@ -164,8 +351,14 @@ function drawInput() {
 function drawOutput() {
   const cells = $("outGrid").children;
   const bars = $("probGrid").children;
+  $("playOut").disabled = !output;
+  $("playBoth").disabled = !output;
   for (let i = 0; i < META.n_steps; i++) {
-    if (!output) { cells[i].style.background = "#23272f"; bars[i].firstChild.style.height = "0%"; continue; }
+    if (!output) {
+      cells[i].style.background = "#23272f";
+      bars[i].firstChild.style.height = "0%";
+      continue;
+    }
     cells[i].style.background = shade(
       output.gen_hits[i], output.together.includes(i) ? "together" : "gap");
     const bar = bars[i].firstChild;
@@ -178,9 +371,7 @@ function drawRelationship() {
   if (!output) return;
   const nIn = output.in_onsets.length, nOut = output.out_onsets.length;
   const both = output.together.length;
-  // Of the model's onsets, how many landed with the input rather than between its notes
   const withInput = nOut ? (100 * both / nOut).toFixed(0) : "–";
-  // How much of the input the model answered
   const covered = nIn ? (100 * both / nIn).toFixed(0) : "–";
   $("stats").innerHTML = `
     <div class="stat"><b>${nIn}</b>input onsets</div>
@@ -191,24 +382,107 @@ function drawRelationship() {
     <div class="stat"><b>${output.in_gaps.length}</b>model onsets in gaps</div>`;
 
   const d = output.descriptors;
-  let rows = META.descriptors.map(k => {
-    const a = d.input[k], b = d.output[k];
-    const f = (v) => (v === null || v === undefined) ? "–" : (+v).toFixed(3);
-    return `<tr><td class="name">${k}</td><td>${f(a)}</td><td>${f(b)}</td></tr>`;
-  }).join("");
+  const f = (v) => (v === null || v === undefined) ? "–" : (+v).toFixed(3);
+  const rows = META.descriptors.map((k) =>
+    `<tr><td class="name">${k}</td><td>${f(d.input[k])}</td><td>${f(d.output[k])}</td></tr>`
+  ).join("");
   $("descTable").innerHTML =
     `<table><tr><th class="name" style="text-align:left">descriptor</th>
      <th>${META.part_1}</th><th>${META.part_2}</th></tr>${rows}</table>`;
 }
 
+// ---------- mashups ----------
+function drawMatches() {
+  const box = $("matches");
+  if (!matches.length) {
+    box.innerHTML = '<span class="hint">No matches.</span>';
+    return;
+  }
+  box.innerHTML =
+    `<div class="hdr"><span class="spacer"></span><span class="apart">apart</span>` +
+    `<span class="mid">${META.part_2} rhythm</span><span class="who">segment</span></div>`;
+
+  matches.forEach((m, ix) => {
+    const rowEl = document.createElement("div");
+    rowEl.className = "match";
+
+    const btn = document.createElement("button");
+    btn.textContent = "▶";
+    btn.title = "Play this against the input";
+    btn.onclick = () => playFrom(btn, [
+      inputPart(),
+      { notes: m.pitched, voice: "bass" },
+    ]);
+    rowEl.appendChild(btn);
+
+    const apart = document.createElement("span");
+    apart.className = "apart";
+    apart.textContent = `${m.steps_apart} step${m.steps_apart === 1 ? "" : "s"}`;
+    rowEl.appendChild(apart);
+
+    const mini = document.createElement("div");
+    mini.className = "mini";
+    mini.style.gridTemplateColumns = `repeat(${META.n_steps}, 1fr)`;
+    for (let i = 0; i < META.n_steps; i++) {
+      const c = document.createElement("i");
+      c.className = spacing(i);
+      const mine = m.hits[i] > 0;
+      const theirs = output && output.gen_hits[i] > 0;
+      // Where this segment and the generated rhythm agree, and where they part company
+      if (mine && theirs) c.style.background = "rgba(86,211,100,0.85)";
+      else if (mine) c.style.background = "rgba(255,140,90,0.85)";
+      else if (theirs) c.style.background = "#3b4250";
+      mini.appendChild(c);
+    }
+    rowEl.appendChild(mini);
+
+    const who = document.createElement("span");
+    who.className = "who";
+    who.textContent = `${m.name}  (${m.pitched.length} notes)`;
+    who.title = m.name;
+    rowEl.appendChild(who);
+
+    box.appendChild(rowEl);
+  });
+}
+
+async function findMatches() {
+  $("matches").innerHTML = '<span class="hint">Searching the dataset…</span>';
+  const res = await fetch("/neighbors", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ model: META.model_id, hits: output.gen_hits, k: 10 }),
+  });
+  const body = await res.json();
+  if (body.error) {
+    $("matches").innerHTML = `<span class="hint">${body.error}</span>`;
+    return;
+  }
+  matches = body.matches;
+  drawMatches();
+}
+
+// ---------- wiring ----------
+function setMeta() {
+  const bits = [
+    `${META.part_1} → ${META.part_2}`,
+    `${META.n_steps} steps`,
+    `${META.n_params.toLocaleString()} params`,
+    `val ${META.final_eval.val_loss ?? "?"}`,
+    META.dataset_name,
+  ];
+  if (exampleName) bits.push(exampleName);
+  $("meta").textContent = bits.join("  ·  ");
+}
+
 async function generate() {
   $("gen").disabled = true;
-  $("gen").textContent = "…";
   try {
     const res = await fetch("/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        model: META.model_id,
         hits: input,
         sampler: $("sampler").value,
         temperature: parseFloat($("temp").value),
@@ -222,82 +496,75 @@ async function generate() {
     drawRelationship();
   } finally {
     $("gen").disabled = false;
-    $("gen").textContent = "Generate ⏎";
   }
-}
-
-// One sine burst per onset, input panned left and output right, looped twice
-function play(parts) {
-  const ctx = new (window.AudioContext || window.webkitAudioContext)();
-  const step = 1 / (META.resolution * 2);
-  const bars = 2;
-  for (let loop = 0; loop < bars; loop++) {
-    for (const p of parts) {
-      if (!p.hits) continue;
-      const pan = ctx.createStereoPanner();
-      pan.pan.value = p.pan;
-      pan.connect(ctx.destination);
-      p.hits.forEach((v, i) => {
-        if (v <= 0) return;
-        const t = ctx.currentTime + 0.08 + loop * META.n_steps * step + i * step;
-        const osc = ctx.createOscillator();
-        osc.type = "sine";
-        osc.frequency.value = midiHz(p.pitch);
-        const g = ctx.createGain();
-        g.gain.setValueAtTime(Math.min(v, 1) * 0.35, t);
-        g.gain.exponentialRampToValueAtTime(0.0001, t + 0.18);
-        osc.connect(g); g.connect(pan);
-        osc.start(t); osc.stop(t + 0.2);
-      });
-    }
-  }
+  await findMatches();
 }
 
 async function loadExample() {
-  const res = await fetch("/example");
-  if (!res.ok) { alert("Server was started with --examples 0, so there are no real inputs."); return; }
+  const res = await fetch(`/example?model=${encodeURIComponent(META.model_id)}`);
   const body = await res.json();
+  if (body.error) { alert(body.error); return; }
   input = body.hits.slice();
+  pitched = body.pitched;
+  exampleName = body.name;
+  $("playPitched").disabled = !(pitched && pitched.length);
   drawInput();
+  setMeta();
+}
+
+async function selectModel(modelId) {
+  stopAll();
+  META = await (await fetch(`/meta?model=${encodeURIComponent(modelId)}`)).json();
+  $("model").value = META.model_id;
   $("inLabel").textContent = META.part_1;
-  $("meta").textContent = META.line + "   ·   " + body.name;
+  $("outLabel").textContent = META.part_2;
+  input = new Array(META.n_steps).fill(0);
+  output = null;
+  matches = [];
+  pitched = null;
+  exampleName = "";
+  $("playPitched").disabled = true;
+  buildGrids();
+  drawInput();
+  drawOutput();
+  setMeta();
+  if (META.has_examples) { await loadExample(); await generate(); }
 }
 
 (async function init() {
-  META = await (await fetch("/meta")).json();
-  META.line = [
-    `${META.part_1} → ${META.part_2}`,
-    `${META.n_steps} steps`,
-    `${META.n_params.toLocaleString()} params`,
-    `val ${META.final_eval.val_loss ?? "?"}`,
-    META.dataset_name,
-  ].join("  ·  ");
-  $("meta").textContent = META.line;
-  $("inLabel").textContent = META.part_1 + " (input)";
-  $("outLabel").textContent = META.part_2 + " (model)";
-  input = new Array(META.n_steps).fill(0);
-  buildGrids();
-  drawInput();
+  const first = await (await fetch("/meta")).json();
+  $("model").innerHTML = first.models
+    .map((m) => `<option value="${m.id}">${m.label}</option>`).join("");
+  await selectModel(first.model_id);
 
-  $("clear").onclick = () => { input.fill(0); output = null; drawInput(); drawOutput(); };
+  $("model").onchange = (e) => selectModel(e.target.value);
+  $("clear").onclick = () => {
+    input.fill(0); output = null; matches = []; dropPitches();
+    drawInput(); drawOutput(); drawMatches();
+  };
   $("rand").onclick = loadExample;
   $("preset").onclick = () => {
     input = input.map((_, i) => (i % 2 === 0 ? 1.0 : 0));
+    dropPitches();
     drawInput();
   };
   $("gen").onclick = generate;
-  $("playIn").onclick = () => play([{ hits: input, pitch: META.part_1_pitch, pan: -0.7 }]);
-  $("playOut").onclick = () => output && play([{ hits: output.gen_hits, pitch: META.part_2_pitch, pan: 0.7 }]);
-  $("playBoth").onclick = () => play([
-    { hits: input, pitch: META.part_1_pitch, pan: -0.7 },
-    { hits: output ? output.gen_hits : null, pitch: META.part_2_pitch, pan: 0.7 },
+  $("playIn").onclick = () => playFrom($("playIn"),
+    [{ notes: asNotes(input, META.part_1_pitch), voice: "melody" }]);
+  $("playPitched").onclick = () => pitched &&
+    playFrom($("playPitched"), [{ notes: pitched, voice: "melody" }]);
+  $("playOut").onclick = () => output &&
+    playFrom($("playOut"), [{ notes: asNotes(output.gen_hits, 0), voice: "tap" }]);
+  $("playBoth").onclick = () => output && playFrom($("playBoth"), [
+    inputPart(),
+    { notes: asNotes(output.gen_hits, 0), voice: "tap" },
   ]);
   $("temp").oninput = (e) => $("tempV").textContent = (+e.target.value).toFixed(2);
   $("pp").oninput = (e) => $("ppV").textContent = (+e.target.value).toFixed(2);
-  document.addEventListener("keydown", (e) => { if (e.key === "Enter") generate(); });
-
-  // Land on something playable rather than an empty grid
-  if (META.n_examples) { await loadExample(); await generate(); }
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") generate();
+    if (e.key === "Escape") stopAll();
+  });
 })();
 </script>
 </body>
