@@ -13,7 +13,9 @@ def get_random_part_pairs(dataset_name, part_1, part_2, n_samples):
         part_2=part_2,
         repr_1="drum_roll" if part_1 == "Drums" else "onset_roll",
         repr_2="drum_roll" if part_2 == "Drums" else "onset_roll",
-    )
+    
+    track_loaded=True,
+)
     loader = DataLoader(dataset, batch_size=n_samples, shuffle=True)
 
     batch = next(iter(loader))

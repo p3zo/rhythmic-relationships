@@ -149,7 +149,8 @@ dataset = PartPairDataset(
         "part_2": part_2,
         "repr_1": "onset_roll",
         "repr_2": "onset_roll",
-    }
+    },
+    track_loaded=True,
 )
 
 loader = DataLoader(dataset, batch_size=n_mixes, shuffle=True)

@@ -355,6 +355,7 @@ class PartPairDataset(Dataset):
         datasets_dir=DATASETS_DIR,
         block_size=1,
         tokenize_rolls=True,
+        track_loaded=False,
     ):
         if part_1 not in PARTS or part_2 not in PARTS:
             raise ValueError(f"Part names must be one of: {PARTS}")
@@ -398,6 +399,11 @@ class PartPairDataset(Dataset):
             right_on="roll_id",
         )
 
+        # Off by default because it only works under single-process loading: a DataLoader with
+        # workers appends in the worker and leaves the parent's list empty, which would answer
+        # "which segments did I read" with silence rather than with an error. Ask for it, and
+        # then do not ask for workers.
+        self.track_loaded = track_loaded
         self.loaded_ixs = []
         self.block_size = block_size
         self.tokenize_rolls = tokenize_rolls
@@ -408,13 +414,19 @@ class PartPairDataset(Dataset):
     @property
     def loaded_segments(self):
         """The part 1 rows accessed so far, in access order"""
+        if not self.track_loaded:
+            raise RuntimeError(
+                "This dataset was built without track_loaded=True, so it has not been recording "
+                "which segments were read. Pass track_loaded=True and load in one process."
+            )
         return self.p1_pairs.iloc[self.loaded_ixs].drop("part_id", axis=1)
 
     def __getitem__(self, idx):
         p1_seg = self.p1_pairs.iloc[idx]
         p2_seg = self.p2_pairs.iloc[idx]
 
-        self.loaded_ixs.append(idx)
+        if self.track_loaded:
+            self.loaded_ixs.append(idx)
 
         p1_seg_repr = load_repr(p1_seg, self.repr_1_ix)
         p2_seg_repr = load_repr(p2_seg, self.repr_2_ix)
