@@ -25,6 +25,8 @@ seed: 13
 sequence_len: 32
 n_epochs: 5
 batch_size: 128
+# Loader processes feeding the GPU. 0 keeps loading in the training process.
+num_workers: 4
 
 lr: 1e-5
 loss_fn: "cross-entropy"

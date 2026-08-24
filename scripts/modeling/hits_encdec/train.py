@@ -171,8 +171,20 @@ def train(config, model_name, datasets_dir, model_dir, sweep=False, resume=None)
             pd.Series(v.indices).to_csv(ix_path, index=False, header=False)
     print(f"{splits=}: {len(train_data)}, {len(val_data)}, {len(test_data)}")
 
-    train_loader = DataLoader(train_data, batch_size=config["batch_size"], shuffle=True)
-    val_loader = DataLoader(val_data, batch_size=config["batch_size"], shuffle=True)
+    # Every item opens an .npz, so the step is mostly waiting on disk. Workers overlap that with
+    # the forward and backward pass, and the dataset does not track which segments it read, which
+    # is the one thing that would not survive being loaded in another process.
+    #
+    # Not persistent_workers, however tempting: the eval below iterates train_loader again from
+    # inside the epoch that is already iterating it, and a persistent pool is shared between the
+    # two iterators. The inner one resets it, the outer one is fed forever, and the epoch never
+    # ends - no checkpoint, no next epoch, just evals every eval_interval steps until killed.
+    loader_kwargs = dict(batch_size=config["batch_size"], shuffle=True,
+                         num_workers=config["num_workers"])
+    if config["num_workers"]:
+        loader_kwargs |= dict(prefetch_factor=4)
+    train_loader = DataLoader(train_data, **loader_kwargs)
+    val_loader = DataLoader(val_data, **loader_kwargs)
 
     # hits_vocab = get_hits_vocab()
     # ttoi = {v: k for k, v in hits_vocab.items()}

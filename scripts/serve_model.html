@@ -376,9 +376,21 @@ function playFrom(btn, parts) {
 const asNotes = (hits, pitch) =>
   hits.map((v, i) => [i, pitch, v]).filter(([, , v]) => v > 0);
 
+// A drum part's note numbers are instruments rather than pitches - 35 is a kick and 38 a snare -
+// so it is tapped rather than played, and never transposed: moving it three semitones would swap
+// which drum is hit. The same goes for reading one as the key to fit a pitched part against.
+const percussive = (part) => part === "Drums";
+const inputVoice = () => (percussive(META.part_1) ? "tap" : "melody");
+const partnerVoice = () => (percussive(META.part_2) ? "tap" : "bass");
+
+function fitShift(heard, segNotes) {
+  if (percussive(META.part_1) || percussive(META.part_2)) return 0;
+  return keyShift(heard, segNotes);
+}
+
 const inputPart = () =>
-  pitched ? { notes: pitched, voice: "melody" }
-          : { notes: asNotes(input, META.part_1_pitch), voice: "melody" };
+  pitched ? { notes: pitched, voice: inputVoice() }
+          : { notes: asNotes(input, META.part_1_pitch), voice: inputVoice() };
 
 // ---------- grid ----------
 function spacing(i) {
@@ -563,14 +575,14 @@ function drawMatches() {
     const rowEl = document.createElement("div");
     rowEl.className = "match";
 
-    const shift = keyShift(heard, m.pitched);
+    const shift = fitShift(heard, m.pitched);
 
     const btn = document.createElement("button");
     btn.textContent = "▶";
     btn.title = "Play this against the input";
     btn.onclick = () => playFrom(btn, [
       inputPart(),
-      { notes: transpose(m.pitched, shift), voice: "bass" },
+      { notes: transpose(m.pitched, shift), voice: partnerVoice() },
     ]);
     rowEl.appendChild(btn);
 
@@ -731,7 +743,12 @@ async function loadExample() {
   input = body.hits.slice();
   pitched = body.pitched;
   exampleName = body.name;
-  $("playPitched").disabled = !(pitched && pitched.length);
+  // With a drum part this would play the same taps as the rhythm button, since the note
+  // numbers are instruments rather than pitches
+  $("playPitched").disabled = !(pitched && pitched.length) || percussive(META.part_1);
+  $("playPitched").title = percussive(META.part_1)
+    ? "A drum part has no pitches to hear"
+    : "Play the input as it was recorded";
   drawInput();
   setMeta();
 }

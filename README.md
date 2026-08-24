@@ -171,6 +171,13 @@ To train a model:
 
 The possible model names are the names of directories in `scripts/modeling`. See `scripts/modeling/README.md` for a catalog.
 
+`--part_1` and `--part_2` override the pair in the config, so all twelve directed pairs come off one config file:
+
+    uv run python scripts/modeling/run_train.py --model hits_encdec \
+      --part_1 Drums --part_2 Bass --epochs 8
+
+Train them one at a time. Every item opens an `.npz`, so `num_workers: 4` in the config is worth 4.3x per step (7.2 to 30.8 it/s), but once loading is off the critical path the single GPU is, and three concurrent runs total around 26 it/s where one alone does 31.
+
 ### Trained weights
 
 Weights are not in git. They are attached to [releases](https://github.com/p3zo/rhythmic-relationships/releases) under a version of their own, `models-vX.Y.Z`, which is bumped whenever the set of models changes: a patch for a re-export of the same runs, a minor for models added, a major for a change to the representation that makes older weights unusable with the current code.

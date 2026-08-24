@@ -38,7 +38,8 @@ dataset = PartPairDataset(
         "part_2": config["data"]["part_2"],
         "repr_1": "hits",
         "repr_2": "hits",
-    }
+    },
+    track_loaded=True,
 )
 
 loader = DataLoader(dataset, batch_size=len(dataset), shuffle=True)
