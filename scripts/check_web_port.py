@@ -185,9 +185,16 @@ def main():
                 round(float(get_antiphony(ta, tb)[0]), 6),
             ]
 
-    first = meta["models"][0]
+    # A drum part's note numbers are instruments rather than pitches, so a shift computed from
+    # them means nothing and the page refuses to apply one. Fitting is only exercised on a pair
+    # where both sides are pitched.
+    pitched_pairs = [m for m in meta["models"]
+                     if "Drums" not in (m["part_1"], m["part_2"])]
+    if not pitched_pairs:
+        raise SystemExit("No pair with two pitched parts to check key fitting against")
+    pair = pitched_pairs[0]
     cases["key_shift"] = key_shift_cases(
-        args.data_dir, meta["input_pitch"], first["part_1"], first["part_2"]
+        args.data_dir, meta["input_pitch"], pair["part_1"], pair["part_2"]
     )
 
     # The page has no model menu - the two part dropdowns are the chooser - so the check needs
