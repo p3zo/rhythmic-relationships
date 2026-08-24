@@ -171,8 +171,16 @@ def train(config, model_name, datasets_dir, model_dir, sweep=False, resume=None)
             pd.Series(v.indices).to_csv(ix_path, index=False, header=False)
     print(f"{splits=}: {len(train_data)}, {len(val_data)}, {len(test_data)}")
 
-    train_loader = DataLoader(train_data, batch_size=config["batch_size"], shuffle=True)
-    val_loader = DataLoader(val_data, batch_size=config["batch_size"], shuffle=True)
+    # Every item opens an .npz, so the step is mostly waiting on disk. Workers overlap that with
+    # the forward and backward pass; persistent ones pay macOS's spawn cost once rather than once
+    # per epoch, and the dataset does not track which segments it read, which is the one thing
+    # that would not survive being loaded in another process.
+    loader_kwargs = dict(batch_size=config["batch_size"], shuffle=True,
+                         num_workers=config["num_workers"])
+    if config["num_workers"]:
+        loader_kwargs |= dict(persistent_workers=True, prefetch_factor=4)
+    train_loader = DataLoader(train_data, **loader_kwargs)
+    val_loader = DataLoader(val_data, **loader_kwargs)
 
     # hits_vocab = get_hits_vocab()
     # ttoi = {v: k for k, v in hits_vocab.items()}
