@@ -9,6 +9,7 @@ from rhythmic_relationships.model_utils import (
     load_checkpoint,
     load_config,
 )
+from rhythmic_relationships.parts import PARTS
 
 DEVICE = torch.device(
     "mps"
@@ -29,6 +30,19 @@ if __name__ == "__main__":
         default=None,
         help="Continue a run from one of its checkpoints, e.g. .../checkpoints/5. The run "
         "carries on in the same directory, with the same data splits and optimiser state.",
+    )
+    parser.add_argument(
+        "--part_1",
+        type=str,
+        default=None,
+        help="Override the config's input part. Twelve directed pairs off one config beats "
+        "twelve near-identical config files.",
+    )
+    parser.add_argument(
+        "--part_2",
+        type=str,
+        default=None,
+        help="Override the config's output part.",
     )
     parser.add_argument(
         "--epochs",
@@ -56,6 +70,8 @@ if __name__ == "__main__":
 
     checkpoint = None
     if args.resume:
+        if args.part_1 or args.part_2:
+            raise ValueError("A resumed run keeps its own parts; drop --part_1 and --part_2")
         # The checkpoint's own config is what built the model being loaded, so it wins over
         # anything on disk that may have been edited since
         checkpoint = load_checkpoint(args.resume)
@@ -65,6 +81,13 @@ if __name__ == "__main__":
         print(f"{model_name=} resuming from {args.resume}")
     else:
         config = load_config(args.config_path)
+        for key, part in (("part_1", args.part_1), ("part_2", args.part_2)):
+            if part:
+                if part not in PARTS:
+                    raise ValueError(f"`{part}` is not a part. Choose one of {PARTS}")
+                config["data"][key] = part
+        if config["data"]["part_1"] == config["data"]["part_2"]:
+            raise ValueError("A model needs two different parts")
         model_name = get_model_name()
         print(f"{model_name=}")
         model_dir = os.path.join(MODELS_DIR, model_type, model_name)
