@@ -93,7 +93,7 @@ def greedy_from_onnx(model_dir, hits, n_steps, part_2):
     enc = encoder.run(None, {"src": src})[0]
 
     tgt = np.zeros((1, n_steps), dtype=np.int64)
-    seq, onset_probs = [START_IX], []
+    seq, onset_probs, top2_gaps = [START_IX], [], []
     for t in range(n_steps):
         tgt[0, t] = seq[t]
         logits = decoder.run(None, {"tgt": tgt, "enc": enc})[0]
@@ -101,10 +101,15 @@ def greedy_from_onnx(model_dir, hits, n_steps, part_2):
         probs = np.exp(row - row.max())
         probs /= probs.sum()
         onset_probs.append(round(float(probs[onset_tokens].sum()), 6))
+        # How much the winning token won by. Where that is smaller than the difference between
+        # two runtimes of the same quantised graph, which of them wins is arbitrary.
+        ordered = np.sort(row)[::-1]
+        top2_gaps.append(round(float(ordered[0] - ordered[1]), 6))
         seq.append(int(row.argmax()))
     return {
         "hits": get_hits_from_hits_seq(np.array(seq[1:]), part=part_2, block_size=1),
         "onset_probs": onset_probs,
+        "top2_gaps": top2_gaps,
     }
 
 

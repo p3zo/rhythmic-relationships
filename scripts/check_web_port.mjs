@@ -82,14 +82,19 @@ for (const [key, want] of Object.entries(C.greedy)) {
   const got = JSON.parse(await ev(`generateBatch(${JSON.stringify(P[name])}, 1, 'greedy').then(r =>
     JSON.stringify([r[0].hits, r[0].onsetProbs]))`));
   checked += 2;
-  if (JSON.stringify(want.hits) !== JSON.stringify(got[0])) fail(`greedy ${key}`, want.hits, got[0]);
-  // The tokens have to match exactly, because they are decisions. The probabilities cannot: the
-  // int8 graph is the same but onnxruntime's native kernels and its WASM ones do not accumulate
-  // identically, which moves a logit by a few thousandths and this sum by up to 0.015 in the
-  // worst of these 512 steps. For context the export itself reports the int8 weights moving a
-  // logit by up to 0.146 against the float ones.
-  if (want.onset_probs.some((v, i) => Math.abs(v - got[1][i]) > 0.03))
-    fail(`greedy onset probabilities ${key}`, want.onset_probs, got[1]);
+  // The int8 graph is the same, but onnxruntime's native kernels and its WASM ones do not
+  // accumulate identically: a logit moves by a few thousandths. That is invisible while one token
+  // wins clearly, and decisive when two are tied - and once a step goes the other way every step
+  // after it is generated from a different prefix, so the sequences are compared only up to the
+  // first difference. A difference is allowed only where the reference itself was indifferent,
+  // by a margin wider than the drift and far below the median gap of 3.37.
+  const diverged = want.hits.findIndex((v, i) => v !== got[0][i]);
+  if (diverged !== -1 && want.top2_gaps[diverged] >= 0.02) {
+    fail(`greedy ${key} at step ${diverged} (won by ${want.top2_gaps[diverged]})`, want.hits, got[0]);
+  }
+  const upTo = diverged === -1 ? want.onset_probs.length : diverged;
+  if (want.onset_probs.slice(0, upTo).some((v, i) => Math.abs(v - got[1][i]) > 0.03))
+    fail(`greedy onset probabilities ${key}`, want.onset_probs.slice(0, upTo), got[1].slice(0, upTo));
 }
 
 console.log(`${checked} checks, ${failed} failed`);
